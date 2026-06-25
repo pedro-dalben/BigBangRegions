@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 1,
+	"id": "bigbangregions",
+	"version": "${version}",
+	"name": "BigBang Regions",
+	"description": "Territorial protection system for BigBang Craft",
+	"authors": [
+		"pedro.dalben"
+	],
+	"contact": {},
+	"license": "All Rights Reserved",
+	"icon": "assets/bigbangregions/icon.png",
+	"environment": "server",
+	"entrypoints": {
+		"main": [
+			"com.bigbangcraft.regions.BigBangRegions"
+		]
+	},
+	"mixins": [
+		"bigbangregions.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
