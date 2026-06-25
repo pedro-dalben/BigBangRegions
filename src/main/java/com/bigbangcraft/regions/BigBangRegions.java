@@ -18,6 +18,7 @@ import com.bigbangcraft.regions.util.MessageHelper;
 import com.bigbangcraft.regions.util.SelectionManager;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
@@ -110,6 +111,17 @@ public class BigBangRegions implements ModInitializer {
 
         // 8. Register Event Listeners
         registerListeners();
+
+        // 9. Clean shutdown handler
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            LOGGER.info("Server is stopping. Shutting down BigBang Regions services...");
+            if (auditService != null) {
+                auditService.shutdown();
+            }
+            if (databaseManager != null) {
+                databaseManager.close();
+            }
+        });
 
         LOGGER.info("BigBang Regions initialized successfully.");
     }

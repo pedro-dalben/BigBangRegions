@@ -23,3 +23,9 @@
 * Registros de auditoria locais (`CREATE_REGION`, `DELETE_REGION`, `SET_FLAG`, `RELOAD`).
 * Testes de integração de banco de dados e testes unitários cobrindo o core de prioridades, colisão e resolução de flags.
 * Documentação técnica detalhada das decisões arquiteturais (ADRs) e matriz de compatibilidade.
+
+### Fixed during Audit Phase
+* **PlayerMixin.onDrop Signature**: Fixed invalid method arguments signature for `Player.drop` in Minecraft 1.21.1 mappings to prevent Knots classloading transformation errors on Dedicated Servers.
+* **Database Thread-Safety**: All database connection requests and query executions in `RegionRepository` and `AuditRepository` are now synchronized to prevent concurrency locks/failures during async audit logging.
+* **Clean Lifecycle Management**: Properly registered a `SERVER_STOPPING` callback to safely flush async log queues and close the SQLite connection before shutdown.
+* **Drop Prevention Security**: Enhanced drop cancellation logic to prevent any visual duplication (ghost items) or item loss when the inventory is full by updating the carried slots and broadcasting container changes.

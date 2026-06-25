@@ -30,11 +30,17 @@ public class PlayerMixin {
     }
 
     @Inject(method = "drop", at = @At("HEAD"), cancellable = true)
-    private void onDrop(ItemStack stack, boolean throwRandomly, boolean retainOwnership, CallbackInfoReturnable<ItemEntity> cir) {
+    private void onDrop(ItemStack stack, boolean retainOwnership, CallbackInfoReturnable<ItemEntity> cir) {
         if ((Object) this instanceof ServerPlayer player) {
+            if (player.isRemoved() || player.isDeadOrDying()) {
+                return;
+            }
             if (!BigBangRegions.handlePlayerAction(player, player.blockPosition(), RegionAction.ITEM_DROP)) {
-                // Return the item back to the player's inventory
                 player.getInventory().add(stack);
+                if (!stack.isEmpty()) {
+                    player.containerMenu.setCarried(stack);
+                }
+                player.containerMenu.broadcastChanges();
                 cir.setReturnValue(null);
             }
         }
