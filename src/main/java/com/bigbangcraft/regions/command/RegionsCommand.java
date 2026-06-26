@@ -41,8 +41,12 @@ public class RegionsCommand {
     private static AuditService auditService;
     private static ConfigManager configManager;
 
+    private static boolean isCommandEnabled(String name) {
+        return configManager != null && !configManager.getConfig().isCommandDisabled(name);
+    }
+
     public static void initialize(PermissionManager pm, SelectionManager sm, RegionCache rc,
-                                  RegionRepository repo, RegionResolver rr, AuditService as, ConfigManager cm) {
+                                   RegionRepository repo, RegionResolver rr, AuditService as, ConfigManager cm) {
         permissionManager = pm;
         selectionManager = sm;
         regionCache = rc;
@@ -209,10 +213,25 @@ public class RegionsCommand {
             .then(Commands.literal("sair")
                 .executes(RegionsCommand::leavePlayerRegion)
             )
-            .then(Commands.literal("biomas")
+            .then(Commands.literal("reload").executes(RegionsCommand::reloadMod));
+
+        if (isCommandEnabled("casa")) {
+            builder.then(Commands.literal("casa")
+                .executes(RegionsCommand::teleportHome)
+            );
+        }
+        if (isCommandEnabled("sethome")) {
+            builder.then(Commands.literal("sethome")
+                .executes(RegionsCommand::setHome)
+            );
+        }
+        if (isCommandEnabled("biomas")) {
+            builder.then(Commands.literal("biomas")
                 .executes(RegionsCommand::listBiomes)
-            )
-            .then(Commands.literal("criar")
+            );
+        }
+        if (isCommandEnabled("criar")) {
+            builder.then(Commands.literal("criar")
                 .then(Commands.argument("bioma", StringArgumentType.greedyString())
                     .executes(RegionsCommand::createPlayerAllocation)
                 )
@@ -222,19 +241,10 @@ public class RegionsCommand {
                 .then(Commands.literal("cancelar")
                     .executes(RegionsCommand::cancelAllocation)
                 )
-            )
-            .then(Commands.literal("casa")
-                .executes(RegionsCommand::teleportHome)
-            )
-            .then(Commands.literal("sethome")
-                .executes(RegionsCommand::setHome)
-            )
-            .then(Commands.literal("criar")
-                .then(Commands.argument("bioma", StringArgumentType.greedyString())
-                    .executes(RegionsCommand::createPlayerAllocation)
-                )
-            )
-            .then(Commands.literal("limites")
+            );
+        }
+        if (isCommandEnabled("limites")) {
+            builder.then(Commands.literal("limites")
                 .executes(RegionsCommand::toggleBoundaries)
                 .then(Commands.literal("on")
                     .executes(context -> setBoundaries(context, true))
@@ -242,16 +252,22 @@ public class RegionsCommand {
                 .then(Commands.literal("off")
                     .executes(context -> setBoundaries(context, false))
                 )
-            )
-            .then(Commands.literal("explorar")
+            );
+        }
+        if (isCommandEnabled("explorar")) {
+            builder.then(Commands.literal("explorar")
                 .executes(RegionsCommand::teleportToExplorationZone)
-            )
-            .then(Commands.literal("expandir")
+            );
+        }
+        if (isCommandEnabled("expandir")) {
+            builder.then(Commands.literal("expandir")
                 .then(Commands.argument("tamanho", IntegerArgumentType.integer(1, 256))
                     .executes(RegionsCommand::resizeClaim)
                 )
-            )
-            .then(Commands.literal("mapa")
+            );
+        }
+        if (isCommandEnabled("mapa")) {
+            builder.then(Commands.literal("mapa")
                 .executes(RegionsCommand::showMapVisibility)
                 .then(Commands.literal("publico")
                     .executes(context -> setMapVisibility(context, "PUBLIC"))
@@ -262,8 +278,8 @@ public class RegionsCommand {
                 .then(Commands.literal("membros")
                     .executes(context -> setMapVisibility(context, "MEMBERS"))
                 )
-            )
-            .then(Commands.literal("reload").executes(RegionsCommand::reloadMod));
+            );
+        }
 
         LiteralCommandNode<CommandSourceStack> mainNode = dispatcher.register(builder);
         dispatcher.register(Commands.literal("regiao").redirect(mainNode));
@@ -344,12 +360,10 @@ public class RegionsCommand {
         BlockPos pos2 = p2.getPos();
         RegionBounds bounds = new RegionBounds(dimension, pos1.getX(), pos1.getY(), pos1.getZ(), pos2.getX(), pos2.getY(), pos2.getZ());
 
-        // Check overlap with existing regions
-        for (Region existing : regionCache.getAll()) {
-            if (existing.getBounds().intersects(bounds)) {
-                source.sendFailure(Component.literal("A região se sobrepõe à região '" + existing.getId() + "' (" + existing.getType() + "). Criação cancelada."));
-                return 0;
-            }
+        // Check overlap respecting region type rules
+        if (checkPlayerRegionOverlap(bounds, id)) {
+            source.sendFailure(Component.literal("A região se sobrepõe com uma região existente e foi bloqueada pela configuração."));
+            return 0;
         }
 
         long now = System.currentTimeMillis();

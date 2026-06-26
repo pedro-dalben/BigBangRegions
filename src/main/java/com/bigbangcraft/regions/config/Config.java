@@ -2,9 +2,12 @@ package com.bigbangcraft.regions.config;
 
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class Config {
     private int schemaVersion = 1;
@@ -14,6 +17,15 @@ public class Config {
     private PlayerRegionsConfig playerRegions = new PlayerRegionsConfig();
     private PlayerLandAllocationConfig playerLandAllocation = new PlayerLandAllocationConfig();
     private Map<String, BiomeOptionConfig> biomeOptions = new HashMap<>();
+    private Set<String> disabledCommands = new HashSet<>();
+
+    public boolean isCommandDisabled(String command) {
+        return disabledCommands.contains(command);
+    }
+
+    public Set<String> getDisabledCommands() {
+        return Collections.unmodifiableSet(disabledCommands);
+    }
 
     public Config() {
         biomeOptions.put("planicies", new BiomeOptionConfig("Planícies",

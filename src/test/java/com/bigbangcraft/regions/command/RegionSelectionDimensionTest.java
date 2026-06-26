@@ -2,6 +2,7 @@ package com.bigbangcraft.regions.command;
 
 import com.bigbangcraft.regions.audit.AuditService;
 import com.bigbangcraft.regions.cache.RegionCache;
+import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.permission.PermissionManager;
@@ -71,6 +72,11 @@ public class RegionSelectionDimensionTest {
         when(context.getArgument("id", String.class)).thenReturn("testReg");
         // Mock regionCache returns null (region does not exist)
         when(regionCache.get("testReg")).thenReturn(null);
+        // Mock config for overlap check
+        Config config = new Config();
+        when(configManager.getConfig()).thenReturn(config);
+        // Mock regionCache.getAll() returns empty (no overlap)
+        when(regionCache.getAll()).thenReturn(java.util.Collections.emptyList());
     }
 
     @Test
