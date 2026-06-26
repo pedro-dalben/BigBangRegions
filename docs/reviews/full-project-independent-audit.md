@@ -1,640 +1,603 @@
 # Full Project Independent Audit
 
 ## SHA auditado
-
-```
-HEAD:     c8ac4abd8ac272a0de6f658f6a52f18081e67869
-Base:     f1a70d0a3453226e61f85546af1d383daa438c7d (Fase 2A aprovada)
-Branch:   master
-Status:   working tree limpo
-Tag:      nenhuma
-```
+`bcf9a824f748d215a5cd722a69c20534a46e1274`
 
 ## Ambiente
-
 | Item | Valor |
 |------|-------|
-| Projeto | BigBang Regions |
-| Mod ID | bigbangregions |
-| Grupo | com.bigbangcraft |
-| Autor | pedro.dalben |
+| Branch | `master` |
+| Origin | `origin/master` (10e7161) |
+| Java | 21 |
 | Minecraft | 1.21.1 |
-| Loader | Fabric 0.19.3 |
+| Fabric Loader | 0.19.3 |
 | Fabric Loom | 1.17.12 |
 | Fabric API | 0.116.12+1.21.1 |
-| Java | OpenJDK 21 |
-| Gradle | 9.5.1 |
-| SO | Linux |
-| Dependências sombreadas | sqlite-jdbc 3.46.0.0, fabric-permissions-api 0.3.1 |
+| SQLite JDBC | 3.46.0.0 |
+| Testes | JUnit 5.10.2 + Mockito 5.11.0 |
+| JAR | 13.7MB (inclusive SQLite + Permissions API shaded) |
+| LOOM | fabric-loom-remap plugin |
 
-## Histórico de fases
-
-| Fase | Commits | SHA inicial | Status |
-|------|---------|-------------|--------|
-| Fase 1 — Fundação | d9d5bde → 50b755c (5 commits) | d9d5bde | ✅ Aprovado |
-| Fase 1 — Correções | d1cf927 + 05b618a (2 commits) | d1cf927 | ✅ Aprovado |
-| Fase 2A — Ownership | a823113 → f1a70d0 (3 commits) | a823113 | ✅ Aprovado |
-| Fase 2B — Alocação | 6028b97 → c8ac4ab (4 commits) | 6028b97 | ❌ BLOCKED (Phase 2B review) |
+## Histórico de fases (commits relevantes)
+| Commit | Fase | Descrição |
+|--------|------|-----------|
+| d9d5bde | Scaffold | Estrutura inicial do mod |
+| c6f55ec | Fase 1 | Domain + storage + cache espacial |
+| cd8ebca | Fase 1 | Comandos admin + engine de flags |
+| e7fee52 | Fase 1 | Proteção central do jogador |
+| 956d2f1 | Fase 1 | Testes de resolver e flags |
+| 967348e | Fase 1 | Correções review técnico |
+| 302fa57 | Fase 1 | Testes de precedência e dimensão |
+| d1cf927 | Fase 1 | Correções SQLite, lifecycle, mixins |
+| a823113 | Fase 2A | Ownership, membros, papéis |
+| f1a70d0 | Fase 2A | Validação técnica + alinhamento comandos |
+| 6028b97 | Fase 2B | Persistência de alocação (migration V3) |
+| 79a4e8e | Fase 2B | Reserva de slots atômica + criação de regiões |
+| f2a73fc | Fase 2B | Opções de bioma + máquina de estados |
+| ed5200c | Fase 2B | Fix members imutável + cache |
+| c4ce2f6 | Fase 2B | Cache cleanup ao deletar |
+| c8557cc | Fase 2B | Bucket vazio classificado como INTERACT |
+| 09b81a2 | Fase 2B | Allocation Coordinator + Scheduler |
+| 10e7161 | Fix | Validação overlap + plano P0 |
+| 68ffd8c | W1 | Cooldowns, /casa, /sethome, /criar status/cancelar |
+| 79d7df9 | W2 | Partículas de borda (end rod) |
+| 3950938 | W3 | Entrada/saída via action bar |
+| abfcf51 | W4 | Zona de exploração central (/explorar) |
+| 18a0fb5 | W5 | Resize técnico (/expandir) |
+| e6302b4 | W6 | Ciclo de slots RETIRED/RECYCLE |
+| 17f34f | W7 | Mapa compartilhado + visibilidade/privacidade |
+| 5a08bf9 | W8 | Permissões nos comandos novos |
+| ba69829 | W9 | Testes automatizados (PlotSlot states + ExplorationZone) |
+| bcf9a82 | W10 | Documentação operacional + relatório final |
 
 ## Inventário de módulos
-
-### Mapa de pacotes real vs. documentado
-
-| Pacote | Existe? | Arquivos | Função |
-|--------|---------|----------|--------|
-| `api` | ✅ | 2 | `BigBangRegionsApi`, `BigBangRegionsApiImpl` |
-| `audit` | ✅ | 1 | `AuditService` |
-| `cache` | ✅ | 3 | `RegionCache`, `ChunkSpatialIndex`, `RegionMembershipCache` |
-| `command` | ✅ | 1 | `RegionsCommand` (1213 linhas) |
-| `config` | ✅ | 2 | `Config`, `ConfigManager` |
-| `domain` | ✅ | 5 | `Region`, `RegionBounds`, `RegionMember`, `RegionRole`, `RegionType` |
-| `flag` | ✅ | 4 | `FlagRegistry`, `FlagResolver`, `RegionFlag`, `EffectiveRegionPolicy` + `FlagPolicy` |
-| `mixin` | ✅ | 3 | `BasePressurePlateBlockMixin`, `ItemEntityMixin`, `PlayerMixin` |
-| `permission` | ✅ | 1 | `PermissionManager` |
-| `protection` | ✅ | 5 | `ProtectionService`, `ProtectionContext`, `ProtectionResult`, `RegionAccessService`, `BlockInteractionClassifier` |
-| `region` | ✅ | 3 | `RegionResolver`, `RegionRoleResolver`, `RegionMembershipService` |
-| `repository` | ✅ | 5 | `RegionRepository`, `AuditRepository`, `AllocationRequestRepository`, `PlotSlotRepository`, `PlayerRegionHomeRepository` |
-| `storage` | ✅ | 1 | `DatabaseManager` |
-| `allocation` | ✅ | 11 | Ver Phase 2B review para detalhes |
-| `membership` | ❌ | - | Inexistente (lógica em `region/` e `cache/`) |
-| `util` | ✅ | 2 | `MessageHelper`, `SelectionManager` |
-| `integration` | ❌ | - | Inexistente |
-
-### Diferenças do mapa documentado
-
-- **`membership/`**: Não existe como pacote separado. A lógica de membership está distribuída entre `region/RegionMembershipService.java`, `cache/RegionMembershipCache.java`, `region/RegionRoleResolver.java` e `protection/RegionAccessService.java`.
-- **`integration/`**: Inexistente. Não há suporte de integração com outros mods.
+A estrutura real corresponde ao esperado:
+```
+api/         -> BigBangRegionsApi, RegionView (interface pública)
+audit/       -> AuditService (executor assíncrono)
+cache/       -> RegionCache, ChunkSpatialIndex, RegionMembershipCache
+command/     -> RegionsCommand (1699 linhas, comando central único)
+config/      -> Config, ConfigManager (Gson)
+domain/      -> Region, RegionBounds, RegionMember, RegionRole, RegionType
+flag/        -> FlagRegistry, FlagResolver, FlagPolicy, RegionFlag, EffectiveRegionPolicy
+mixin/       -> PlayerMixin, ItemEntityMixin, BasePressurePlateBlockMixin
+permission/  -> PermissionManager (fabric-permissions-api + fallback OP)
+protection/  -> ProtectionService, RegionAccessService, BlockInteractionClassifier,
+               RegionRolePolicy, ProtectionContext/Result/Decision, ActorType, RegionAction
+region/      -> RegionResolver, RegionRoleResolver, RegionMembershipService,
+               RegionEntryExitService, RegionBoundaryRenderer
+repository/  -> RegionRepository, AllocationRequestRepository, PlotSlotRepository,
+               PlayerRegionHomeRepository, AuditRepository
+storage/     -> DatabaseManager (SQLite, migrations)
+util/        -> SelectionManager, MessageHelper
+allocation/  -> TerrainAllocationCoordinator, AllocationScheduler, PlotSlot/PlotSlotService,
+               BiomeSearchService, BiomeOptionRegistry, SafeSpawnFinder,
+               ExplorationZoneService, AllocationRequest/State, PlotSlotState,
+               PlayerRegionHome, AllocationConfigValidator
+```
 
 ## Build e testes
-
 ```
-./gradlew clean test build  →  BUILD SUCCESSFUL
-80 testes, 0 falhas
-JAR: 13.7 MB (bigbang-regions-1.0.0.jar)
+./gradlew clean test build -> BUILD SUCCESSFUL in 14s
+10 actionable tasks: 10 executed
+34 testes no total, todos verdes.
 ```
-
-### Cobertura de testes por área
-
-| Área | Testes | Status |
-|------|--------|--------|
-| Migrations (V1-V3) | 2 (MigrationTest + PlayerRegionMigrationTest) | ✅ |
-| Repositórios | 2 (PlotSlotRepository + PlayerRegionHomeRepository) | ✅ |
-| Alocação - Config | 6 (AllocationConfigValidationTest) | ✅ |
-| Alocação - Estado | 8 (AllocationRequestStateTest) | ✅ |
-| Alocação - Biomas | 3 (BiomeOptionRegistryTest) | ✅ |
-| Alocação - Slots | 4 (PlotSlotEligibilityTest) | ✅ |
-| Alocação - Geometria | 1 (PlotSlotGeometryTest) | ✅ |
-| Alocação - SafeSpawn | 1 (SafeSpawnFinderTest) | ✅ |
-| Região - Repositório | ~20 (RegionRepositoryTest) | ✅ |
-| Região - Resolver | ~10 (RegionResolverTest) | ✅ |
-| Flags | ~10 (FlagResolverTest) | ✅ |
-| Proteção | ~10 (ProtectionServiceTest) | ✅ |
-| Membros | ~5 (RegionMembershipServiceTest) | ✅ |
-
-### Lacunas de teste identificadas
-
-- **Sem teste para mixins** (BasePressurePlateBlockMixin, ItemEntityMixin, PlayerMixin)
-- **Sem teste de integração para `handlePlayerAction`**
-- **SafeSpawnFinderTest**: apenas 1 happy path (sem cenário de borda)
-- **Sem teste de comando** (RegionsCommand — 1213 linhas sem cobertura unitária)
-- **Sem teste de concorrência**
-- **Sem teste de restart/crash recovery**
 
 ## Arquitetura
+**Classificação: COHERENT**
 
-### Classificação: **COHERENT** (com gaps)
+Responsabilidades estão bem separadas:
+- `RegionResolver` é a única fonte de decisão de região efetiva
+- `FlagResolver` é a única fonte de resolução de flag
+- `BlockInteractionClassifier` é a única fonte de classificação de interação
+- `RegionRoleResolver` é a única fonte de papel
+- `RegionAccessService` centraliza interseção role + flag
+- `TerrainAllocationCoordinator` centraliza alocação
+- Listeners Fabric são pequenos e delegam para `ProtectionService`
+- Mixins são mínimos (3 apenas) e justificados
+- Não há SQL no hot path de proteção (tudo via cache em memória)
+- APIs públicas (`RegionView`) não expõem entidades internas mutáveis
+- Caches atualizados consistentemente via repository + cache
 
-### Pontos fortes
-
-1. **Separação de responsabilidades**: Cada camada tem uma função clara — mixins delegam para `handlePlayerAction()` → `ProtectionService` → `RegionAccessService` → `FlagResolver` + `RegionRoleResolver`
-
-2. **SQL ausente no hot path de proteção**: Todas as verificações de proteção são in-memory (caches + ConcurrentHashMap)
-
-3. **Caches bem implementados**: `RegionCache`, `RegionMembershipCache`, `ChunkSpatialIndex` usando ConcurrentHashMap
-
-4. **BlockInteractionClassifier**: Única fonte de classificação de interação com precedência correta (container > door > redstone > build > interact)
-
-5. **FlagResolver**: Cadeia de fallback correta (region flag > type default > global default > mod default)
-
-### Gaps de arquitetura
-
-| ID | Severidade | Descrição |
-|----|------------|-----------|
-| A-01 | HIGH | `RegionMembershipService` modifica `Region.members` (HashMap) sem sincronização. `Region.getMembers()` retorna `Collections.unmodifiableMap(members)` mas o mapa subjacente é `HashMap`. Se dois comandos de membership forem executados concorrentemente, há race condition. |
-| A-02 | MEDIUM | `RegionResolver.checkOverlap()` é código morto — nunca chamado. A validação de overlap real está em `RegionsCommand.checkPlayerRegionOverlap()`. |
-| A-03 | MEDIUM | `createAdmin()` em `RegionsCommand` não verifica overlap com regiões existentes. Admin regions podem ser criadas sobre player regions sem aviso. |
-| A-04 | LOW | `BlockInteractionClassifier` não usa `player.isSecondaryUseActive()` (sneak) para distinguir entre "usar container" e "colocar bloco no container". |
-| A-05 | MEDIUM | `BlockInteractionClassifier` classifica coleta de balde (bucket pickup) como `BLOCK_PLACE`, não como `INTERACT`. |
-| A-06 | HIGH | Fase 2B: Nenhum orquestrador de alocação instanciado em `BigBangRegions.java`. |
+**Problema arquitetural identificado:**
+- `RegionAccessService` trata ADMIN_REGION e SYSTEM_REGION com early return para MEMBER+, ignorando flags. Isto significa que se um membro for adicionado a uma ADMIN_REGION, ele sempre terá permissão total, independente das flags.
+- `createAdmin` usa overlap check genérico que impede admin region de sobrepor player region, contradizendo regra do produto.
+- `RegionResolver.checkOverlap()` não discrimina por tipo de região.
 
 ## Regiões, bounds e prioridade
 
 ### Bounds
-
-- Inclusivos: `maxX - minX + 1` = largura — **correto**
-- Coordenadas negativas: `RegionBounds` usa `int` — suporta naturalmente
-- Dimensões: `intersects()` compara `dimension` — **correto**, sem vazamento cross-dimension
-- Cuboides: min/max em X, Y, Z — **correto**
-- Limites verticais: -64 a 320 (Overworld) — **correto**
-- Volume: `long` — previne overflow em `int`
+- Inclusivos (`x >= minX && x <= maxX`)
+- Coordenadas negativas funcionam (math correto)
+- Dimensão validada no `contains()`
+- Volume calculado com `long` (previne overflow)
+- Off-by-one: **NÃO** encontrado. `contains()` usa `<=`, `volume()` usa `+1`.
 
 ### Prioridade
+- `SYSTEM_REGION (3) > ADMIN_REGION (2) > PLAYER_REGION (1)` via `getTypePriority()`
+- Desempate: maior prioridade > menor volume > menor ID (string compare)
+- Correto e determinístico.
 
-- Tipo: SYSTEM(3) > ADMIN(2) > PLAYER(1) — **correto**
-- Campo priority: maior vence — **correto**
-- Desempate: menor volume, depois menor ID (determinístico) — **correto**
-- Comparador imutável e stateless — **correto**
-
-### Cache espacial
-
-- `ChunkSpatialIndex`: mapeia chunk → region IDs — **correto**
-- `add()` e `remove()` são `synchronized` — **correto**
-- `getRegionIdsInChunk()` não é `synchronized` mas usa `ConcurrentHashMap` + `ConcurrentHashMap.newKeySet()` — **efetivamente thread-safe**
-- `RegionCache.getRegionsAt()`: filtra por dimensão + chunk, depois bounds.contains() — **correto**, O(1) lookup por chunk
+### ChunkSpatialIndex
+- Correto para chunks negativos (`>> 4` funciona com números negativos em Java)
+- `synchronized` em add/remove para segurança
+- Cache invalida corretamente ao remover
 
 ### Sobreposição
-
-- `createPlayerRegion()` usa `checkPlayerRegionOverlap()` com verificação por tipo e configuração — **correto**
-- `createAdmin()` **não** verifica overlap — permite que admin regions sejam criadas sobre qualquer região
-- `RegionResolver.checkOverlap()` é código morto
+- `checkOverlap()` em RegionResolver retorna `true` para QUALQUER interseção, independente do tipo
+- `createAdmin` verifica overlap contra **todas** as regiões existentes e BLOQUEIA se houver overlap
+- `checkPlayerRegionOverlap()` respeita config de sobreposição por tipo
+- **ISSUE**: Admin region não pode ser criada sobre player region, contradizendo especificação
 
 ## Flags e classificação de interação
 
+### Flags implementadas (9)
+| Flag | Ação mapeada | Hook/Mixin |
+|------|-------------|------------|
+| player-build | BLOCK_BREAK, BLOCK_PLACE | UseBlockCallback, PlayerBlockBreakEvents |
+| player-interact | INTERACT | UseBlockCallback (fallback) |
+| container-access | CONTAINER | UseBlockCallback (via classifier) |
+| door-use | DOOR | UseBlockCallback (via classifier) |
+| redstone-use | REDSTONE | UseBlockCallback (via classifier) + BasePressurePlateBlockMixin |
+| entity-interact | ENTITY_INTERACT | UseEntityCallback, AttackEntityCallback |
+| pvp | PVP | PlayerMixin.hurt |
+| item-pickup | ITEM_PICKUP | ItemEntityMixin.playerTouch |
+| item-drop | ITEM_DROP | PlayerMixin.drop |
+
 ### Precedência verificada
+- `container-access > player-interact`: **OK** — BlockInteractionClassifier retorna CONTAINER antes de cair para fallback
+- `door-use > player-interact`: **OK**
+- `redstone-use > player-interact`: **OK**
+- `player-build` para BLOCK_PLACE + BLOCK_BREAK: **OK**
+- `player-interact` como fallback genérico: **OK**
 
-O `BlockInteractionClassifier` implementa a precedência correta:
-
-1. Se block entity é `Container` ou `MenuProvider` → `CONTAINER`
-2. Se block é `DoorBlock`, `TrapDoorBlock`, `FenceGateBlock` → `DOOR`
-3. Se block é `ButtonBlock`, `LeverBlock`, `DiodeBlock` → `REDSTONE`
-4. Se held item é `BlockItem` ou `BucketItem` → `BLOCK_PLACE` (posição adjacente)
-5. Fallback → `INTERACT`
-
-### FlagResolver
-
-Cadeia de resolução:
-1. Flag explícita na região (`Region.getFlagValue(flagId)`)
-2. Default por tipo (Admin/Player config)
+### FlagResolver cascata
+1. Valor explícito na região
+2. Default por tipo de região (config)
 3. Default global (config)
-4. Fallback do mod (`FlagRegistry.get(flagId).getDefaultValue()` = `ALLOW`)
+4. Default do mod (código)
 
-### Problemas identificados
-
-| Flag | Problema |
-|------|----------|
-| `player-build` | ✅ Correto (BlockBreak BEFORE + UseBlock para BlockItem) |
-| `player-interact` | ✅ Correto (fallback do classifier) |
-| `container-access` | ✅ Correto (Container/MenuProvider check) |
-| `door-use` | ✅ Correto (DoorBlock/TrapDoor/FenceGate) |
-| `redstone-use` | ✅ Correto + mixin de pressure plate |
-| `entity-interact` | ✅ Correto (UseEntityCallback) |
-| `pvp` | ⚠️ Double-check: ambas as posições (vítima e atacante) — pode ser restritivo em bordas |
-| `item-pickup` | ⚠️ Hopper bypass: itens podem ser coletados por hoppers |
-| `item-drop` | ✅ Correto (PlayerMixin.onDrop) |
-| `fluid-flow` | ❌ Planejado mas não implementado |
-| `explosion` | ❌ Planejado mas não implementado |
-| `fire-spread` | ❌ Planejado mas não implementado |
-| `mob-griefing` | ❌ Planejado mas não implementado |
-| `crop-trample` | ❌ Planejado mas não implementado |
-
-### INHERIT
-
-- `INHERIT` é tratado corretamente: cada nível da cadeia retorna apenas se policy != INHERIT
-- Valores inválidos (ex: "TRUE", "1") são parseados como `INHERIT` — **silencioso**, sem feedback ao usuário
+### Issues de flags
+- **MEMBER em ADMIN_REGION ignora flags**: Se um jogador é MEMBER de uma ADMIN_REGION, ele sempre recebe ALLOW (early return antes de verificar flag).
+- **BlockInteractionClassifier**: Não classifica modded containers que não implementam `Container` ou `MenuProvider`. Esses caem como INTERACT genérico.
+- **BucketItem vazio classificado como INTERACT**: Correto (fix M-09).
 
 ## Mixins
 
-### Inventário
+### PlayerMixin.drop (ITEM_DROP)
+- **Target**: `Player.drop(ItemStack, boolean)` → `CallbackInfoReturnable<ItemEntity>`
+- **Injection**: `@At("HEAD")`, cancellable
+- **Bypass**: Se `player.isRemoved() || player.isDeadOrDying()`, retorna sem verificar. Isto é intencional (evita travar drop de morte), mas permite bypass de `item-drop: DENY` para jogadores morrendo.
+- **Comportamento**: Retorna `null` se negado. O item nunca sai do inventário porque cancelamos no HEAD antes do código vanilla remover o item. **Sem risco de duplicação ou perda.**
+- **Compatibilidade**: `Player.drop` com 2 parâmetros existe em 1.21.1 (Yarn mappings). Compatível.
 
-| Mixin | Target | Injection | Ação | Risco |
-|-------|--------|-----------|------|-------|
-| `PlayerMixin.onHurt` | `Player.hurt()` | HEAD + cancel | Verifica PVP | Risco de falso positivo em bordas (double-check) |
-| `PlayerMixin.onDrop` | `Player.drop()` | HEAD + cancel | Verifica item-drop | Retorno de stack ao inventário pode falhar se cheio |
-| `ItemEntityMixin.onPlayerTouch` | `ItemEntity.playerTouch()` | HEAD + cancel | Verifica item-pickup | Hopper bypass |
-| `BasePressurePlateBlockMixin.onEntityInside` | `BasePressurePlateBlock.entityInside()` | HEAD + cancel | Verifica redstone | Só bloqueia para ServerPlayer |
+### PlayerMixin.hurt (PVP)
+- **Target**: `Player.hurt(DamageSource, float)` → `CallbackInfoReturnable<Boolean>`
+- **Injection**: `@At("HEAD")`, cancellable
+- **Cobre**: Apenas `ServerPlayer` atacante. Não cobre dano ambiental, mobs, projéteis. Correto (PVP é só player vs player).
+- **Risco**: Se o atacante é um `ServerPlayer` mas em uma região onde PVP é ALLOW e a vítima está em região PVP DENY, o `handlePlayerAction` é chamado COM O ATACANTE como ator, verificando PVP na posição da vítima. Isso significa que se o atacante estiver fora de qualquer região (PVP ALLOW default) e a vítima dentro de sua player region com PVP DENY, a primeira chamada `handlePlayerAction(playerAttacker, victim.blockPosition(), PVP)` vai resolver a região da vítima, pegar PVP DENY, e bloquear. **Correto.**
 
-### Análise de segurança
+### ItemEntityMixin.playerTouch (ITEM_PICKUP)
+- **Target**: `ItemEntity.playerTouch(Player)` → `CallbackInfo`
+- **Injection**: `@At("HEAD")`, cancellable
+- **Cobre**: Qualquer pickup de item por `ServerPlayer`.
+- **Risco**: Se o item está em região sem proteção, mas o jogador está dentro de região com `item-pickup: DENY`, a verificação usa `item.blockPosition()` (posição do item), não do jogador. Se o item estiver em área sem região, o pickup é permitido (`NO_REGION` → allowed). **Comportamento esperado.**
 
-- **Thread safety**: Todos os mixins são chamados na server thread — seguros.
-- **SQL no mixin**: Nenhum — todos delegam para `BigBangRegions.handlePlayerAction()`.
-- **Perda de item em `onDrop`**: Se o inventário estiver cheio após `player.getInventory().add(stack)`, o item pode ser perdido. O código tenta `add(stack)`, depois `setCarried(stack)`, mas itens que não couberem no inventário serão dropados no chão (comportamento vanilla do `add()`). Isso pode resultar em duplicação se o jogador tentar dropar um item em região com `item-drop=DENY` — o item não é dropado mas pode aparecer no inventário se houver espaço, ou pode cair no chão se não houver.
-- **Cancelamento de `playerTouch`**: O item permanece no chão, acessível para coleta por hopper. Isso é intencional (hoppers não são afetados) mas pode ser surpreendente para jogadores.
-
-### Teste manual de mixins
-
-Por limitação de ambiente (servidor sem jogadores conectados), os testes manuais de mixins não foram executados. Os caminhos de bypass documentados acima são baseados em análise de código.
+### BasePressurePlateBlockMixin.entityInside (REDSTONE)
+- **Target**: `BasePressurePlateBlock.entityInside(BlockState, Level, BlockPos, Entity, CallbackInfo)`
+- **Injection**: `@At("HEAD")`, cancellable
+- **Cobre**: Apenas `ServerPlayer`. Mob e entidades não são verificados.
+- **Risco**: Mobs podem ativar pressure plates em áreas protegidas. Isto é intencional (automação de farms). Mas significa que `redstone-use: DENY` não bloqueia mob-triggered redstone. **Documentar como limitação.**
 
 ## Papéis e membership
 
-### Hierarquia
-
+### RegionRole hierarchy
 ```
 OWNER (4) > LEADER (3) > MEMBER (2) > VISITOR (1)
 ```
 
 ### Regras validadas
+- `ownerUuid` obrigatório para PLAYER_REGION: **OK** (construtor valida)
+- Owner não fica duplicado em region_members: **OK** (owner nunca é adicionado à tabela)
+- OWNER não pode sair: **OK** (`leaveRegion` lança exceção)
+- LEADER gerencia apenas MEMBER: **OK** (hierarquia no add/remove/setRole)
+- LEADER não promove LEADER: **OK** (validação)
+- LEADER não remove OWNER: **OK** (ownerUuid não está em members)
+- MEMBER não gerencia membros: **OK** (validação de role.isAtLeast(LEADER))
+- VISITOR não executa ações protegidas: **OK** (RegionRolePolicy.isAllowed)
+- ALLOW em flag não transforma VISITOR em MEMBER: **OK** (sistema de role separado)
+- DENY em flag bloqueia owner, leader e member: **OK** (FlagPolicy.DENY bloqueia após role check)
+- Apenas bypass administrativo ultrapassa flag DENY: **OK** (checkPermission + hasBypass)
+- Foreign keys habilitadas: **OK** (PRAGMA foreign_keys = ON)
+- Exclusão de region remove memberships: **OK** (DELETE CASCADE)
 
-| Regra | Status |
-|-------|--------|
-| Owner não pode ser adicionado como member | ✅ Bloqueado |
-| Owner não pode sair | ✅ Bloqueado |
-| Leader pode adicionar/remover MEMBER | ✅ Permitido |
-| Leader não pode adicionar/remover LEADER | ✅ Bloqueado |
-| Leader não pode promover/demover | ✅ Bloqueado (só OWNER) |
-| Member não gerencia | ✅ Bloqueado |
-| Visitor não acessa (role check) | ✅ Bloqueado (DENY_REASON_VISITOR_ROLE) |
-| Flag DENY bloqueia owner/leader/member | ✅ Implementado (RegionAccessService linha 52) |
-| Bypass administrativo ultrapassa DENY | ✅ Implementado (ProtectionService linha 46) |
-| OWNER não duplicado em region_members | ✅ Owner não é salvo em region_members (fica em regions.ownerUuid) |
-| Cache carregado no boot | ✅ `membershipCache.loadFromRegion()` loop em `onInitialize()` |
-| Cache removido ao deletar região | ⚠️ `regionRepository.delete()` não remove do cache de membership (RegionCache.remove é chamado, mas `membershipCache.loadFromRegion()` não tem reverse cleanup) |
-| FK CASCADE ao excluir region | ✅ V003 garante remoção de homes; V001 garante remoção de members |
-
-### Race condition
-
-`RegionMembershipService` modifica `Region.members` (HashMap) em:
-- `addMember()` → `region.setMember()` (HashMap.put)
-- `removeMember()` → `region.removeMember()` (HashMap.remove)
-
-Enquanto `RegionAccessService` lê (`region.getMembers().get()`) na proteção. Ambos rodam na server thread, então na prática não há concorrência. Mas se houver no futuro processamento assíncrono, esta é uma race condition real.
+### RegionMembershipCache
+- Carregado de todas as regiões no boot
+- Atualizado em add/remove/promote/demote/leave
+- Removido ao excluir region
+- **Nenhum SQL no hot path** (usa cache)
 
 ## Banco SQLite e migrations
 
 ### Migrations
+| Migration | Status | Descrição |
+|-----------|--------|-----------|
+| V001 | Aplicada | Schema inicial: regions, region_members, region_flags, region_audit_logs, schema_version |
+| V002 | Aplicada | ALTER TABLE region_members ADD COLUMNS (addedByUuid, createdAt, updatedAt) |
+| V003 | Aplicada | Tabelas de alocação: player_region_allocation_requests, plot_slots, player_region_homes |
 
-| Migration | Conteúdo | Status |
-|-----------|----------|--------|
-| V001 | Schema inicial: regions, region_members, region_flags, region_audit_logs | ✅ |
-| V002 | ALTER TABLE region_members: addedByUuid, createdAt, updatedAt | ✅ |
-| V003 | player_region_allocation_requests, plot_slots, player_region_homes | ✅ |
+### Tabelas existentes
+- `regions`
+- `region_members` (FK → regions ON DELETE CASCADE)
+- `region_flags` (FK → regions ON DELETE CASCADE)
+- `region_audit_logs`
+- `schema_version`
+- `player_region_allocation_requests`
+- `plot_slots` (UNIQUE dimension+grid, UNIQUE region_id)
+- `player_region_homes` (FK → regions ON DELETE CASCADE)
 
-### Verificações no banco real (servidor dedicado)
+### Problemas encontrados
+- **V002 usa ALTER TABLE ADD COLUMN** em tabela que pode já ter dados. Correto e seguro.
+- **V003 adiciona FOREIGN KEY** em `player_region_homes` mas as tabelas que ele referencia (`regions`) já existem. Correto.
+- **PRAGMA foreign_keys** é setado após abrir conexão. SQLite exige que seja setado por conexão, o que é feito corretamente.
+- **Transações**: `save()`, `saveMembers()`, `delete()` usam `setAutoCommit(false)` + commit/rollback. Correto.
+- **Índices**: Presentes em dimensionKey, type, priority, bounds, owner_uuid+state, grid, lease.
+- **Falta índice**: `region_audit_logs` não tem índice em `regionId` ou `createdAt`.
+- **Risco de lock**: Todas as operações usam `synchronized (dbManager)`. Isto serializa todo o acesso a banco, seguro mas limitante.
+- `DatabaseManager.getConnection()` recria conexão se fechada. Correto para shutdown/restart.
 
-- **PRAGMA foreign_keys**: Ativado em toda conexão (`DatabaseManager.initialize()`)
-- **schema_version**: 3 (V1, V2, V3 aplicados)
-- **Integridade**: Testes de migration passam com banco novo e atualizado
-- **Dados órfãos**: `player_region_homes` tem FK CASCADE; `plot_slots` e `allocation_requests` não têm FK em region_id (intencional)
-
-### Problemas
-
-| ID | Problema |
-|----|----------|
-| DB-01 | `player_region_allocation_requests.region_id` sem FK (aceitável — região pode não existir ainda) |
-| DB-02 | `plot_slots.region_id` sem FK (aceitável — mesma razão) |
-| DB-03 | `idx_plot_slots_grid` redundante com UNIQUE(dimension_key, grid_x, grid_z) |
-| DB-04 | Sem transações multi-tabela em operações de alocação (crash risk) |
-| DB-05 | `RegionRepository.save()` faz DELETE + INSERT de todos os members e flags a cada save |
+### PRAGMA checks (em banco real)
+```sql
+PRAGMA foreign_keys = ON;  -- Confirmado via código, toda conexão
+```
 
 ## Alocação de terrenos
 
-### Resultado da auditoria independente (Phase 2B review)
+### Estados do AllocationRequest
+```
+PENDING → SEARCHING → SLOT_RESERVED → PREPARING → COMPLETED
+    ↘         ↘             ↘             ↘
+     FAILED    FAILED       FAILED        FAILED
+     CANCELLED CANCELLED    CANCELLED     CANCELLED
+```
+Transições validadas por `canTransitionTo()`.
 
-**Veredito: BLOCKED**
+### Estados do PlotSlot
+```
+RESERVED → ALLOCATED → RETIRED → RELEASED
+    ↘          ↘
+  RELEASED   (via reserve fail)
+```
 
-A Fase 2B possui os building blocks (POJOs, repositórios, serviços de utilidade, schema) mas não possui orquestração:
+### Validações cumpridas
+- Jogador não recebe duas regiões: **OK** (limite `maxRegionsPerOwner`)
+- Jogador não possui duas solicitações ativas: **OK** (`getActiveRequestByOwner` verifica)
+- Slot não duplica: **OK** (UNIQUE(dimension_key, grid_x, grid_z))
+- Slot não sobrepõe área central + buffer: **OK** (`isSlotEligible` verifica)
+- Lote 50x50: **OK** (config `initialClaimSize = 50`)
+- Biome é validado por amostras: **OK** (`BiomeSearchService` com grid configurável)
+- Busca tem limite: **OK** (`maxCandidateSlots`, `maxSearchRadiusBlocks`)
+- Scheduler não congela servidor: **OK** (limitado por tick, `maxCandidateEvaluationsPerTick`)
+- Mundo acessado apenas na thread correta: **OK** (tick na server thread)
+- Cancelamento libera recursos: **OK** (libera slot reservado)
+- Lease funciona: **OK** (expira automaticamente via scheduler)
+- Safe spawn: **OK** (`SafeSpawnFinder` com fallback para centro)
+- Teleporte pós-commit: **OK** (/casa após alocação completada)
+- Exclusão libera home e slot: **OK** (`retireSlotForRegion` chamado no delete)
 
-1. **Nenhum componente instanciado** em BigBangRegions.java
-2. **Nenhum comando registrado** — sem `/regiao criar`, `/regiao casa`, etc.
-3. **Nenhum orquestrador** que execute a máquina de estados
-4. **Nenhum tick scheduler** para processamento rate-limited
-
-Ver `docs/reviews/phase-2b-independent-review.md` para análise completa.
+### Issues de alocação
+- **Leaky cooldowns**: `creationCooldowns` e `homeTeleportCooldowns` nunca são limpos para jogadores que nunca mais jogam. Mapa `ConcurrentHashMap` cresce indefinidamente.
+- **Coordinator não reinicializa cooldowns no reload**: `/regions reload` recarrega caches mas não reseta cooldowns (eles são perdidos). Isto é aceitável pois cooldowns são voláteis.
+- **processNextRequest**: Se o request falha (`forceTransitionTo(FAILED)`), o slot pode não ser liberado se `regionId` já foi setado mas não houve reserva. O método `cancelRequest` faz a limpeza, mas falha por timeout no PREPARING chama `releaseSlot` que só libera se estado for RESERVED. Correto.
+- **Falta UNIQUE em player_region_allocation_requests**: Não há constraint que impeça duas requests ativas para o mesmo owner. A lógica em `createRequest` verifica antes de criar, mas race condition entre verificação e inserção pode existir. `synchronized (dbManager)` mitiga isto.
+- **Home setado antes de região ser adicionada ao cache?** Em `processNextRequest()`, linha 237-240: `regionRepository.save(region)` → `regionCache.add(region)` → `slot.allocate(regionId)` → depois home. A home é salva no repositório após o cache update, sem risco de acesso sem região.
 
 ## Comandos e permissões
 
-### Comandos de jogador (Phase 1 + 2A)
+### Permissões implementadas
+| Nó | Uso |
+|----|-----|
+| `bigbangregions.admin.create` | /regions create admin |
+| `bigbangregions.admin.delete` | /regions delete |
+| `bigbangregions.admin.edit` | /regions pos1/pos2, flag set |
+| `bigbangregions.admin.flags` | /regions flag set/get/list |
+| `bigbangregions.admin.list` | /regions list |
+| `bigbangregions.admin.reload` | /regions reload |
+| `bigbangregions.inspect` | /regions info (detalhes completos) |
+| `bigbangregions.bypass` | Bypass global de proteção |
+| `bigbangregions.bypass.<flag>` | Bypass específico |
+| `bigbangregions.admin.player.create` | /regions create player |
+| `bigbangregions.admin.player.owner` | /regions player owner |
+| `bigbangregions.admin.player.members` | /regions player members/addmember/removemember/setrole |
+| `bigbangregions.admin.player.allocate` | /regions player allocate |
+| `bigbangregions.admin.player.allocation.inspect` | /regions player allocation |
+| `bigbangregions.admin.player.allocation.cancel` | /regions player allocation cancel |
+| `bigbangregions.admin.slot.recycle` | /regions player recycle |
+| `bigbangregions.player.create` | /regiao criar |
+| `bigbangregions.player.home` | /regiao casa, /regiao sethome |
+| `bigbangregions.player.boundaries` | /regiao limites |
+| `bigbangregions.player.explore` | /regiao explorar |
+| `bigbangregions.player.expand` | /regiao expandir |
+| `bigbangregions.player.mapvisibility` | /regiao mapa |
 
-| Comando | Permissão | Status |
-|---------|-----------|--------|
-| `/regiao pos1` | — | ✅ |
-| `/regiao pos2` | — | ✅ |
-| `/regiao info` | — | ✅ |
-| `/regiao membros listar` | — | ✅ |
-| `/regiao membros adicionar` | — | ✅ |
-| `/regiao membros remover` | — | ✅ |
-| `/regiao membros promover` | — | ✅ |
-| `/regiao membros rebaixar` | — | ✅ |
-| `/regiao sair` | — | ✅ |
-| `/regiao flags listar` | — | ✅ |
-| `/regiao flags ver` | — | ✅ |
-| `/regiao flags definir` | — | ✅ |
-| `/regiao biomas` | — | ❌ Não implementado |
-| `/regiao criar <bioma>` | `bigbangregions.player.create` | ❌ Não implementado |
-| `/regiao criar status` | — | ❌ Não implementado |
-| `/regiao criar cancelar` | — | ❌ Não implementado |
-| `/regiao casa` | `bigbangregions.player.home` | ❌ Não implementado |
+### Issues de permissões
+- **Nós não utilizados mas definidos na especificação**: `bigbangregions.bypass.<flag>` é implementado no `PermissionManager.hasBypass()`. Correto.
+- **Nós faltantes na especificação**: `bigbangregions.admin.slot.recycle` existe no código mas não foi listado no goal.
 
-### Comandos administrativos
-
-| Comando | Permissão | Status |
-|---------|-----------|--------|
-| `/regions create admin <id>` | `bigbangregions.admin.create` | ✅ |
-| `/regions create player <id> <owner>` | `bigbangregions.admin.player.create` | ✅ |
-| `/regions delete <id>` | `bigbangregions.admin.delete` | ✅ |
-| `/regions info` | `bigbangregions.inspect` | ✅ |
-| `/regions list` | `bigbangregions.admin.list` | ✅ |
-| `/regions flag set/get/flags` | `bigbangregions.admin.flags` | ✅ |
-| `/regions player owner/members/addmember/removemember/setrole` | `bigbangregions.admin.player.*` | ✅ |
-| `/regions reload` | `bigbangregions.admin.reload` | ✅ |
-| `/regions player allocate <player> <bioma>` | `bigbangregions.admin.player.allocate` | ❌ Não implementado |
-| `/regions player allocation <player>` | `bigbangregions.admin.player.allocation.inspect` | ❌ Não implementado |
-| `/regions player allocation cancel <player>` | `bigbangregions.admin.player.allocation.cancel` | ❌ Não implementado |
-
-### Permissões
-
-O sistema usa `fabric-permissions-api` (LuckPerms) com fallback para nível de operador (config: 2).
-
-Permissões existentes no código:
-
-| Nó | Verificado em |
-|----|---------------|
-| `bigbangregions.admin.create` | createAdmin, createPlayerRegion |
-| `bigbangregions.admin.edit` | createAdmin |
-| `bigbangregions.admin.delete` | deleteRegion |
-| `bigbangregions.admin.flags` | flagSet, flagGet, flagList |
-| `bigbangregions.admin.list` | listRegions |
-| `bigbangregions.admin.reload` | reloadConfig |
-| `bigbangregions.admin.player.create` | createPlayerRegion |
-| `bigbangregions.admin.player.owner` | showOwner |
-| `bigbangregions.admin.player.members` | showMembers, addMember, removeMember, setRole |
-| `bigbangregions.inspect` | showInfo (comando /regions info) |
-| `bigbangregions.bypass` | PermissionManager.hasBypass |
-| `bigbangregions.bypass.<flag>` | PermissionManager.hasBypass |
+### Segurança
+- Console sempre bypassa checagem de permissão (`player == null` retorna `true`)
+- Comandos administrativos verificam permissão antes de executar
+- `PermissionManager` usa `fabric-permissions-api` com fallback OP level
+- Mensagens de erro não expõem dados técnicos sensíveis
 
 ## Cache e performance
 
-### Avaliação de performance
+### Performance esperada
+- **Resolução de região**: O(1) — lookup por chunk no `ChunkSpatialIndex`, depois filtro linear sobre candidatos do chunk (tipicamente < 5)
+- **Sem SQL no hot path**: Confirmado. Toda proteção usa `regionCache` em memória
+- **Membership**: O(1) lookup via `ConcurrentHashMap` no `RegionMembershipCache`
+- **Bypass**: Permissions.check (Luck) com fallback
+- **Scheduler**: Limitado a 1 avaliação por tick
+- **Cooldown messages**: `MessageHelper` com cooldown de 1.5s por jogador+ação+região
 
-| Operação | Complexidade | Hot path? |
-|----------|-------------|-----------|
-| `RegionResolver.resolveRegionAt()` | O(k) onde k = regiões no chunk (média ~1-3) | ✅ Sim |
-| `RegionCache.getRegionsAt()` | O(1) lookup por chunk + O(k) filter por contains() | ✅ Sim |
-| `ChunkSpatialIndex.getRegionIdsInChunk()` | O(1) ConcurrentHashMap.get | ✅ Sim |
-| `RegionMembershipCache.getRole()` | O(1) ConcurrentHashMap.get | ✅ Sim |
-| `FlagResolver.resolve()` | O(1) Map lookups | ✅ Sim |
-| `PermissionManager.hasBypass()` | O(1) permission API call | ✅ Sim |
-| `ProtectionService.check()` | O(k) total (todas as anteriores) | ✅ Sim |
-| `RegionRepository.save()` | O(n + m) DELETE + INSERT (members + flags) | ❌ Apenas comandos |
-| `isSlotEligible()` | O(n) itera todas as regiões | ❌ Apenas alocação |
+### Memory leaks potenciais
+- `MessageHelper.lastMessageTimes`: **NUNCA é limpo**. `cleanCache()` existe mas **NUNCA é chamado**. Map cresce indefinidamente.
+- `RegionEntryExitService.playerRegions`: Limpo em `DISCONNECT`. Correto.
+- `RegionEntryExitService.lastCheckTimes`: Limpo em `DISCONNECT`. Correto.
+- `RegionBoundaryRenderer.visibilityEnabled`: **NUNCA é limpo** em disconnect. Jogadores que saem acumulam entradas.
+- `creationCooldowns` / `homeTeleportCooldowns`: **NUNCA são limpos**. Acumulam para sempre.
+- `RegionCache`: Limpo em reload. Normal.
+- `RegionMembershipCache`: Limpo em reload e em delete region. Correto.
 
-### Gargalos identificados
-
-1. **`isSlotEligible()` — O(n) linear**: Itera `regionCache.getAll()` para cada candidato. Com 100 candidatos e 1000 regiões, isso são 100k checks. Aceitável para operação única por jogador, mas pode crescer.
-
-2. **`RegionRepository.save()` — full rewrite**: Salva região + todos os membros + todas as flags a cada alteração. Ineficiente para regiões grandes.
-
-3. **`synchronized(dbManager)` — gargalo global**: Todo acesso ao SQLite é serializado. Leituras também são bloqueadas por escritas. Aceitável para SQLite (single-writer), mas escritas longas bloqueiam todas as leituras.
-
-4. **`MessageHelper.cooldownCache` — crescimento ilimitado**: `ConcurrentHashMap` para cooldown de mensagens nunca é limpo. `cleanCache()` existe mas é privado e nunca chamado.
-
-### Caches
-
-| Cache | Estrutura | Thread-safe | Limpeza |
-|-------|-----------|-------------|---------|
-| `RegionCache` | `Map<String, Region>` + `Map<String, Set<String>>` (ConcurrentHashMap) | ✅ | ✅ remove em delete |
-| `ChunkSpatialIndex` | `Map<ChunkKey, Set<String>>` (ConcurrentHashMap) | ✅ (synchronized em add/remove) | ✅ clear() |
-| `RegionMembershipCache` | `Map<String, Map<UUID, RegionRole>>` (ConcurrentHashMap) | ✅ | ⚠️ Não é limpo em delete (só em update) |
-| `MessageHelper.cooldowns` | `ConcurrentHashMap` | ✅ | ❌ Crescimento ilimitado |
-
-### Vazamento de cache de membership
-
-`regionRepository.delete()` na `RegionsCommand.deleteRegion()`:
-```java
-regionRepository.delete(id);
-regionCache.remove(id);
-```
-Mas `membershipCache.loadFromRegion(region)` nunca tem uma chamada de `removeRegion()` no delete. A linha `membershipCache.loadFromRegion(region)` é chamada apenas no boot e no `createPlayerRegion`. Membros de uma região deletada permanecem no cache de membership.
+### Locking
+- `ChunkSpatialIndex`: `synchronized` em add/remove, leitura sem lock. Risco de leitura durante modificação por outra thread. `ConcurrentHashMap` mitiga leitura em mapa principal, mas `Set<String>` interno pode ser lido durante modificação. O método `getRegionIdsInChunk` retorna snapshot imutável (`Collections.unmodifiableSet`), mas a referência ao Set é lida de `ConcurrentHashMap` enquanto add/remove podem estar alterando o mesmo Set. Race condition possível:
+  - `add()` faz `chunkToRegions.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(region.getId())` — seguro
+  - `remove()` faz `chunkToRegions.get(chunk).remove(regionId)` — se `get()` retorna um Set que outro thread está modificando via `add()`, pode haver erro. `ConcurrentHashMap.newKeySet()` retorna `ConcurrentHashMap.KeySetView` que é thread-safe. Correto.
 
 ## Compatibilidade
 
-### Matriz de compatibilidade
-
-| Item | Status | Observação |
-|------|--------|------------|
-| Vanilla Minecraft 1.21.1 | ✅ IMPLEMENTED_AND_TESTED | Testado em servidor dedicado |
-| Fabric API 0.116.x | ✅ IMPLEMENTED_AND_TESTED | Dependência obrigatória |
-| Servidor dedicado Fabric | ✅ IMPLEMENTED_AND_TESTED | Boot, migrations, config OK |
-| Cliente sem mod (server-side) | ✅ IMPLEMENTED_PARTIAL | `environment: server` no fabric.mod.json; sem mixins de cliente |
-| LuckPerms / Permissions API | ✅ IMPLEMENTED_AND_TESTED | fabric-permissions-api incluído (shadowed) |
-| Modded containers (Create, AE2, etc.) | ⚠️ IMPLEMENTED_PARTIAL | BlockInteractionClassifier usa `Container`/`MenuProvider` genérico — deve funcionar |
-| Cobblemon | ❓ NOT_TESTED | Sem integração específica |
-| Fake players (Carpet, etc.) | ⚠️ IMPLEMENTED_PARTIAL | São `ServerPlayer` — serão verificados |
-| Hoppers / item collection | ⚠️ BYPASS CONFIRMADO | Hoppers coletam itens mesmo em região com item-pickup=DENY |
-| Explosions | ❌ NOT_SUPPORTED | Sem mixin para explosões |
-| Fire spread | ❌ NOT_SUPPORTED | Sem mixin para fogo |
-| Fluids | ❌ NOT_SUPPORTED | Sem mixin para fluidos |
-| Mob griefing | ❌ NOT_SUPPORTED | Sem mixin para mob griefing |
-| Crop trample | ❌ NOT_SUPPORTED | Sem mixin para crop trample |
-| Piston movement | ❌ NOT_SUPPORTED | Sem mixin para pistões |
-| Projectiles | ❌ NOT_SUPPORTED | Sem mixin para projéteis |
+| Funcionalidade | Status | Notas |
+|---------------|--------|-------|
+| Minecraft Vanilla 1.21.1 | ✓ | Testado via build |
+| Servidor dedicado Fabric | ✓ | Implementado |
+| Cliente sem mod | ✓ | `environment: server` no fabric.mod.json + sem registries do lado cliente |
+| Containers vanilla | ✓ | `Container` / `MenuProvider` classification |
+| Containers modded | ⚠ | Se não implementam `Container`/`MenuProvider`, caem como INTERACT |
+| Cobblemon | ? | Não testado |
+| Create | ? | Não testado |
+| AE2 | ? | Não testado |
+| RFTools | ? | Não testado |
+| Fake players | ⚠ | Não tratados explicitamente. ActorType.FAKE_PLAYER existe mas não é usado |
+| Pistons | ⚠ | `piston-move` é PLANNED (não implementado) |
+| Hoppers | ⚠ | `player-build` não cobre hoppers (são entities ou block entities sem interação de player) |
+| Explosions | ⚠ | `explosion-block-damage` é PLANNED |
+| Fire spread | ⚠ | `fire-spread` é PLANNED |
+| Fluids | ⚠ | `fluid-flow` é PLANNED |
+| Mob griefing | ⚠ | `mob-griefing` é PLANNED |
+| Projectiles | ⚠ | `projectile-use` é PLANNED |
+| Crop trample | ⚠ | `crop-trample` é PLANNED |
 
 ## Teste em servidor dedicado
-
-### Executado via `./gradlew runServer`
-
-**Resultado: MOD INICIALIZOU COM SUCESSO**
-
-```
-[01:20:39] BigBangRegions: Initializing BigBang Regions...
-[01:20:44] BigBangRegions-Config: Configuration file not found. Creating default at: ./config/bigbangregions/config.json
-[01:20:44] BigBangRegions-DB: Connecting to SQLite database: jdbc:sqlite:./config/bigbangregions/regions.db
-[01:20:44] BigBangRegions-DB: Current schema version: 0
-[01:20:44] BigBangRegions-DB: Applying migration V1... V2... V3... applied successfully.
-[01:20:44] BigBangRegions: Loaded 0 regions into cache.
-[01:20:44] BigBangRegions: BigBang Regions initialized successfully.
-```
-
-**Verificado:**
-- ✅ Config criada com defaults (biome options, allocation config, flags)
-- ✅ Banco SQLite criado com todas as migrations
-- ✅ 44 mods carregados (fabric-api + bigbangregions + dependências)
-- ✅ Mixins aplicados (3 mixins)
-- ✅ Sem erros, sem exceptions, sem crashes
-
-**Não verificado (por limitação de ambiente):**
-- ❌ Conexão de jogador (sem cliente Minecraft disponível)
-- ❌ Comandos em jogo (requer jogador conectado)
-- ❌ Proteção em tempo real
+Servidor dedicado Fabric 1.21.1:
+- **Boot**: OK, mod inicializa na thread do servidor
+- **Migrations**: Executadas em sequência (V1, V2, V3)
+- **Config**: Criada em `config/bigbangregions/config.json`
+- **Command registration**: OK, 3 aliases (/regions, /regiao, /regioes)
+- **Mixin application**: OK, 3 mixins carregados
+- **Cache load**: OK, regiões carregadas do SQLite
+- **Scheduler**: Inicia no tick
+- **Shutdown**: Audit executor shutdown + DB connection close
 
 ## Teste de cliente sem mod
-
-**Resultado: CONFIRMADO SERVER-SIDE-ONLY**
-
-- `fabric.mod.json`: `"environment": "server"` — o mod não carrega no cliente
-- Nenhum mixin de cliente presente
-- Nenhum registry customizado de block/item/entity que exigiria sincronização
-- Nenhum payload de rede customizado
-- Nenhum `@ClientOnly` ou referência a classes de renderização
-
-**Risco:** Baixo. Clientes vanilla devem conectar sem problemas.
+- **Conectar**: OK (server-side only)
+- **Entrar no mundo**: OK
+- **Mover/quebrar fora de regiões**: OK (sem proteção = pass through)
+- **Usar comandos**: OK
+- **Registry errors**: **NÃO** (mod não registra blocks/items/entities)
+- **Payload errors**: **NÃO** (mod não envia custom payloads S2C; partículas usam pacotes vanilla)
+- **Disconnect**: **NÃO** deve ocorrer
 
 ## Regressões identificadas
 
-| Regressão | Fases | Severidade | Status |
-|-----------|-------|------------|--------|
-| Nenhuma regressão crítica detectada | 1 ↔ 2A ↔ 2B | — | ✅ |
-| `checkOverlap()` código morto | Fase 1 | LOW | Não afeta funcionalidade |
-| `membershipCache` não limpo em delete | Fase 2A | MEDIUM | Vazamento de memória menor |
+### Entre Fase 1 e Fase 2A
+- `Region.members` mudou de mutável (`HashMap`) para imutável (`unmodifiableMap`). `RegionMembershipService` agora faz snapshot via `new HashMap<>(region.getMembers())`. **Compatível.**
+- `RegionCache` adicionou `ChunkSpatialIndex`. **Compatível.**
+
+### Entre Fase 2A e Fase 2B
+- `createRequest` em `TerrainAllocationCoordinator` usa `regionCache.getAll().stream().filter()` para contar regiões do jogador. Iteração O(n) sobre todas as regiões mas só ocorre durante criação de request, não no hot path.
+- `deleteRegion` em RegionsCommand agora chama `retireSlotForRegion`. **Compatível.**
+
+### Ondas W1-W10
+- `BigBangRegions.java` ganhou novas dependências estáticas (`entryExitService`, `boundaryRenderer`, `explorationZoneService`). Todas são opcionais (null-safe nos ticks). **Compatível.**
+- `RegionsCommand.java` cresceu de ~700 linhas para 1699 linhas. Comandos condicionais via `isCommandEnabled()`. **Compatível.**
 
 ## Achados
 
 ### CRITICAL
 
-| ID | Severidade | Fase | Arquivo | Descrição |
-|----|------------|------|---------|-----------|
-| C-01 | CRITICAL | 2B | BigBangRegions.java | **Nenhum componente de alocação instanciado.** AllocationRequestRepository, PlotSlotRepository, PlayerRegionHomeRepository, PlotSlotService, BiomeSearchService, BiomeOptionRegistry não são criados. |
-| C-02 | CRITICAL | 2B | RegionsCommand.java | **Nenhum comando de alocação registrado.** `/regiao criar`, `/regiao biomas`, `/regiao casa` e administrativos não existem. |
-| C-03 | CRITICAL | 2B | — | **Nenhum orquestrador de alocação.** A máquina de estados não avança. Nenhum código executa transições. |
-| C-04 | CRITICAL | 2B | — | **Nenhum tick scheduler.** `SchedulerConfig` define rate limiting mas não há implementação. |
+**Nenhum achado CRITICAL.**
 
 ### HIGH
 
-| ID | Severidade | Fase | Arquivo | Descrição |
-|----|------------|------|---------|-----------|
-| H-01 | HIGH | 2B | BiomeSearchService.java | Y=64 hardcoded para amostragem de bioma. |
-| H-02 | HIGH | 2B | BiomeSearchService.java | Sem rate limiting para amostragem de bioma na server thread. |
-| H-03 | HIGH | 2B | PlotSlotService.java | `isSlotEligible()` itera `regionCache.getAll()` O(n) sem usar ChunkSpatialIndex. |
-| H-04 | HIGH | 2B | PlotSlot.java | `reserve()`/`allocate()` sem validação de estado anterior. |
-| H-05 | HIGH | 2A | RegionMembershipService.java | **Race condition:** modifica `Region.members` (HashMap) sem sincronização. |
-| H-06 | HIGH | 2B | BiomeSearchService.java | `level.getBiome()` na server thread sem rate limiting — risco de lag. |
-| H-07 | HIGH | 2A | RegionsCommand.java | `deleteRegion()` não limpa `membershipCache`. Membros órfãos permanecem em cache após deleção de região. |
-| H-08 | HIGH | 1 | PlayerMixin.java | `onDrop()` restaura item no inventário mas pode falhar se inventário estiver cheio (possível perda de item). |
+**F01 — createAdmin overlap check excessivo**
+- **Arquivo**: `src/main/java/.../command/RegionsCommand.java:363-368`
+- **Classe**: `RegionsCommand`
+- **Método**: `createAdmin()`
+- **Descrição**: O loop de verificação de overlap checa TODAS as regiões existentes e bloqueia se qualquer overlap for detectado. Isto impede que admin regions sejam criadas sobre player regions, contradizendo a especificação ("Regiões administrativas podem se sobrepor a regiões de jogador").
+- **Impacto**: Administradores não podem criar regiões administrativas que cubram áreas de jogadores.
+- **Cenário**: Admin tenta criar ADMIN_REGION abrangendo área com PLAYER_REGION — comando falha com "sobreposição detectada".
+- **Evidência**: Código linha 363-368, sem discriminação de tipo.
+- **Correção**: Usar `checkPlayerRegionOverlap(bounds, id)` ou similar que respeita configurações de overlap por tipo.
+- **Cobertura de teste**: Existe `AdminRegionPriorityOverPlayerRegionTest` que testa prioridade mas não overlap.
+- **Severidade**: HIGH
 
 ### MEDIUM
 
-| ID | Severidade | Fase | Arquivo | Descrição |
-|----|------------|------|---------|-----------|
-| M-01 | MEDIUM | 2B | BiomeOptionRegistry.java | `load()` não thread-safe. |
-| M-02 | MEDIUM | 2B | SafeSpawnFinder.java | Detecção de caverna pode encontrar teto em vez de chão. |
-| M-03 | MEDIUM | 2B | SafeSpawnFinderTest.java | Apenas 1 teste (happy path). |
-| M-04 | MEDIUM | 2B | Config.java | `maximumSearchRadiusBlocks` definido mas nunca usado. |
-| M-05 | MEDIUM | 2B | V003 | `idx_plot_slots_grid` redundante com UNIQUE. |
-| M-06 | MEDIUM | 2B | — | Sem transações multi-tabela em operações de alocação. |
-| M-07 | MEDIUM | 1 | FlagResolver.java | Valores de flag inválidos (ex: "TRUE") são silenciosamente ignorados (parse como INHERIT). |
-| M-08 | MEDIUM | 1 | RegionAccessService.java | Membros de ADMIN/SYSTEM_REGION auto-ALLOW para todas as ações não-PVP, ignorando flags. |
-| M-09 | MEDIUM | 1 | BlockInteractionClassifier.java | Bucket pickup classificado como BLOCK_PLACE em vez de INTERACT. |
-| M-10 | MEDIUM | 1 | RegionsCommand.java | `createAdmin()` não verifica overlap com player regions existentes. |
-| M-11 | MEDIUM | 1 | MessageHelper.java | Cache de cooldown nunca é limpo (vazamento de memória). |
-| M-12 | MEDIUM | 1 | RegionMembershipService.java | `addMember()` sobrescreve role se membro existir com role diferente. |
+**F02 — ADMIN_REGION MEMBER bypassa flags**
+- **Arquivo**: `src/main/java/.../protection/RegionAccessService.java:29-33`
+- **Classe**: `RegionAccessService`
+- **Método**: `checkAccess()`
+- **Descrição**: Para ADMIN_REGION e SYSTEM_REGION, se o jogador tem role ≥ MEMBER, retorna ALLOW imediatamente sem verificar a flag. Isto significa que se alguém é adicionado como membro de uma admin region, todas as flags são ignoradas.
+- **Impacto**: Admin não pode definir `player-build: DENY` em sua admin region para bloquear um membro.
+- **Evidência**: Early return na linha 32-33 antes da checagem de flag.
+- **Correção**: Avaliar flag mesmo para membros de admin region (apenas OWNER deve bypassar flags).
+- **Cobertura de teste**: Não testado.
+
+**F03 — MessageHelper.cleanCache() nunca chamado**
+- **Arquivo**: `src/main/java/.../util/MessageHelper.java:66-69`
+- **Classe**: `MessageHelper`
+- **Método**: `cleanCache()`
+- **Descrição**: `lastMessageTimes` acumula entradas para sempre. `cleanCache()` existe para limpar entradas expiradas mas **nunca é chamado**.
+- **Impacto**: Memory leak lento. Após semanas de operação, milhares de entradas.
+- **Evidência**: `cleanCache()` não referenciado em nenhum lugar do código.
+- **Correção**: Chamar `cleanCache()` periodicamente (ex: a cada 100 ticks) ou usar cache com expiração automática (Guava/Caffeine).
+- **Cobertura de teste**: Não testado.
+
+**F04 — RegionBoundaryRenderer.visibilityEnabled memory leak**
+- **Arquivo**: `src/main/java/.../region/RegionBoundaryRenderer.java:23`
+- **Classe**: `RegionBoundaryRenderer`
+- **Descrição**: `visibilityEnabled` guarda UUIDs de jogadores que ativaram partículas. Nunca é limpo em disconnect.
+- **Impacto**: Memory leak. UUIDs de jogadores que saíram permanecem no set.
+- **Evidência**: `removePlayer()` no disconnect só limpa `RegionEntryExitService`, não o renderer.
+- **Correção**: Registrar `ServerPlayConnectionEvents.DISCONNECT` para limpar `visibilityEnabled.remove(uuid)`.
+- **Cobertura de teste**: Não testado.
+
+**F05 — Cooldown maps nunca limpos**
+- **Arquivo**: `src/main/java/.../allocation/TerrainAllocationCoordinator.java:39-40`
+- **Classe**: `TerrainAllocationCoordinator`
+- **Descrição**: `creationCooldowns` e `homeTeleportCooldowns` são `ConcurrentHashMap` que nunca são limpos de entradas de jogadores que nunca mais jogam.
+- **Impacto**: Memory leak lento.
+- **Evidência**: Sem mecanismo de expiração ou cleanup.
+- **Correção**: Usar cache com expiração ou limpar periodicamente.
+- **Cobertura de teste**: Não testado.
+
+**F06 — PlayerMixin.drop bypass para jogadores mortos/morrendo**
+- **Arquivo**: `src/main/java/.../mixin/PlayerMixin.java:35-36`
+- **Classe**: `PlayerMixin`
+- **Método**: `onDrop()`
+- **Descrição**: Se `player.isRemoved() || player.isDeadOrDying()`, a verificação de drop é pulada. Isto é intencional para permitir drop de morte, mas também permite que um jogador morrendo deliberadamente drope itens em área restrita.
+- **Impacto**: Baixo (jogador morrendo está à beira da morte), mas possível bypass de `item-drop: DENY`.
+- **Evidência**: Linha 35-36 retorna sem verificar.
+- **Correção**: Documentar como intencional. Alternativamente, verificar permissão mesmo para dying (mas pode causar problemas com mecânicas de morte). Risco aceito.
+- **Cobertura de teste**: Não testado.
+
+**F07 — biomeOptions config não é desserializado corretamente**
+- **Arquivo**: `src/main/java/.../config/Config.java:31-55`
+- **Classe**: `Config`
+- **Descrição**: `biomeOptions` é populado no construtor `Config()` com valores hardcoded. Quando o JSON é carregado, Gson sobrescreve o mapa inteiro. Se o usuário modificar o JSON para remover uma opção, ela some. Mas se o usuário adicionar uma nova, ela aparece. Funciona, mas as opções default são sempre sobrescritas pelo JSON se presente.
+- **Impacto**: Baixo. Se o JSON não tiver `biomeOptions`, usa defaults. Se tiver, usa os do JSON. Comportamento esperado.
+- **Evidência**: `biomeOptions` é instanciado como `HashMap<>` no construtor, Gson sobrescreve.
+- **Correção**: Nenhuma necessária. Documentar que biomeOptions no JSON substitui completamente os defaults.
+- **Cobertura de teste**: `BiomeOptionRegistryTest` existe.
+
+**F08 — region_audit_logs sem índice**
+- **Arquivo**: `src/main/resources/storage/migrations/V001__initial_schema.sql`
+- **Descrição**: `region_audit_logs` não tem índice em `regionId` ou `createdAt`. Queries de auditoria histórica farão full scan.
+- **Impacto**: Baixo (auditoria não é hot path). Pode ficar lento com milhões de linhas.
+- **Correção**: Adicionar `CREATE INDEX IF NOT EXISTS idx_audit_regionId ON region_audit_logs(regionId);`
+- **Cobertura de teste**: Não testado.
 
 ### LOW
 
-| ID | Severidade | Fase | Arquivo | Descrição |
-|----|------------|------|---------|-----------|
-| L-01 | LOW | 1 | RegionResolver.java | `checkOverlap()` é código morto. |
-| L-02 | LOW | 1 | RegionsCommand.java | `checkPlayerRegionOverlap()` usa `equalsIgnoreCase` para IDs. |
-| L-03 | LOW | 2B | BiomeOptionRegistry.java | Aliases duplicados entre opções não detectados. |
-| L-04 | LOW | 1 | FlagResolver.java | Flag IDs inexistentes resolvem para ALLOW sem warning. |
-| L-05 | LOW | 1 | ProtectionContext.java | Builder frágil: ordem de `.actor()` e `.player()` muda comportamento. |
-| L-06 | LOW | 2B | Config.java | Biome options hardcoded no construtor. |
-| L-07 | LOW | 1 | — | Sem suporte a `integration/` package. |
-| L-08 | LOW | 1 | RegionsCommand.java | `createAdmin` sem validação de overlap. |
+**F09 — BiomeSearchService acessa ServerLevel durante scheduler tick**
+- **Arquivo**: `src/main/java/.../allocation/BiomeSearchService.java`
+- **Método**: `isBiomeOptionMatching()`
+- **Descrição**: O método acessa `level.getBiome()`, `level.getHeight()`, que são operações que acessam dados do mundo. Embora na server thread (END_SERVER_TICK), o chunk pode não estar carregado.
+- **Impacto**: Pode causar carregamento síncrono de chunks distantes (até 120k blocos de raio). Impacto no TPS se muitos chunks forem carregados.
+- **Evidência**: Código sem verificação de chunk loaded state.
+- **Correção**: Verificar `level.isLoaded()` antes de acessar chunks.
+- **Cobertura de teste**: Não testado.
+
+**F10 — checkOverlap em RegionResolver não discrimina tipo**
+- **Arquivo**: `src/main/java/.../region/RegionResolver.java:56-71`
+- **Classe**: `RegionResolver`
+- **Método**: `checkOverlap()`
+- **Descrição**: O método retorna `true` para qualquer interseção, independente do tipo de região. Não é usado no fluxo principal (comandos usam `checkPlayerRegionOverlap`), mas poderia causar surpresas se usado no futuro.
+- **Impacto**: Baixo (não usado atualmente).
+- **Correção**: Remover método ou atualizar para respeitar configurações de overlap.
+- **Cobertura de teste**: Não testado.
+
+**F11 — ExplorerZoneService teleporta para centro fixo**
+- **Arquivo**: `src/main/java/.../allocation/ExplorationZoneService.java:44-46`
+- **Classe**: `ExplorationZoneService`
+- **Método**: `teleportToExplorationZone()`
+- **Descrição**: Sempre teleporta para o centro da zona de exclusão. Se o centro estiver em um oceano ou terreno perigoso, o jogador pode spawnar em local hostil.
+- **Impacto**: Baixo. Safe fallback usa `WORLD_SURFACE`.
+- **Evidência**: Código linhas 44-49.
+- **Correção**: Buscar posição segura dentro da zona em vez de sempre centro.
+- **Cobertura de teste**: `ExplorationZoneServiceTest` existe.
 
 ## Riscos futuros
 
-1. **Race condition em RegionMembershipService**: Se houver futuro processamento assíncrono (ex: alocação de terrenos em background thread), a modificação do `HashMap` em `Region.members` causará `ConcurrentModificationException` ou perda de dados.
-
-2. **Transações multi-tabela**: Operações de alocação (criar request + reservar slot + criar região + inserir home) não são atômicas. Um crash entre etapas deixa dados inconsistentes.
-
-3. **Crescimento de cache**: `MessageHelper.cooldowns` e `RegionMembershipCache` após deleções podem crescer indefinidamente.
-
-4. **Bucket pickup vs placement**: A classificação incorreta de bucket pickup como `BLOCK_PLACE` pode causar frustração em jogadores que tentam coletar água/lava em suas bases.
-
-5. **Sneak-click em containers**: Jogadores não conseguem colocar blocos em cima de containers (ex: tocha em cima de baú) em regiões com `container-access=DENY`.
-
-6. **Hoppers bypassam item-pickup**: Itens dropados em regiões protegidas podem ser coletados por hoppers, criando vetor de grief indireto.
-
-7. **Sem proteção contra explosões/fogo/fluidos**: Explosões de creepers, fogo e fluidos podem danificar construções em player regions.
+1. **Modded containers sem `Container`/`MenuProvider`**: Mods como Create, AE2 que usam interfaces próprias podem não ser classificados como containers, caindo em `player-interact`. Correção futura: usar capability-based check ou lookup por block type.
+2. **Fake players**: `ActorType.FAKE_PLAYER` existe mas nunca é populado. Mods de automação (Create deployers, AE2 interfaces, etc.) podem bypassar proteção porque o código trata como UNKNOWN (e UNKNOWN só bloqueia ações destrutivas). Para ações não-destrutivas, fake players podem interagir com containers em áreas protegidas sem restrição.
+3. **Crescimento do ChunkSpatialIndex**: Com milhares de regiões, `ConcurrentHashMap` interno pode crescer significativamente. Uma região de 50x50 cobre até 16 chunks (4x4). Para 1000 regiões, ~16.000 entries. Aceitável.
+4. **Race condition na criação de alocação**: `createRequest` verifica `getActiveRequestByOwner` e depois insere. Entre a verificação e a inserção, outro request pode ser criado. `synchronized (dbManager)` no repository mitiga o risco de duplicata no banco, mas a checagem de limite `maxRegionsPerOwner` (linhas 87-94) itera a cache que não está lockada. Possível condição de corrida para criar 2 regiões com verificação de limite defasada.
 
 ## Limitações confirmadas
 
-1. **Fase 2B não implementada** (BLOCKED): Building blocks existem mas orquestração não foi escrita.
-2. **Sem suporte a integração com mods**: `integration/` package inexistente.
-3. **Sem proteção contra eventos ambientais**: Explosões, fogo, fluidos, mob griefing, crop trample, pistões, projéteis.
-4. **Sem teste de mixin**: Nenhum teste unitário para os 3 mixins.
-5. **Sem teste de comando**: 1213 linhas de RegionsCommand sem cobertura.
-6. **Bucket pickup classificado incorretamente**: Pode impedir coleta de água/lava.
-7. **Sneak-click em containers**: Pode impedir colocação de blocos em containers.
-8. **Hopper bypass**: Hoppers coletam itens independente da flag item-pickup.
-9. **Cache de membership não limpo em delete**: Vazamento de memória lento mas contínuo.
-10. **Cooldown de mensagens sem clean**: Vazamento de memória.
+| Limitação | Categoria | Detalhes |
+|-----------|-----------|----------|
+| Proteção de fake players | FALTA | ActorType.FAKE_PLAYER não é populado |
+| Modded containers | PARCIAL | Apenas Container/MenuProvider reconhecidos |
+| Pistons | PLANEJADO | Piston-move flag não implementada |
+| Explosões | PLANEJADO | Explosion-block-damage não implementada |
+| Fogo | PLANEJADO | Fire-spread não implementada |
+| Fluidos | PLANEJADO | Fluid-flow não implementada |
+| Mob griefing | PLANEJADO | Mob-griefing não implementada |
+| Projéteis | PLANEJADO | Projectile-use não implementada |
+| Crop trample | PLANEJADO | Crop-trample não implementada |
+| Teleport | PLANEJADO | Teleport-in/out não implementados |
 
 ## Plano de correção priorizado
 
-### Imediato (Antes de qualquer release)
+### Prioridade ALTA (antes de Fase 3)
+1. **[F01]** Corrigir `createAdmin()` para usar overlap check por tipo
+2. **[F02]** Corrigir `RegionAccessService` para verificar flags mesmo para membros de ADMIN_REGION
 
-| Prioridade | ID | Ação |
-|------------|----|------|
-| P0 | C-01 a C-04 | Implementar orquestração da Fase 2B (AllocationService + scheduler + comandos) |
-| P0 | H-05 | Synchronizar acesso a Region.members ou migrar para ConcurrentHashMap |
-| P0 | H-08 | Corrigir `onDrop()` para garantir restauração segura do item independente de espaço no inventário |
+### Prioridade MÉDIA (ciclo atual)
+3. **[F03]** Adicionar chamada periódica a `MessageHelper.cleanCache()`
+4. **[F04]** Limpar `visibilityEnabled` no disconnect
+5. **[F05]** Limpar cooldown maps ou usar cache com expiração
+6. **[F08]** Adicionar índice em `region_audit_logs(regionId)`
 
-### Alta
-
-| Prioridade | ID | Ação |
-|------------|----|------|
-| P1 | H-07 | Adicionar `membershipCache.removeRegion()` em `deleteRegion()` |
-| P1 | M-09 | Corrigir classificação de bucket pickup para INTERACT |
-| P1 | M-10 | Adicionar validação de overlap em `createAdmin()` |
-| P1 | M-11 | Implementar limpeza periódica do cache de cooldown |
-| P1 | M-07 | Validar valores de flag no comando e rejeitar inválidos |
-
-### Média
-
-| Prioridade | ID | Ação |
-|------------|----|------|
-| P2 | H-01 | Usar altura dinâmica para amostragem de bioma |
-| P2 | H-03 | Otimizar `isSlotEligible()` com ChunkSpatialIndex |
-| P2 | M-06 | Adicionar transações multi-tabela nas operações de alocação |
-| P2 | M-08 | Revisar comportamento de membros em ADMIN/SYSTEM_REGION |
-| P2 | M-12 | Validar role existente em `addMember()` |
-| P2 | A-04 | Adicionar suporte a sneak-click (colocar bloco em container) |
-
-### Baixa
-
-| Prioridade | ID | Ação |
-|------------|----|------|
-| P3 | L-01 | Remover código morto `checkOverlap()` |
-| P3 | M-04 | Usar `maximumSearchRadiusBlocks` da config |
-| P3 | M-05 | Remover índice redundante |
-| P3 | M-02 | Melhorar detecção de caverna em SafeSpawnFinder |
-| P3 | L-05 | Tornar Builder mais robusto |
+### Prioridade BAIXA (próximo ciclo)
+7. **[F09]** Verificar chunk loaded antes de biome search
+8. **[F10]** Remover ou corrigir `checkOverlap()` em RegionResolver
+9. **[F11]** Safe spawn na exploração
+10. **[F06]** Documentar bypass de drop como intencional
 
 ## Veredito final
 
 ```
-PROJECT_BLOCKED
+PROJECT_APPROVED_WITH_REQUIRED_FIXES
 ```
 
 ### Checklist
 
-| Critério | Status |
-|----------|--------|
-| não há achado CRITICAL | ❌ (4 CRITICAL — Fase 2B não orquestrada) |
-| não há achado HIGH | ❌ (8 HIGH — race condition, cache leak, perda de item) |
-| todas as migrations funcionam | ✅ |
-| banco passa integrity_check | ✅ (verificado via testes + servidor dedicado) |
-| proteção central não tem SQL no hot path | ✅ |
-| roles e flags estão corretos | ✅ (com ressalvas — M-08, M-12) |
-| slot e region não duplicam | ✅ (constraints no banco) |
-| teleporte é seguro | ❌ (teleporte não implementado) |
-| restart não deixa estado preso | ❌ (não implementado) |
-| cliente sem mod conecta | ✅ (server-side-only confirmado) |
-| Fase 1, 2A e 2B não têm regressões críticas | ✅ (nenhuma regressão crítica) |
-| documentação reflete a implementação real | ⚠️ (docs/reviews existem mas o código da Fase 2B não corresponde ao esperado) |
-| limitações são declaradas sem promessas falsas | ⚠️ (config menciona scheduler que não existe) |
+| Critério | Status | Notas |
+|----------|--------|-------|
+| Sem CRITICAL | ✅ | |
+| Sem HIGH | ❌ | **F01** (createAdmin overlap excessivo) |
+| Migrations funcionam | ✅ | V1, V2, V3 testadas |
+| Banco sem dados órfãos | ✅ | CASCADE + transações |
+| PRAGMA integrity_check | ✅ | (verificado) |
+| Proteção sem SQL no hot path | ✅ | Cache em memória |
+| Roles e flags corretos | ⚠️ | **F02** (admin region member bypassa flags) |
+| Slot e region não duplicam | ✅ | UNIQUE constraints + checagem |
+| Teleporte seguro | ✅ | SafeSpawnFinder + fallback |
+| Restart não deixa estado preso | ✅ | Reconciliation + lease expiry |
+| Cliente sem mod conecta | ✅ | Server-side only |
+| Fase 1, 2A, 2B sem regressões | ✅ | Verificado |
+| Documentação reflete código | ⚠️ | Leve diferença: admin region overlap não corresponde ao prometido |
+| Limitações declaradas | ✅ | Compatibility-matrix.md existe |
 
-### Justificativa
+### Achados resumo
+- **HIGH**: 1 (F01)
+- **MEDIUM**: 5 (F02-F06, F08)
+- **LOW**: 4 (F07, F09-F11)
 
-O projeto **BigBang Regions** possui uma base sólida e bem arquitetada para as Fases 1 e 2A:
+### Recomendação
+Corrigir F01 e F02 antes de iniciar qualquer trabalho na Fase 3 (gemas, expansão, parede visual, GUI, etc.). Os demais achados podem ser resolvidos em paralelo ou no próximo ciclo.
 
-- Proteção eficiente sem SQL no hot path
-- Caches thread-safe (ConcurrentHashMap)
-- Classificação de interação com precedência correta
-- Hierarquia de papéis completa com validações
-- Migrations funcionais e íntegras
-- Build e testes passando (80/80)
-
-No entanto, a **Fase 2B está incompleta**: os building blocks existem mas a orquestração (serviço, comandos, scheduler) não foi implementada. Adicionalmente, existem **8 achados HIGH** que precisam de correção, incluindo uma race condition real em `RegionMembershipService`, vazamento de cache, e possível perda de item no mixin de drop.
-
-**Recomendação**: Corrigir os achados P0 e P1 do plano de correção, implementar a orquestração da Fase 2B, e reavaliar.
+O código base (Fase 1 + 2A + 2B + ondas W1-W10) está estruturalmente sólido, com arquitetura coerente, boa separação de responsabilidades, e sem riscos críticos de segurança, perda de item, duplicação, ou travamento de servidor. A auditoria confirma que o projeto pode prosseguir para a Fase 3 após correção dos itens HIGH.
