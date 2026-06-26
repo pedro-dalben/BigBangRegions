@@ -101,6 +101,11 @@ public class RegionsCommand {
                         )
                     )
                 )
+                .then(Commands.literal("recycle")
+                    .then(Commands.argument("slotId", StringArgumentType.word())
+                        .executes(RegionsCommand::adminRecycleSlot)
+                    )
+                )
                 .then(Commands.literal("setrole")
                     .then(Commands.argument("regionId", StringArgumentType.word())
                         .then(Commands.argument("player", StringArgumentType.word())
@@ -365,11 +370,19 @@ public class RegionsCommand {
         regionCache.remove(id);
         BigBangRegions.getMembershipCache().removeRegion(id);
 
+        if (region.getType() == RegionType.PLAYER_REGION) {
+            retireSlotForRegion(id);
+        }
+
         UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
         auditService.log(id, actorUuid, "DELETE_REGION", region.getType().name(), null, null);
 
         source.sendSuccess(() -> Component.literal("Região '" + id + "' deletada com sucesso.").withStyle(ChatFormatting.GREEN), false);
         return 1;
+    }
+
+    private static void retireSlotForRegion(String regionId) {
+        BigBangRegions.getAllocationCoordinator().retireSlot(regionId);
     }
 
     private static int showInfo(CommandContext<CommandSourceStack> context) {
@@ -814,6 +827,23 @@ public class RegionsCommand {
         try {
             int result = BigBangRegions.getAllocationCoordinator().resizeClaim(player, newSize);
             source.sendSuccess(() -> Component.literal("§aRegiao expandida para " + result + "x" + result + " blocos!").withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int adminRecycleSlot(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.slot.recycle")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        String slotId = StringArgumentType.getString(context, "slotId");
+        try {
+            BigBangRegions.getAllocationCoordinator().recycleSlot(slotId);
+            source.sendSuccess(() -> Component.literal("§aSlot " + slotId + " reciclado com sucesso!").withStyle(ChatFormatting.GREEN), false);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));

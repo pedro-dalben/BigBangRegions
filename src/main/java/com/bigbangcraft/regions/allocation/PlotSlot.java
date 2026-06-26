@@ -68,6 +68,9 @@ public class PlotSlot {
         if (state == PlotSlotState.ALLOCATED) {
             throw new IllegalStateException("Slot " + id + " is already allocated");
         }
+        if (state == PlotSlotState.RETIRED) {
+            throw new IllegalStateException("Slot " + id + " is retired and cannot be reserved");
+        }
         this.state = PlotSlotState.RESERVED;
         this.reservedForUuid = playerUuid;
         this.biomeOptionKey = biomeOptionKey;
@@ -89,6 +92,28 @@ public class PlotSlot {
     public void release() {
         if (state != PlotSlotState.RESERVED) {
             throw new IllegalStateException("Slot " + id + " must be RESERVED to release, current state: " + state);
+        }
+        this.state = PlotSlotState.RELEASED;
+        this.reservedForUuid = null;
+        this.regionId = null;
+        this.biomeOptionKey = null;
+        this.reservedAt = null;
+        this.leaseExpiresAt = null;
+        this.allocatedAt = null;
+        this.updatedAt = System.currentTimeMillis();
+    }
+
+    public void retire() {
+        if (state != PlotSlotState.ALLOCATED) {
+            throw new IllegalStateException("Slot " + id + " must be ALLOCATED to retire, current state: " + state);
+        }
+        this.state = PlotSlotState.RETIRED;
+        this.updatedAt = System.currentTimeMillis();
+    }
+
+    public void recycle() {
+        if (state != PlotSlotState.RETIRED) {
+            throw new IllegalStateException("Slot " + id + " must be RETIRED to recycle, current state: " + state);
         }
         this.state = PlotSlotState.RELEASED;
         this.reservedForUuid = null;

@@ -400,6 +400,28 @@ public class TerrainAllocationCoordinator {
         return newSize;
     }
 
+    public void retireSlot(String regionId) {
+        PlotSlot slot = slotRepository.getByRegionId(regionId);
+        if (slot != null && slot.getState() == PlotSlotState.ALLOCATED) {
+            slot.retire();
+            slotRepository.save(slot);
+            LOGGER.info("Slot {} retired for region {}", slot.getId(), regionId);
+        }
+    }
+
+    public void recycleSlot(String slotId) {
+        PlotSlot slot = slotRepository.get(slotId);
+        if (slot == null) {
+            throw new IllegalArgumentException("Slot nao encontrado: " + slotId);
+        }
+        if (slot.getState() != PlotSlotState.RETIRED) {
+            throw new IllegalStateException("Slot " + slotId + " nao esta RETIRED (estado: " + slot.getState() + ")");
+        }
+        slot.recycle();
+        slotRepository.save(slot);
+        LOGGER.info("Slot {} recycled", slotId);
+    }
+
     public Collection<BiomeOption> getBiomeOptions() {
         return biomeOptionRegistry.getAll();
     }
