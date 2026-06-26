@@ -141,7 +141,7 @@ public class RegionsCommand {
         return 1;
     }
 
-    private static int createAdmin(CommandContext<CommandSourceStack> context, int priority) {
+    static int createAdmin(CommandContext<CommandSourceStack> context, int priority) {
         CommandSourceStack source = context.getSource();
         ServerPlayer player = source.getPlayer();
         if (player == null) {

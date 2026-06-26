@@ -152,6 +152,14 @@ public class BigBangRegions implements ModInitializer {
         });
 
         // Block use & place & interactions
+        // Classification Precedence:
+        // 1. Container (any block with Container or MenuProvider block entity) -> container-access
+        // 2. Door (any DoorBlock, TrapDoorBlock, FenceGateBlock) -> door-use
+        // 3. Redstone (any ButtonBlock, LeverBlock, DiodeBlock) -> redstone-use
+        // 4. Block Placement (if carrying a block/bucket item) -> player-build
+        // 5. Generic Interaction (Fallback) -> player-interact
+        // Once an interaction is classified into a specific category, the handler returns PASS or FAIL immediately,
+        // preventing it from being evaluated again under the fallback player-interact check.
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
             if (!(player instanceof ServerPlayer serverPlayer)) {
                 return InteractionResult.PASS;
@@ -159,49 +167,11 @@ public class BigBangRegions implements ModInitializer {
 
             BlockPos pos = hitResult.getBlockPos();
             BlockState state = world.getBlockState(pos);
-            Block block = state.getBlock();
 
-            // 1. Check Container
-            BlockEntity be = world.getBlockEntity(pos);
-            if (be != null) {
-                if (be instanceof net.minecraft.world.Container || be instanceof net.minecraft.world.MenuProvider) {
-                    if (!handlePlayerAction(serverPlayer, pos, RegionAction.CONTAINER)) {
-                        return InteractionResult.FAIL;
-                    }
-                    return InteractionResult.PASS;
-                }
-            }
+            com.bigbangcraft.regions.protection.BlockInteractionClassifier.ClassifiedInteraction classified = 
+                    com.bigbangcraft.regions.protection.BlockInteractionClassifier.classify(world, pos, state, serverPlayer, hand, hitResult);
 
-            // 2. Check Doors / Trapdoors / Gates
-            if (block instanceof DoorBlock || block instanceof TrapDoorBlock || block instanceof FenceGateBlock) {
-                if (!handlePlayerAction(serverPlayer, pos, RegionAction.DOOR)) {
-                    return InteractionResult.FAIL;
-                }
-                return InteractionResult.PASS;
-            }
-
-            // 3. Check Redstone interactables (Buttons, Levers)
-            if (block instanceof ButtonBlock || block instanceof LeverBlock || block instanceof DiodeBlock) {
-                if (!handlePlayerAction(serverPlayer, pos, RegionAction.REDSTONE)) {
-                    return InteractionResult.FAIL;
-                }
-                return InteractionResult.PASS;
-            }
-
-            // 4. Check if they are placing blocks/buckets (BLOCK_PLACE)
-            ItemStack heldItem = player.getItemInHand(hand);
-            if (!heldItem.isEmpty()) {
-                if (heldItem.getItem() instanceof BlockItem || heldItem.getItem() instanceof BucketItem) {
-                    BlockPos placePos = pos.relative(hitResult.getDirection());
-                    if (!handlePlayerAction(serverPlayer, placePos, RegionAction.BLOCK_PLACE)) {
-                        return InteractionResult.FAIL;
-                    }
-                    return InteractionResult.PASS;
-                }
-            }
-
-            // 5. Fallback interaction check
-            if (!handlePlayerAction(serverPlayer, pos, RegionAction.INTERACT)) {
+            if (!handlePlayerAction(serverPlayer, classified.getTargetPos(), classified.getAction())) {
                 return InteractionResult.FAIL;
             }
 

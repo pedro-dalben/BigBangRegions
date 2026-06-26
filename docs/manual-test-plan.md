@@ -59,7 +59,26 @@ Siga estes passos em um servidor de testes de desenvolvimento para validar o com
 1. O **Jogador Admin** tenta quebrar um bloco ou abrir um baú na região `spawn_area`.
    * *Resultado Esperado:* Ação permitida normalmente, pois administradores possuem bypass por padrão.
 
-### 9. Persistência
+### 9. Validação de Precedência de Flags
+1. Em uma região com `player-interact = DENY` (padrão de Admin), configure a flag de baús: `/regions flag set spawn_area container-access ALLOW`.
+2. O **Jogador Teste** (visitante) tenta abrir o baú e o barril.
+   * *Resultado Esperado:* Abertura permitida (a flag específica `ALLOW` tem precedência sobre a flag geral `player-interact = DENY`).
+3. O **Jogador Teste** tenta interagir com a Crafting Table.
+   * *Resultado Esperado:* Bloqueado (pois não há flag específica e cai no fallback `player-interact = DENY`).
+4. Configure `/regions flag set spawn_area container-access DENY` e `/regions flag set spawn_area player-interact ALLOW`.
+5. O **Jogador Teste** tenta abrir o baú.
+   * *Resultado Esperado:* Bloqueado (pois a flag específica `container-access = DENY` bloqueia mesmo se a geral `player-interact` estiver `ALLOW`).
+
+### 10. Validação de Restrição de Dimensões na Seleção
+1. Com o **Jogador Admin** no Overworld, vá a um bloco e execute `/regions pos1`.
+2. Vá para o Nether, selecione um bloco e execute `/regions pos2`.
+3. Tente criar uma região: `/regions create admin dim_test`.
+   * *Resultado Esperado:* Falha na criação com a mensagem "A Posição 1 e a Posição 2 devem estar na mesma dimensão." Nenhuma região é gravada no banco, carregada em cache ou registrada na auditoria.
+4. Volte ao Overworld e marque `pos1` e `pos2` no Overworld.
+5. Vá para o Nether e execute `/regions create admin ovw_test 1000`.
+   * *Resultado Esperado:* Sucesso na criação. O comando deve registrar que a região `ovw_test` foi criada no Overworld (usando a dimensão em que os blocos foram marcados).
+
+### 11. Persistência
 1. Reinicie o servidor (`/stop` e reinicie).
-2. Tente realizar as interações bloqueadas novamente com o **Jogador Teste**.
-   * *Resultado Esperado:* Todas as restrições devem persistir e a base SQLite carregar as regiões com sucesso.
+2. Execute `/regions info` dentro da região `ovw_test`.
+   * *Resultado Esperado:* A dimensão reportada nos limites da região deve continuar como Overworld e as flags devem persistir exatamente com os mesmos valores antes da reinicialização.
