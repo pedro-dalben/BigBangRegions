@@ -7,30 +7,48 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class SelectionManager {
-    private final Map<UUID, BlockPos> pos1Map = new ConcurrentHashMap<>();
-    private final Map<UUID, BlockPos> pos2Map = new ConcurrentHashMap<>();
+    public static class Selection {
+        private final BlockPos pos;
+        private final String dimension;
 
-    public void setPos1(UUID playerId, BlockPos pos) {
+        public Selection(BlockPos pos, String dimension) {
+            this.pos = pos;
+            this.dimension = dimension;
+        }
+
+        public BlockPos getPos() {
+            return pos;
+        }
+
+        public String getDimension() {
+            return dimension;
+        }
+    }
+
+    private final Map<UUID, Selection> pos1Map = new ConcurrentHashMap<>();
+    private final Map<UUID, Selection> pos2Map = new ConcurrentHashMap<>();
+
+    public void setPos1(UUID playerId, BlockPos pos, String dimension) {
         if (pos == null) {
             pos1Map.remove(playerId);
         } else {
-            pos1Map.put(playerId, pos);
+            pos1Map.put(playerId, new Selection(pos, dimension));
         }
     }
 
-    public void setPos2(UUID playerId, BlockPos pos) {
+    public void setPos2(UUID playerId, BlockPos pos, String dimension) {
         if (pos == null) {
             pos2Map.remove(playerId);
         } else {
-            pos2Map.put(playerId, pos);
+            pos2Map.put(playerId, new Selection(pos, dimension));
         }
     }
 
-    public BlockPos getPos1(UUID playerId) {
+    public Selection getPos1(UUID playerId) {
         return pos1Map.get(playerId);
     }
 
-    public BlockPos getPos2(UUID playerId) {
+    public Selection getPos2(UUID playerId) {
         return pos2Map.get(playerId);
     }
 

@@ -129,13 +129,14 @@ public class RegionsCommand {
 
         BlockPos pos = player.blockPosition();
         UUID uuid = player.getUUID();
+        String dimension = player.level().dimension().location().toString();
 
         if (isPos1) {
-            selectionManager.setPos1(uuid, pos);
-            source.sendSuccess(() -> Component.literal("Posição 1 definida para " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ".").withStyle(ChatFormatting.GREEN), false);
+            selectionManager.setPos1(uuid, pos, dimension);
+            source.sendSuccess(() -> Component.literal("Posição 1 definida para " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + " (" + dimension + ").").withStyle(ChatFormatting.GREEN), false);
         } else {
-            selectionManager.setPos2(uuid, pos);
-            source.sendSuccess(() -> Component.literal("Posição 2 definida para " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ".").withStyle(ChatFormatting.GREEN), false);
+            selectionManager.setPos2(uuid, pos, dimension);
+            source.sendSuccess(() -> Component.literal("Posição 2 definida para " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + " (" + dimension + ").").withStyle(ChatFormatting.GREEN), false);
         }
         return 1;
     }
@@ -154,11 +155,16 @@ public class RegionsCommand {
         }
 
         UUID uuid = player.getUUID();
-        BlockPos p1 = selectionManager.getPos1(uuid);
-        BlockPos p2 = selectionManager.getPos2(uuid);
+        SelectionManager.Selection p1 = selectionManager.getPos1(uuid);
+        SelectionManager.Selection p2 = selectionManager.getPos2(uuid);
 
         if (p1 == null || p2 == null) {
             source.sendFailure(Component.literal("Defina pos1 e pos2 primeiro."));
+            return 0;
+        }
+
+        if (!p1.getDimension().equals(p2.getDimension())) {
+            source.sendFailure(Component.literal("A Posição 1 e a Posição 2 devem estar na mesma dimensão."));
             return 0;
         }
 
@@ -168,8 +174,10 @@ public class RegionsCommand {
             return 0;
         }
 
-        String dimension = player.level().dimension().location().toString();
-        RegionBounds bounds = new RegionBounds(dimension, p1.getX(), p1.getY(), p1.getZ(), p2.getX(), p2.getY(), p2.getZ());
+        String dimension = p1.getDimension();
+        BlockPos pos1 = p1.getPos();
+        BlockPos pos2 = p2.getPos();
+        RegionBounds bounds = new RegionBounds(dimension, pos1.getX(), pos1.getY(), pos1.getZ(), pos2.getX(), pos2.getY(), pos2.getZ());
         
         long now = System.currentTimeMillis();
         Region region = new Region(id, id, RegionType.ADMIN_REGION, bounds, priority, null, uuid, now, now, "ACTIVE");

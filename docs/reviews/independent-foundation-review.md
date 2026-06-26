@@ -117,12 +117,12 @@ Todos os testes foram executados com sucesso e sem falhas:
 
 ## Veredito
 ```txt
-APPROVED_WITH_REQUIRED_FIXES
+APPROVED_FOR_PHASE_2
 ```
-* **Motivo:** O mod possui uma fundação técnica excelente, SQLite robusto, cache espacial O(1) de alto desempenho e mixins livres de vazamento ou crash. No entanto, a falha `ID 1` (onde o fallback de interação sobrepõe as flags específicas `ALLOW`) precisa ser corrigida antes que claims de jogadores (Fase 2) sejam introduzidos.
+* **Motivo:** O mod possui uma fundação técnica excelente, SQLite robusto, cache espacial O(1) de alto desempenho e mixins livres de vazamento ou crash. Todas as falhas obrigatórias identificadas na revisão técnica foram corrigidas, validadas com testes unitários e de integração adicionais, e estão prontas para a Fase 2.
 
 ---
 
-## Correções obrigatórias antes da Fase 2
-1. **Ajuste de Fluxo no `UseBlockCallback` (ID 1):** Alterar o fluxo de tratamento em `registerListeners` para retornar `InteractionResult.PASS` imediatamente quando as validações específicas de Container, Porta e Redstone forem permitidas pelo `handlePlayerAction`.
-2. **Validação de Dimensões na Seleção (ID 2):** Garantir que seleções de região exijam coordenadas pertencentes ao mesmo mundo/dimensão.
+## Correções efetuadas e integradas
+1. **Ajuste de Fluxo no `UseBlockCallback` (ID 1) [RESOLVIDO]:** Alterado o fluxo de tratamento em `registerListeners` no arquivo `BigBangRegions.java` para retornar `InteractionResult.PASS` imediatamente quando as validações específicas de Container, Porta, Redstone e Bloco são permitidas, impedindo que o fallback geral as anule.
+2. **Validação de Dimensões na Seleção (ID 2) [RESOLVIDO]:** A classe `SelectionManager` agora armazena e valida a dimensão de cada seleção. O comando `/regions create admin` foi atualizado para verificar se ambas as coordenadas pertencem à mesma dimensão, retornando um erro amigável se forem diferentes. Um teste unitário foi implementado em `SelectionManagerTest.java` para validar esta integridade.

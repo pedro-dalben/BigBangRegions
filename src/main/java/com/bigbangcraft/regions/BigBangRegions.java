@@ -168,6 +168,7 @@ public class BigBangRegions implements ModInitializer {
                     if (!handlePlayerAction(serverPlayer, pos, RegionAction.CONTAINER)) {
                         return InteractionResult.FAIL;
                     }
+                    return InteractionResult.PASS;
                 }
             }
 
@@ -176,6 +177,7 @@ public class BigBangRegions implements ModInitializer {
                 if (!handlePlayerAction(serverPlayer, pos, RegionAction.DOOR)) {
                     return InteractionResult.FAIL;
                 }
+                return InteractionResult.PASS;
             }
 
             // 3. Check Redstone interactables (Buttons, Levers)
@@ -183,6 +185,7 @@ public class BigBangRegions implements ModInitializer {
                 if (!handlePlayerAction(serverPlayer, pos, RegionAction.REDSTONE)) {
                     return InteractionResult.FAIL;
                 }
+                return InteractionResult.PASS;
             }
 
             // 4. Check if they are placing blocks/buckets (BLOCK_PLACE)
@@ -193,6 +196,7 @@ public class BigBangRegions implements ModInitializer {
                     if (!handlePlayerAction(serverPlayer, placePos, RegionAction.BLOCK_PLACE)) {
                         return InteractionResult.FAIL;
                     }
+                    return InteractionResult.PASS;
                 }
             }
 
