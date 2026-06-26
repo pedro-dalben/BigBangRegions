@@ -71,6 +71,7 @@ public class BigBangRegions implements ModInitializer {
     private static AllocationScheduler allocationScheduler;
     private static RegionCache regionCache;
     private static RegionEntryExitService entryExitService;
+    private static RegionBoundaryRenderer boundaryRenderer;
 
     public static RegionMembershipCache getMembershipCache() {
         return membershipCache;
@@ -94,6 +95,10 @@ public class BigBangRegions implements ModInitializer {
 
     public static RegionEntryExitService getEntryExitService() {
         return entryExitService;
+    }
+
+    public static RegionBoundaryRenderer getBoundaryRenderer() {
+        return boundaryRenderer;
     }
 
     @Override
@@ -165,7 +170,10 @@ public class BigBangRegions implements ModInitializer {
         // 8. Region Entry/Exit notification service
         entryExitService = new RegionEntryExitService(regionCache, roleResolver, configManager);
 
-        // 9. Public API
+        // 9. Region Boundary Renderer (visual particles)
+        boundaryRenderer = new RegionBoundaryRenderer(regionCache, roleResolver);
+
+        // 10. Public API
         api = new BigBangRegionsApiImpl(regionResolver, protectionService);
 
         // 10. Command registration
@@ -188,6 +196,11 @@ public class BigBangRegions implements ModInitializer {
             if (entryExitService != null) {
                 for (ServerPlayer p : server.getPlayerList().getPlayers()) {
                     entryExitService.tick(p);
+                }
+            }
+            if (boundaryRenderer != null) {
+                for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+                    boundaryRenderer.tick(p);
                 }
             }
         });

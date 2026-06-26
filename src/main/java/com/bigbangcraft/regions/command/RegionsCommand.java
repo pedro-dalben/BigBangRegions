@@ -229,6 +229,15 @@ public class RegionsCommand {
                     .executes(RegionsCommand::createPlayerAllocation)
                 )
             )
+            .then(Commands.literal("limites")
+                .executes(RegionsCommand::toggleBoundaries)
+                .then(Commands.literal("on")
+                    .executes(context -> setBoundaries(context, true))
+                )
+                .then(Commands.literal("off")
+                    .executes(context -> setBoundaries(context, false))
+                )
+            )
             .then(Commands.literal("reload").executes(RegionsCommand::reloadMod));
 
         LiteralCommandNode<CommandSourceStack> mainNode = dispatcher.register(builder);
@@ -729,6 +738,40 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("§c" + e.getMessage()));
             return 0;
         }
+    }
+
+    private static int toggleBoundaries(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        UUID uuid = player.getUUID();
+        boolean newState = !BigBangRegions.getBoundaryRenderer().isVisibilityEnabled(uuid);
+        BigBangRegions.getBoundaryRenderer().setVisibility(uuid, newState);
+        if (newState) {
+            source.sendSuccess(() -> Component.literal("§aLimites visiveis ativados!").withStyle(ChatFormatting.GREEN), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("§eLimites visiveis desativados.").withStyle(ChatFormatting.YELLOW), false);
+        }
+        return 1;
+    }
+
+    private static int setBoundaries(CommandContext<CommandSourceStack> context, boolean enabled) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        BigBangRegions.getBoundaryRenderer().setVisibility(player.getUUID(), enabled);
+        if (enabled) {
+            source.sendSuccess(() -> Component.literal("§aLimites visiveis ativados!").withStyle(ChatFormatting.GREEN), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("§eLimites visiveis desativados.").withStyle(ChatFormatting.YELLOW), false);
+        }
+        return 1;
     }
 
     private static int adminAllocate(CommandContext<CommandSourceStack> context) {
