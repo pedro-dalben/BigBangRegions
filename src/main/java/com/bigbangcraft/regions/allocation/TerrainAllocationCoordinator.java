@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TerrainAllocationCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-TerrainAllocationCoordinator");
@@ -34,6 +35,9 @@ public class TerrainAllocationCoordinator {
     private final BiomeOptionRegistry biomeOptionRegistry;
     private final RegionCache regionCache;
     private final RegionMembershipCache membershipCache;
+
+    private final Map<UUID, Long> creationCooldowns = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> homeTeleportCooldowns = new ConcurrentHashMap<>();
 
     public TerrainAllocationCoordinator(ConfigManager configManager,
                                          AllocationRequestRepository requestRepository,
@@ -63,6 +67,18 @@ public class TerrainAllocationCoordinator {
             throw new IllegalArgumentException("Opcao de bioma nao encontrada: " + biomeQuery);
         }
         UUID ownerUuid = player.getUUID();
+        Config.SchedulerConfig sc = configManager.getConfig().getPlayerLandAllocation().getScheduler();
+        long cooldownMs = sc.getCreationCooldownSeconds() * 1000L;
+        if (cooldownMs > 0) {
+            Long lastCreation = creationCooldowns.get(ownerUuid);
+            if (lastCreation != null) {
+                long elapsed = System.currentTimeMillis() - lastCreation;
+                if (elapsed < cooldownMs) {
+                    long remaining = (cooldownMs - elapsed + 999) / 1000;
+                    throw new IllegalStateException("Aguarde " + remaining + " segundos antes de criar um novo pedido.");
+                }
+            }
+        }
         AllocationRequest existing = requestRepository.getActiveRequestByOwner(ownerUuid);
         if (existing != null) {
             throw new IllegalStateException("Voce ja possui um pedido de alocacao ativo (ID: " + existing.getId() + ")");
@@ -83,8 +99,23 @@ public class TerrainAllocationCoordinator {
             AllocationRequestState.PENDING, source, ownerUuid, null, null, 0, now, now, null, null
         );
         requestRepository.save(request);
+        creationCooldowns.put(ownerUuid, now);
         LOGGER.info("Allocation request created: id={}, owner={}, biome={}", id, ownerUuid, opt.get().getKey());
         return id;
+    }
+
+    public long getCreationCooldownRemaining(UUID ownerUuid) {
+        Config.SchedulerConfig sc = configManager.getConfig().getPlayerLandAllocation().getScheduler();
+        long cooldownMs = sc.getCreationCooldownSeconds() * 1000L;
+        if (cooldownMs <= 0) return 0;
+        Long lastCreation = creationCooldowns.get(ownerUuid);
+        if (lastCreation == null) return 0;
+        long elapsed = System.currentTimeMillis() - lastCreation;
+        if (elapsed >= cooldownMs) {
+            creationCooldowns.remove(ownerUuid);
+            return 0;
+        }
+        return (cooldownMs - elapsed + 999) / 1000;
     }
 
     public AllocationRequest getActiveRequest(UUID ownerUuid) {
@@ -231,6 +262,18 @@ public class TerrainAllocationCoordinator {
 
     public boolean teleportToHome(ServerPlayer player) {
         UUID ownerUuid = player.getUUID();
+        Config.SchedulerConfig sc = configManager.getConfig().getPlayerLandAllocation().getScheduler();
+        long cooldownMs = sc.getHomeTeleportCooldownSeconds() * 1000L;
+        if (cooldownMs > 0) {
+            Long lastTeleport = homeTeleportCooldowns.get(ownerUuid);
+            if (lastTeleport != null) {
+                long elapsed = System.currentTimeMillis() - lastTeleport;
+                if (elapsed < cooldownMs) {
+                    long remaining = (cooldownMs - elapsed + 999) / 1000;
+                    throw new IllegalStateException("Aguarde " + remaining + " segundos antes de usar /casa novamente.");
+                }
+            }
+        }
         Optional<Region> playerRegion = regionCache.getAll().stream()
             .filter(r -> r.getType() == RegionType.PLAYER_REGION && ownerUuid.equals(r.getOwnerUuid()))
             .findFirst();
@@ -247,7 +290,49 @@ public class TerrainAllocationCoordinator {
             throw new IllegalStateException("Dimensao invalida: " + home.getDimensionKey());
         }
         player.teleportTo(targetLevel, home.getX(), home.getY(), home.getZ(), home.getYaw(), home.getPitch());
+        homeTeleportCooldowns.put(ownerUuid, System.currentTimeMillis());
         return true;
+    }
+
+    public boolean setHome(ServerPlayer player) {
+        UUID ownerUuid = player.getUUID();
+        Optional<Region> playerRegion = regionCache.getAll().stream()
+            .filter(r -> r.getType() == RegionType.PLAYER_REGION && ownerUuid.equals(r.getOwnerUuid()))
+            .findFirst();
+        if (playerRegion.isEmpty()) {
+            throw new IllegalStateException("Voce nao possui uma regiao de jogador");
+        }
+        Region region = playerRegion.get();
+        RegionBounds b = region.getBounds();
+            BlockPos p = player.blockPosition();
+            if (!b.contains(player.level().dimension().location().toString(), p.getX(), p.getY(), p.getZ())) {
+            throw new IllegalStateException("Voce precisa estar dentro da sua regiao para definir a casa");
+        }
+        long now = System.currentTimeMillis();
+        String dimensionKey = player.level().dimension().location().toString();
+        PlayerRegionHome home = new PlayerRegionHome(
+            region.getId(), dimensionKey,
+            player.getX(), player.getY(), player.getZ(),
+            player.getYRot(), player.getXRot(),
+            now, now
+        );
+        homeRepository.save(home);
+        LOGGER.info("Home set: region={}, pos=({},{},{})", region.getId(), player.getX(), player.getY(), player.getZ());
+        return true;
+    }
+
+    public long getHomeTeleportCooldownRemaining(UUID ownerUuid) {
+        Config.SchedulerConfig sc = configManager.getConfig().getPlayerLandAllocation().getScheduler();
+        long cooldownMs = sc.getHomeTeleportCooldownSeconds() * 1000L;
+        if (cooldownMs <= 0) return 0;
+        Long lastTeleport = homeTeleportCooldowns.get(ownerUuid);
+        if (lastTeleport == null) return 0;
+        long elapsed = System.currentTimeMillis() - lastTeleport;
+        if (elapsed >= cooldownMs) {
+            homeTeleportCooldowns.remove(ownerUuid);
+            return 0;
+        }
+        return (cooldownMs - elapsed + 999) / 1000;
     }
 
     public void releaseExpiredReservations() {

@@ -211,9 +211,23 @@ public class RegionsCommand {
                 .then(Commands.argument("bioma", StringArgumentType.greedyString())
                     .executes(RegionsCommand::createPlayerAllocation)
                 )
+                .then(Commands.literal("status")
+                    .executes(RegionsCommand::allocationStatus)
+                )
+                .then(Commands.literal("cancelar")
+                    .executes(RegionsCommand::cancelAllocation)
+                )
             )
             .then(Commands.literal("casa")
                 .executes(RegionsCommand::teleportHome)
+            )
+            .then(Commands.literal("sethome")
+                .executes(RegionsCommand::setHome)
+            )
+            .then(Commands.literal("criar")
+                .then(Commands.argument("bioma", StringArgumentType.greedyString())
+                    .executes(RegionsCommand::createPlayerAllocation)
+                )
             )
             .then(Commands.literal("reload").executes(RegionsCommand::reloadMod));
 
@@ -640,6 +654,76 @@ public class RegionsCommand {
             if (success) {
                 source.sendSuccess(() -> Component.literal("§aTeleportado para sua casa na região!").withStyle(ChatFormatting.GREEN), false);
             }
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int setHome(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        try {
+            boolean success = BigBangRegions.getAllocationCoordinator().setHome(player);
+            if (success) {
+                source.sendSuccess(() -> Component.literal("§aCasa definida na sua posicao atual!").withStyle(ChatFormatting.GREEN), false);
+            }
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int allocationStatus(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        try {
+            var request = BigBangRegions.getAllocationCoordinator().getActiveRequest(player.getUUID());
+            long creationCooldown = BigBangRegions.getAllocationCoordinator().getCreationCooldownRemaining(player.getUUID());
+            long homeCooldown = BigBangRegions.getAllocationCoordinator().getHomeTeleportCooldownRemaining(player.getUUID());
+            if (request == null) {
+                source.sendSuccess(() -> Component.literal("§eVoce nao possui um pedido de alocacao ativo."), false);
+            } else {
+                source.sendSuccess(() -> Component.literal("§6Pedido de alocacao:\n" +
+                    "§eID: §f" + request.getId() + "\n" +
+                    "§eEstado: §f" + request.getState() + "\n" +
+                    "§eBioma: §f" + request.getRequestedBiomeOption() + "\n" +
+                    (request.getFailureReason() != null ? "§eMotivo: §c" + request.getFailureReason() + "\n" : "") +
+                    "§eCriado em: §f" + new java.util.Date(request.getCreatedAt())), false);
+            }
+            if (creationCooldown > 0) {
+                source.sendSuccess(() -> Component.literal("§eCooldown de criacao: §f" + creationCooldown + "s"), false);
+            }
+            if (homeCooldown > 0) {
+                source.sendSuccess(() -> Component.literal("§eCooldown de /casa: §f" + homeCooldown + "s"), false);
+            }
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int cancelAllocation(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        try {
+            BigBangRegions.getAllocationCoordinator().cancelRequest(player.getUUID());
+            source.sendSuccess(() -> Component.literal("§aPedido de alocacao cancelado!").withStyle(ChatFormatting.GREEN), false);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));
