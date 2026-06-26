@@ -6,6 +6,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -56,7 +57,16 @@ public class BlockInteractionClassifier {
         // 4. Check if they are placing blocks/buckets (BLOCK_PLACE)
         ItemStack heldItem = player.getItemInHand(hand);
         if (!heldItem.isEmpty()) {
-            if (heldItem.getItem() instanceof BlockItem || heldItem.getItem() instanceof BucketItem) {
+            if (heldItem.getItem() instanceof BlockItem) {
+                BlockPos placePos = pos.relative(hitResult.getDirection());
+                return new ClassifiedInteraction(RegionAction.BLOCK_PLACE, placePos);
+            }
+            if (heldItem.getItem() instanceof BucketItem) {
+                // Empty bucket used on a fluid block = fluid pickup (INTERACT), not placement
+                if (heldItem.is(Items.BUCKET)) {
+                    return new ClassifiedInteraction(RegionAction.INTERACT, pos);
+                }
+                // Filled bucket = fluid placement (BLOCK_PLACE)
                 BlockPos placePos = pos.relative(hitResult.getDirection());
                 return new ClassifiedInteraction(RegionAction.BLOCK_PLACE, placePos);
             }
