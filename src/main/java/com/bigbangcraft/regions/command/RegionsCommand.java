@@ -710,6 +710,10 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
             return 0;
         }
+        if (!checkPermission(source, "bigbangregions.player.home")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
         try {
             boolean success = BigBangRegions.getAllocationCoordinator().setHome(player);
             if (success) {
@@ -727,6 +731,10 @@ public class RegionsCommand {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
             source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.player.create")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
             return 0;
         }
         try {
@@ -763,6 +771,10 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
             return 0;
         }
+        if (!checkPermission(source, "bigbangregions.player.create")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
         try {
             BigBangRegions.getAllocationCoordinator().cancelRequest(player.getUUID());
             source.sendSuccess(() -> Component.literal("§aPedido de alocacao cancelado!").withStyle(ChatFormatting.GREEN), false);
@@ -778,6 +790,10 @@ public class RegionsCommand {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
             source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.player.boundaries")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
             return 0;
         }
         UUID uuid = player.getUUID();
@@ -796,6 +812,10 @@ public class RegionsCommand {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
             source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.player.boundaries")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
             return 0;
         }
         BigBangRegions.getBoundaryRenderer().setVisibility(player.getUUID(), enabled);
@@ -835,6 +855,10 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
             return 0;
         }
+        if (!checkPermission(source, "bigbangregions.player.expand")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
         int newSize = IntegerArgumentType.getInteger(context, "tamanho");
         try {
             int result = BigBangRegions.getAllocationCoordinator().resizeClaim(player, newSize);
@@ -870,6 +894,10 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
             return 0;
         }
+        if (!checkPermission(source, "bigbangregions.player.mapvisibility")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
         Region region = resolvePlayerRegion(player);
         if (region == null) {
             source.sendFailure(Component.literal("Voce nao possui ou lidera nenhuma regiao de jogador."));
@@ -886,6 +914,10 @@ public class RegionsCommand {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
             source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.player.mapvisibility")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
             return 0;
         }
         Region region = resolvePlayerRegion(player);
