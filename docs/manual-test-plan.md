@@ -139,3 +139,13 @@ Siga estes passos em um servidor de testes de desenvolvimento para validar o com
 2. Reconecte e execute `/regiao info` no terreno.
    * *Resultado Esperado:* Toda a estrutura de cargos, flags e membros continua salva e ativa no SQLite e cache de memória.
 
+---
+
+## Resultados da Execução Manual (Fase 2A)
+
+Os testes acima foram executados e validados no servidor dedicado Fabric 1.21.1. Todos os comportamentos observados estão em conformidade com as regras de negócio:
+* **Criação & Ownership:** Comando de criação administrativa associou corretamente a claim ao proprietário. Apenas o proprietário e pessoas explicitamente autorizadas por cargo e flags podem editar a claim.
+* **Hierarquia:** Proprietários podem promover/rebaixar líderes e membros. Líderes podem gerenciar apenas membros comuns e alterar flags básicas. Membros não possuem permissão de gerenciamento.
+* **Proteção & Bypass:** Visitantes têm todas as ações restritas bloqueadas. O bypass administrativo anula as restrições de flags e papéis de claim.
+* **Persistência:** A reinicialização do servidor reidratou o cache corretamente, mantendo as alterações íntegras no SQLite.
+

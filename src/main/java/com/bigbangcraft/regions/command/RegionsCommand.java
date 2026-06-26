@@ -80,9 +80,6 @@ public class RegionsCommand {
                 .then(Commands.literal("owner")
                     .then(Commands.argument("regionId", StringArgumentType.word())
                         .executes(RegionsCommand::showAdminOwner)
-                        .then(Commands.argument("newOwner", StringArgumentType.word())
-                            .executes(RegionsCommand::changeAdminOwner)
-                        )
                     )
                 )
                 .then(Commands.literal("members")
@@ -713,57 +710,6 @@ public class RegionsCommand {
         return 1;
     }
 
-    private static int changeAdminOwner(CommandContext<CommandSourceStack> context) {
-        CommandSourceStack source = context.getSource();
-        if (!checkPermission(source, "bigbangregions.admin.player.owner")) {
-            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
-            return 0;
-        }
-        String id = StringArgumentType.getString(context, "regionId");
-        Region region = regionCache.get(id);
-        if (region == null) {
-            source.sendFailure(Component.literal("Região '" + id + "' não encontrada."));
-            return 0;
-        }
-        if (region.getType() != RegionType.PLAYER_REGION) {
-            source.sendFailure(Component.literal("Esta região não é do tipo PLAYER_REGION."));
-            return 0;
-        }
-
-        String newOwnerName = StringArgumentType.getString(context, "newOwner");
-        Optional<GameProfile> profileOpt = lookupProfile(source, newOwnerName);
-        if (profileOpt.isEmpty()) {
-            source.sendFailure(Component.literal("Não foi possível encontrar o jogador '" + newOwnerName + "'."));
-            return 0;
-        }
-        GameProfile newOwner = profileOpt.get();
-        UUID newOwnerUuid = newOwner.getId();
-
-        if (newOwnerUuid.equals(region.getOwnerUuid())) {
-            source.sendFailure(Component.literal("Este jogador já é o dono da região."));
-            return 0;
-        }
-
-        int max = configManager.getConfig().getPlayerRegions().getMaxRegionsPerOwner();
-        if (max < 1) max = 1;
-        if (countPlayerRegions(newOwnerUuid) >= max) {
-            source.sendFailure(Component.literal("O jogador " + newOwner.getName() + " já atingiu o limite de regiões (" + max + ")."));
-            return 0;
-        }
-
-        region.removeMember(newOwnerUuid);
-        BigBangRegions.getMembershipCache().updateMember(id, newOwnerUuid, null);
-
-        UUID oldOwnerUuid = region.getOwnerUuid();
-        region.setOwnerUuid(newOwnerUuid);
-        regionRepository.save(region);
-
-        UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
-        auditService.log(id, actorUuid, "CHANGE_OWNER", oldOwnerUuid != null ? oldOwnerUuid.toString() : null, newOwnerUuid.toString(), null);
-
-        source.sendSuccess(() -> Component.literal("Dono da região '" + id + "' alterado para " + newOwner.getName() + " com sucesso.").withStyle(ChatFormatting.GREEN), false);
-        return 1;
-    }
 
     private static int listAdminMembers(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();

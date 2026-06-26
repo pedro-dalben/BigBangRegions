@@ -31,11 +31,7 @@ These commands require administrative permissions or OP status.
 - **View Owner**
   `/regions player owner <regionId>`
   - Permission: `bigbangregions.admin.player.owner`
-  - Show owner of a region.
-- **Change Owner**
-  `/regions player owner <regionId> <newOwner>`
-  - Permission: `bigbangregions.admin.player.owner`
-  - Change owner of a player region.
+  - Show owner of a region. (Note: Owner transfer is out of scope for this phase and will be implemented in a future release).
 - **List Members**
   `/regions player members <regionId>`
   - Permission: `bigbangregions.admin.player.members`
