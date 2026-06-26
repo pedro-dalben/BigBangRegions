@@ -1,0 +1,32 @@
+package com.bigbangcraft.regions.allocation;
+
+import java.util.List;
+
+public class BiomeOption {
+    private final String key;
+    private final String displayName;
+    private final List<String> aliases;
+    private final List<String> acceptedBiomeIds;
+
+    public BiomeOption(String key, String displayName, List<String> aliases, List<String> acceptedBiomeIds) {
+        this.key = key;
+        this.displayName = displayName;
+        this.aliases = aliases;
+        this.acceptedBiomeIds = acceptedBiomeIds;
+    }
+
+    public String getKey() { return key; }
+    public String getDisplayName() { return displayName; }
+    public List<String> getAliases() { return aliases; }
+    public List<String> getAcceptedBiomeIds() { return acceptedBiomeIds; }
+
+    public boolean matches(String query) {
+        if (query == null) return false;
+        String q = query.toLowerCase();
+        if (key.equalsIgnoreCase(q)) return true;
+        for (String alias : aliases) {
+            if (alias.equalsIgnoreCase(q)) return true;
+        }
+        return false;
+    }
+}
