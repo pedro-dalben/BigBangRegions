@@ -152,6 +152,7 @@ public class Config {
         private ExplorationExclusionConfig explorationExclusion = new ExplorationExclusionConfig();
         private BiomeSearchConfig biomeSearch = new BiomeSearchConfig();
         private SchedulerConfig scheduler = new SchedulerConfig();
+        private NotificationsConfig notifications = new NotificationsConfig();
 
         public boolean isEnabled() { return enabled; }
         public String getTargetDimension() { return targetDimension; }
@@ -163,6 +164,7 @@ public class Config {
         public ExplorationExclusionConfig getExplorationExclusion() { return explorationExclusion; }
         public BiomeSearchConfig getBiomeSearch() { return biomeSearch; }
         public SchedulerConfig getScheduler() { return scheduler; }
+        public NotificationsConfig getNotifications() { return notifications; }
 
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public void setTargetDimension(String targetDimension) { this.targetDimension = targetDimension; }
@@ -171,6 +173,17 @@ public class Config {
         public void setFutureMaximumClaimSize(int futureMaximumClaimSize) { this.futureMaximumClaimSize = futureMaximumClaimSize; }
         public void setSlotInternalMargin(int slotInternalMargin) { this.slotInternalMargin = slotInternalMargin; }
         public void setMaxRegionsPerOwner(int maxRegionsPerOwner) { this.maxRegionsPerOwner = maxRegionsPerOwner; }
+    }
+
+    public static class NotificationsConfig {
+        private boolean entryExitEnabled = true;
+        private boolean otherPlayerEntryEnabled = false;
+
+        public boolean isEntryExitEnabled() { return entryExitEnabled; }
+        public boolean isOtherPlayerEntryEnabled() { return otherPlayerEntryEnabled; }
+
+        public void setEntryExitEnabled(boolean val) { this.entryExitEnabled = val; }
+        public void setOtherPlayerEntryEnabled(boolean val) { this.otherPlayerEntryEnabled = val; }
     }
 
     public static class ExplorationExclusionConfig {

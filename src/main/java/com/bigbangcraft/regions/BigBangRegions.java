@@ -13,6 +13,7 @@ import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.protection.*;
 import com.bigbangcraft.regions.region.*;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import com.bigbangcraft.regions.repository.AllocationRequestRepository;
 import com.bigbangcraft.regions.repository.AuditRepository;
 import com.bigbangcraft.regions.repository.PlayerRegionHomeRepository;
@@ -69,6 +70,7 @@ public class BigBangRegions implements ModInitializer {
     private static TerrainAllocationCoordinator allocationCoordinator;
     private static AllocationScheduler allocationScheduler;
     private static RegionCache regionCache;
+    private static RegionEntryExitService entryExitService;
 
     public static RegionMembershipCache getMembershipCache() {
         return membershipCache;
@@ -88,6 +90,10 @@ public class BigBangRegions implements ModInitializer {
 
     public static TerrainAllocationCoordinator getAllocationCoordinator() {
         return allocationCoordinator;
+    }
+
+    public static RegionEntryExitService getEntryExitService() {
+        return entryExitService;
     }
 
     @Override
@@ -156,19 +162,22 @@ public class BigBangRegions implements ModInitializer {
         regionAccessService = new RegionAccessService(roleResolver, flagResolver, configManager);
         protectionService = new ProtectionService(regionResolver, permissionManager, regionAccessService);
 
-        // 8. Public API
+        // 8. Region Entry/Exit notification service
+        entryExitService = new RegionEntryExitService(regionCache, roleResolver, configManager);
+
+        // 9. Public API
         api = new BigBangRegionsApiImpl(regionResolver, protectionService);
 
-        // 9. Command registration
+        // 10. Command registration
         RegionsCommand.initialize(permissionManager, selectionManager, regionCache, regionRepository, regionResolver, auditService, configManager);
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             RegionsCommand.register(dispatcher);
         });
 
-        // 10. Register Event Listeners
+        // 11. Register Event Listeners
         registerListeners();
 
-        // 11. Server tick scheduler for allocation processing
+        // 11. Server tick scheduler for allocation processing + entry/exit tracking
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             LOGGER.info("Allocation scheduler started.");
         });
@@ -176,9 +185,21 @@ public class BigBangRegions implements ModInitializer {
             if (allocationScheduler != null) {
                 allocationScheduler.tick(server);
             }
+            if (entryExitService != null) {
+                for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+                    entryExitService.tick(p);
+                }
+            }
         });
 
-        // 12. Clean shutdown handler
+        // 12. Player disconnect cleanup
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            if (entryExitService != null && handler.getPlayer() != null) {
+                entryExitService.removePlayer(handler.getPlayer().getUUID());
+            }
+        });
+
+        // 13. Clean shutdown handler
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             LOGGER.info("Server is stopping. Shutting down BigBang Regions services...");
             if (auditService != null) {
