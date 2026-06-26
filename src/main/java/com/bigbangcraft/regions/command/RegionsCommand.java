@@ -251,6 +251,18 @@ public class RegionsCommand {
                     .executes(RegionsCommand::resizeClaim)
                 )
             )
+            .then(Commands.literal("mapa")
+                .executes(RegionsCommand::showMapVisibility)
+                .then(Commands.literal("publico")
+                    .executes(context -> setMapVisibility(context, "PUBLIC"))
+                )
+                .then(Commands.literal("privado")
+                    .executes(context -> setMapVisibility(context, "PRIVATE"))
+                )
+                .then(Commands.literal("membros")
+                    .executes(context -> setMapVisibility(context, "MEMBERS"))
+                )
+            )
             .then(Commands.literal("reload").executes(RegionsCommand::reloadMod));
 
         LiteralCommandNode<CommandSourceStack> mainNode = dispatcher.register(builder);
@@ -849,6 +861,42 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("§c" + e.getMessage()));
             return 0;
         }
+    }
+
+    private static int showMapVisibility(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        Region region = resolvePlayerRegion(player);
+        if (region == null) {
+            source.sendFailure(Component.literal("Voce nao possui ou lidera nenhuma regiao de jogador."));
+            return 0;
+        }
+        String vis = region.getFlagValue("map-visibility");
+        source.sendSuccess(() -> Component.literal("§6Visibilidade do mapa: §f" + vis).withStyle(ChatFormatting.YELLOW), false);
+        source.sendSuccess(() -> Component.literal("§7Opcoes: /regiao mapa publico | privado | membros"), false);
+        return 1;
+    }
+
+    private static int setMapVisibility(CommandContext<CommandSourceStack> context, String visibility) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        Region region = resolvePlayerRegion(player);
+        if (region == null) {
+            source.sendFailure(Component.literal("Voce nao possui ou lidera nenhuma regiao de jogador."));
+            return 0;
+        }
+        region.setFlag("map-visibility", visibility);
+        regionRepository.updateFlags(region);
+        source.sendSuccess(() -> Component.literal("§aVisibilidade do mapa alterada para: " + visibility).withStyle(ChatFormatting.GREEN), false);
+        return 1;
     }
 
     private static int adminAllocate(CommandContext<CommandSourceStack> context) {
