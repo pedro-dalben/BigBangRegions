@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.levelgen.Heightmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +40,8 @@ public class BiomeSearchService {
             int x = minX + i * stepX;
             for (int j = 0; j < sampleGridSize; j++) {
                 int z = minZ + j * stepZ;
-                Holder<Biome> holder = level.getBiome(new BlockPos(x, 64, z));
+                int y = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+                Holder<Biome> holder = level.getBiome(new BlockPos(x, y, z));
                 String biomeId = holder.unwrapKey()
                                        .map(k -> k.location().toString())
                                        .orElse("");

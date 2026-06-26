@@ -62,6 +62,12 @@ public class PlotSlot {
     public int getMaxZ() { return minZ + slotSize - 1; }
 
     public void reserve(UUID playerUuid, String biomeOptionKey, long leaseDurationMs) {
+        if (state == PlotSlotState.RESERVED) {
+            throw new IllegalStateException("Slot " + id + " is already reserved");
+        }
+        if (state == PlotSlotState.ALLOCATED) {
+            throw new IllegalStateException("Slot " + id + " is already allocated");
+        }
         this.state = PlotSlotState.RESERVED;
         this.reservedForUuid = playerUuid;
         this.biomeOptionKey = biomeOptionKey;
@@ -71,6 +77,9 @@ public class PlotSlot {
     }
 
     public void allocate(String regionId) {
+        if (state != PlotSlotState.RESERVED) {
+            throw new IllegalStateException("Slot " + id + " must be RESERVED before allocation, current state: " + state);
+        }
         this.state = PlotSlotState.ALLOCATED;
         this.regionId = regionId;
         this.allocatedAt = System.currentTimeMillis();
@@ -78,6 +87,9 @@ public class PlotSlot {
     }
 
     public void release() {
+        if (state != PlotSlotState.RESERVED) {
+            throw new IllegalStateException("Slot " + id + " must be RESERVED to release, current state: " + state);
+        }
         this.state = PlotSlotState.RELEASED;
         this.reservedForUuid = null;
         this.regionId = null;
