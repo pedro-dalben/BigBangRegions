@@ -141,6 +141,10 @@ public class PlayerRegionMigrationTest {
 
             stmt.execute("CREATE TABLE region_members (regionId TEXT NOT NULL, uuid TEXT NOT NULL, role TEXT NOT NULL, PRIMARY KEY (regionId, uuid), FOREIGN KEY (regionId) REFERENCES regions (id) ON DELETE CASCADE);");
 
+            stmt.execute("CREATE TABLE region_flags (regionId TEXT NOT NULL, flag TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (regionId, flag), FOREIGN KEY (regionId) REFERENCES regions (id) ON DELETE CASCADE);");
+
+            stmt.execute("CREATE TABLE region_audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, regionId TEXT, actorUuid TEXT, action TEXT NOT NULL, beforeValue TEXT, afterValue TEXT, createdAt INTEGER NOT NULL, metadataJson TEXT);");
+
             // Insert dummy V1 data
             stmt.execute("INSERT INTO regions (id, name, type, dimensionKey, minX, minY, minZ, maxX, maxY, maxZ, priority, ownerUuid, createdByUuid, createdAt, updatedAt, status) " +
                     "VALUES ('r1', 'R1', 'PLAYER_REGION', 'minecraft:overworld', 0, 0, 0, 5, 5, 5, 10, 'owner-uuid', 'creator-uuid', 500, 500, 'ACTIVE');");
@@ -155,10 +159,10 @@ public class PlayerRegionMigrationTest {
         try (Connection conn = dbManager.getConnection();
              Statement stmt = conn.createStatement()) {
 
-            // Check schema version is 3
+            // Check schema version is 4 (V1+V2+V3+V4)
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(3, rs.getInt(1));
+                assertEquals(4, rs.getInt(1));
             }
 
             // Verify V3 tables exist

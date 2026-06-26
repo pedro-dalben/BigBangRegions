@@ -43,10 +43,10 @@ public class MigrationTest {
             assertTrue(tables.contains("plot_slots"));
             assertTrue(tables.contains("player_region_homes"));
 
-            // 2. Verify schema version is marked as 3
+            // 2. Verify schema version is marked as 4
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(3, rs.getInt(1));
+                assertEquals(4, rs.getInt(1));
             }
 
             // Verify columns added in V2
@@ -72,6 +72,8 @@ public class MigrationTest {
             assertTrue(indexes.contains("idx_regions_type"));
             assertTrue(indexes.contains("idx_regions_priority"));
             assertTrue(indexes.contains("idx_regions_bounds"));
+            assertTrue(indexes.contains("idx_audit_regionId"));
+            assertTrue(indexes.contains("idx_audit_createdAt"));
         } finally {
             dbManager.close();
         }

@@ -88,6 +88,14 @@ public class DatabaseManager {
             executeMigrationResource("/storage/migrations/V003__player_region_allocation.sql");
             setSchemaVersion(3);
             LOGGER.info("Migration V3 applied successfully.");
+            currentVersion = 3;
+        }
+
+        if (currentVersion < 4) {
+            LOGGER.info("Applying migration V4...");
+            executeMigrationResource("/storage/migrations/V004__audit_log_index.sql");
+            setSchemaVersion(4);
+            LOGGER.info("Migration V4 applied successfully.");
         }
     }
 
