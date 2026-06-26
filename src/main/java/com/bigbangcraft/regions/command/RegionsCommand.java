@@ -295,7 +295,15 @@ public class RegionsCommand {
         BlockPos pos1 = p1.getPos();
         BlockPos pos2 = p2.getPos();
         RegionBounds bounds = new RegionBounds(dimension, pos1.getX(), pos1.getY(), pos1.getZ(), pos2.getX(), pos2.getY(), pos2.getZ());
-        
+
+        // Check overlap with existing regions
+        for (Region existing : regionCache.getAll()) {
+            if (existing.getBounds().intersects(bounds)) {
+                source.sendFailure(Component.literal("A região se sobrepõe à região '" + existing.getId() + "' (" + existing.getType() + "). Criação cancelada."));
+                return 0;
+            }
+        }
+
         long now = System.currentTimeMillis();
         Region region = new Region(id, id, RegionType.ADMIN_REGION, bounds, priority, null, uuid, now, now, "ACTIVE");
         
