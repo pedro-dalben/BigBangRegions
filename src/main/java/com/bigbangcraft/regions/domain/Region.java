@@ -14,11 +14,14 @@ public class Region {
     private long updatedAt;
     private String status;
 
-    private final Map<UUID, RegionRole> members = new HashMap<>();
+    private final Map<UUID, RegionMember> members = new HashMap<>();
     private final Map<String, String> flags = new HashMap<>();
 
     public Region(String id, String name, RegionType type, RegionBounds bounds, int priority,
                   UUID ownerUuid, UUID createdByUuid, long createdAt, long updatedAt, String status) {
+        if (type == RegionType.PLAYER_REGION && ownerUuid == null) {
+            throw new IllegalArgumentException("PLAYER_REGION must have a valid owner UUID");
+        }
         this.id = Objects.requireNonNull(id, "ID cannot be null");
         this.name = Objects.requireNonNull(name, "Name cannot be null");
         this.type = Objects.requireNonNull(type, "Type cannot be null");
@@ -90,7 +93,7 @@ public class Region {
         this.updatedAt = System.currentTimeMillis();
     }
 
-    public Map<UUID, RegionRole> getMembers() {
+    public Map<UUID, RegionMember> getMembers() {
         return Collections.unmodifiableMap(members);
     }
 
@@ -98,7 +101,19 @@ public class Region {
         if (role == null || role == RegionRole.VISITOR) {
             members.remove(uuid);
         } else {
-            members.put(uuid, role);
+            long now = System.currentTimeMillis();
+            members.put(uuid, new RegionMember(uuid, role, null, now, now));
+        }
+        this.updatedAt = System.currentTimeMillis();
+    }
+
+    public void setMember(RegionMember member) {
+        if (member == null || member.getRole() == RegionRole.VISITOR) {
+            if (member != null) {
+                members.remove(member.getUuid());
+            }
+        } else {
+            members.put(member.getUuid(), member);
         }
         this.updatedAt = System.currentTimeMillis();
     }
@@ -115,7 +130,8 @@ public class Region {
         if (uuid.equals(ownerUuid)) {
             return RegionRole.OWNER;
         }
-        return members.getOrDefault(uuid, RegionRole.VISITOR);
+        RegionMember m = members.get(uuid);
+        return m != null ? m.getRole() : RegionRole.VISITOR;
     }
 
     public Map<String, String> getFlags() {

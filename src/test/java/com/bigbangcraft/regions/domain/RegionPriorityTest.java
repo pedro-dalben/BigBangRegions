@@ -17,7 +17,7 @@ public class RegionPriorityTest {
 
         // 1. High priority wins over low priority
         Region regLow = new Region("reg_low", "Low Priority", RegionType.PLAYER_REGION,
-                new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, null, creator, 0, 0, "ACTIVE");
+                new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, UUID.randomUUID(), creator, 0, 0, "ACTIVE");
 
         Region regHigh = new Region("reg_high", "High Priority", RegionType.ADMIN_REGION,
                 new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 1000, null, creator, 0, 0, "ACTIVE");

@@ -11,18 +11,30 @@ import java.util.Optional;
 public class RegionResolver {
     private final RegionCache regionCache;
 
+    private static int getTypePriority(com.bigbangcraft.regions.domain.RegionType type) {
+        if (type == com.bigbangcraft.regions.domain.RegionType.SYSTEM_REGION) return 3;
+        if (type == com.bigbangcraft.regions.domain.RegionType.ADMIN_REGION) return 2;
+        if (type == com.bigbangcraft.regions.domain.RegionType.PLAYER_REGION) return 1;
+        return 0;
+    }
+
     public static final Comparator<Region> REGION_PRIORITY_COMPARATOR = (r1, r2) -> {
-        // 1. Highest priority wins
+        // 1. Compare type priority (SYSTEM > ADMIN > PLAYER)
+        int typeCompare = Integer.compare(getTypePriority(r2.getType()), getTypePriority(r1.getType()));
+        if (typeCompare != 0) {
+            return typeCompare;
+        }
+        // 2. Highest priority wins
         int priorityCompare = Integer.compare(r2.getPriority(), r1.getPriority());
         if (priorityCompare != 0) {
             return priorityCompare;
         }
-        // 2. Smaller volume wins on tie
+        // 3. Smaller volume wins on tie
         int volumeCompare = Long.compare(r1.getBounds().volume(), r2.getBounds().volume());
         if (volumeCompare != 0) {
             return volumeCompare;
         }
-        // 3. Alphabetical / smaller ID wins on tie (deterministic fallback)
+        // 4. Alphabetical / smaller ID wins on tie (deterministic fallback)
         return r1.getId().compareTo(r2.getId());
     };
 

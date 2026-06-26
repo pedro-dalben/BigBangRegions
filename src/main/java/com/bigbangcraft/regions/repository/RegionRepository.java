@@ -2,6 +2,7 @@ package com.bigbangcraft.regions.repository;
 
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
+import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.domain.RegionType;
 import com.bigbangcraft.regions.storage.DatabaseManager;
@@ -72,7 +73,15 @@ public class RegionRepository {
                         if (region != null) {
                             UUID uuid = UUID.fromString(rs.getString("uuid"));
                             RegionRole role = RegionRole.valueOf(rs.getString("role"));
-                            region.setMember(uuid, role);
+                            String addedByStr = rs.getString("addedByUuid");
+                            UUID addedByUuid = (addedByStr != null && !addedByStr.isEmpty()) ? UUID.fromString(addedByStr) : null;
+                            long createdAt = rs.getLong("createdAt");
+                            long updatedAt = rs.getLong("updatedAt");
+                            if (rs.wasNull()) {
+                                updatedAt = createdAt;
+                            }
+                            RegionMember member = new RegionMember(uuid, role, addedByUuid, createdAt, updatedAt);
+                            region.setMember(member);
                         }
                     }
                 }
@@ -139,12 +148,15 @@ public class RegionRepository {
                     pstmt.executeUpdate();
                 }
 
-                String insertMemberSql = "INSERT INTO region_members (regionId, uuid, role) VALUES (?, ?, ?);";
+                String insertMemberSql = "INSERT INTO region_members (regionId, uuid, role, addedByUuid, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?);";
                 try (PreparedStatement pstmt = conn.prepareStatement(insertMemberSql)) {
-                    for (Map.Entry<UUID, RegionRole> entry : region.getMembers().entrySet()) {
+                    for (RegionMember member : region.getMembers().values()) {
                         pstmt.setString(1, region.getId());
-                        pstmt.setString(2, entry.getKey().toString());
-                        pstmt.setString(3, entry.getValue().name());
+                        pstmt.setString(2, member.getUuid().toString());
+                        pstmt.setString(3, member.getRole().name());
+                        pstmt.setString(4, member.getAddedByUuid() != null ? member.getAddedByUuid().toString() : null);
+                        pstmt.setLong(5, member.getCreatedAt());
+                        pstmt.setLong(6, member.getUpdatedAt());
                         pstmt.addBatch();
                     }
                     pstmt.executeBatch();

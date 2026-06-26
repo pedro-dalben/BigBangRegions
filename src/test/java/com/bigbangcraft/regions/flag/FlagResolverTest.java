@@ -51,10 +51,10 @@ public class FlagResolverTest {
     @Test
     public void testInheritanceToGlobalDefaults() {
         Region playerRegion = new Region("testReg", "Test Region", RegionType.PLAYER_REGION,
-                new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, null, creator, 0, 0, "ACTIVE");
+                new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, UUID.randomUUID(), creator, 0, 0, "ACTIVE");
         EffectiveRegionPolicy policy = flagResolver.resolve(playerRegion, "item-pickup", config);
         assertEquals(FlagPolicy.ALLOW, policy.policy());
-        assertEquals("global_default", policy.source());
+        assertEquals("region_type_default", policy.source());
     }
 
     @Test

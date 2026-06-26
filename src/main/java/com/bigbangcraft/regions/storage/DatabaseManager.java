@@ -72,6 +72,14 @@ public class DatabaseManager {
             executeMigrationResource("/storage/migrations/V001__initial_schema.sql");
             setSchemaVersion(1);
             LOGGER.info("Migration V1 applied successfully.");
+            currentVersion = 1;
+        }
+
+        if (currentVersion < 2) {
+            LOGGER.info("Applying migration V2...");
+            executeMigrationResource("/storage/migrations/V002__player_region_membership.sql");
+            setSchemaVersion(2);
+            LOGGER.info("Migration V2 applied successfully.");
         }
     }
 

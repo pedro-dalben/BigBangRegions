@@ -38,6 +38,7 @@ public class ProtectionServiceTest {
     private PermissionManager permissionManager;
     private ConfigManager configManager;
     private ProtectionService protectionService;
+    private com.bigbangcraft.regions.cache.RegionMembershipCache membershipCache;
 
     private Level level;
     private ServerPlayer player;
@@ -52,7 +53,10 @@ public class ProtectionServiceTest {
         permissionManager = mock(PermissionManager.class);
         configManager = mock(ConfigManager.class);
         
-        protectionService = new ProtectionService(regionResolver, flagResolver, permissionManager, configManager);
+        membershipCache = new com.bigbangcraft.regions.cache.RegionMembershipCache();
+        com.bigbangcraft.regions.region.RegionRoleResolver roleResolver = new com.bigbangcraft.regions.region.RegionRoleResolver(membershipCache);
+        RegionAccessService accessService = new RegionAccessService(roleResolver, flagResolver, configManager);
+        protectionService = new ProtectionService(regionResolver, permissionManager, accessService);
 
         // Mock Level dimension structure
         level = mock(Level.class);
@@ -81,6 +85,7 @@ public class ProtectionServiceTest {
     @Test
     public void testPlayerBypass() {
         // Player has bypass permission
+        when(regionResolver.resolveRegionAt("minecraft:overworld", 10, 10, 10)).thenReturn(Optional.of(region));
         when(permissionManager.hasBypass(player, "player-build")).thenReturn(true);
 
         ProtectionContext context = new ProtectionContext.Builder(RegionAction.BLOCK_BREAK, level, pos)
@@ -128,6 +133,7 @@ public class ProtectionServiceTest {
 
         // Player is a member
         region.setMember(playerUuid, RegionRole.MEMBER);
+        membershipCache.loadFromRegion(region);
 
         ProtectionContext context = new ProtectionContext.Builder(RegionAction.BLOCK_BREAK, level, pos)
                 .player(player)
@@ -135,7 +141,7 @@ public class ProtectionServiceTest {
 
         ProtectionResult result = protectionService.check(context);
         assertEquals(ProtectionDecision.ALLOW, result.getDecision());
-        assertEquals("Player is member of the region", result.getReason());
+        assertEquals("ALLOW_REASON_MEMBER", result.getReason());
     }
 
     @Test

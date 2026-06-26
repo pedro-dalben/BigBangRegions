@@ -82,3 +82,60 @@ Siga estes passos em um servidor de testes de desenvolvimento para validar o com
 1. Reinicie o servidor (`/stop` e reinicie).
 2. Execute `/regions info` dentro da região `ovw_test`.
    * *Resultado Esperado:* A dimensão reportada nos limites da região deve continuar como Overworld e as flags devem persistir exatamente com os mesmos valores antes da reinicialização.
+
+---
+
+## 12. Testes de PLAYER_REGION (Fase 2A)
+
+### Ambiente Adicional Necessário
+* **Dono**: Um jogador comum (por exemplo, `DonoTest`).
+* **Líder / Membro**: Outros jogadores comuns.
+* **Visitante**: Um jogador sem relação com o terreno.
+
+### Roteiro de Testes
+
+#### 12.1 Criação e Acesso Inicial
+1. Defina uma seleção e execute como Admin: `/regions create player meu_terreno DonoTest`
+2. Vá até o terreno como **DonoTest** e execute `/regiao info`.
+   * *Resultado Esperado:* Mostra ID `meu_terreno`, Tipo `PLAYER_REGION`, dono `DonoTest`, e o papel atual dele (`OWNER`).
+3. Tente construir e quebrar blocos como **DonoTest**.
+   * *Resultado Esperado:* Permitido.
+4. Tente construir e quebrar blocos como **Visitante**.
+   * *Resultado Esperado:* Bloqueado (mensagem na action bar).
+5. Como **Visitante**, tente abrir baú, usar portas, botões e coletar ou dropar itens.
+   * *Resultado Esperado:* Todas as ações são bloqueadas.
+
+#### 12.2 Gestão de Membros e Hierarquia
+1. Como **DonoTest**, execute `/regiao membros adicionar JogadorMembro`.
+2. Como **JogadorMembro**, tente construir e abrir containers.
+   * *Resultado Esperado:* Permitido (pois agora é um membro da região).
+3. Como **JogadorMembro**, tente adicionar outro jogador: `/regiao membros adicionar OutroJogador`.
+   * *Resultado Esperado:* Bloqueado com erro de falta de permissão/papel inadequado.
+4. Como **DonoTest**, promova o membro: `/regiao membros promover JogadorMembro`.
+5. Como **JogadorMembro** (agora `LEADER`), adicione um novo membro: `/regiao membros adicionar JogadorMembro2`.
+   * *Resultado Esperado:* Permitido.
+6. Como **JogadorMembro** (`LEADER`), tente promover `JogadorMembro2` para `LEADER` ou remover o dono (`DonoTest`).
+   * *Resultado Esperado:* Bloqueado pela validação de hierarquia do serviço de membros.
+7. Como **DonoTest**, rebaixe o líder: `/regiao membros rebaixar JogadorMembro`.
+8. Como **JogadorMembro** (agora `MEMBER`), execute `/regiao sair`.
+   * *Resultado Esperado:* O jogador sai voluntariamente e perde todas as permissões no terreno (volta a ser `VISITOR`).
+
+#### 12.3 Interação de Flags e Papéis
+1. Como **DonoTest**, altere a flag `player-build` para `DENY`: `/regiao flags definir player-build DENY`.
+2. Tente construir como **DonoTest**, líderes ou membros restantes.
+   * *Resultado Esperado:* Bloqueado para todos eles (DENY na flag se sobrepõe a qualquer papel).
+3. Como **DonoTest**, retorne a flag para `ALLOW`: `/regiao flags definir player-build ALLOW`.
+   * *Resultado Esperado:* Todos os membros e donos conseguem construir novamente, mas o **Visitante** continua bloqueado (a política de papel do visitante nega build).
+
+#### 12.4 Sobreposição de ADMIN_REGION
+1. Crie uma `ADMIN_REGION` que se sobreponha ao `meu_terreno` (ex: `spawn_teste`).
+2. Tente quebrar ou colocar blocos na área de sobreposição como **DonoTest**.
+   * *Resultado Esperado:* Bloqueado (a região administrativa continua vencendo e o ownership da região de jogador não gera bypass).
+3. Tente quebrar ou colocar blocos na mesma área com bypass administrativo.
+   * *Resultado Esperado:* Permitido.
+
+#### 12.5 Persistência de Memberships
+1. Reinicie o servidor.
+2. Reconecte e execute `/regiao info` no terreno.
+   * *Resultado Esperado:* Toda a estrutura de cargos, flags e membros continua salva e ativa no SQLite e cache de memória.
+

@@ -59,7 +59,10 @@ public class InteractionFlagPrecedenceTest {
         permissionManager = mock(PermissionManager.class);
         configManager = mock(ConfigManager.class);
         
-        protectionService = new ProtectionService(regionResolver, flagResolver, permissionManager, configManager);
+        com.bigbangcraft.regions.cache.RegionMembershipCache membershipCache = new com.bigbangcraft.regions.cache.RegionMembershipCache();
+        com.bigbangcraft.regions.region.RegionRoleResolver roleResolver = new com.bigbangcraft.regions.region.RegionRoleResolver(membershipCache);
+        RegionAccessService accessService = new RegionAccessService(roleResolver, flagResolver, configManager);
+        protectionService = new ProtectionService(regionResolver, permissionManager, accessService);
 
         config = new Config();
         when(configManager.getConfig()).thenReturn(config);

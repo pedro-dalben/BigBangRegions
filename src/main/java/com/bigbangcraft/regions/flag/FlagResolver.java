@@ -60,7 +60,9 @@ public class FlagResolver {
         if (type == RegionType.ADMIN_REGION) {
             return config.getDefaults().getAdminRegion();
         }
-        // Add player region defaults when implemented
+        if (type == RegionType.PLAYER_REGION) {
+            return config.getDefaults().getPlayerRegion();
+        }
         return null;
     }
 }

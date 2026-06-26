@@ -40,11 +40,22 @@ public class MigrationTest {
             assertTrue(tables.contains("region_flags"));
             assertTrue(tables.contains("region_audit_logs"));
 
-            // 2. Verify schema version is marked as 1
+            // 2. Verify schema version is marked as 2
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(1, rs.getInt(1));
+                assertEquals(2, rs.getInt(1));
             }
+
+            // Verify columns added in V2
+            List<String> memberColumns = new ArrayList<>();
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(region_members);")) {
+                while (rs.next()) {
+                    memberColumns.add(rs.getString("name"));
+                }
+            }
+            assertTrue(memberColumns.contains("addedByUuid"));
+            assertTrue(memberColumns.contains("createdAt"));
+            assertTrue(memberColumns.contains("updatedAt"));
 
             // 3. Verify indexes exist
             List<String> indexes = new ArrayList<>();

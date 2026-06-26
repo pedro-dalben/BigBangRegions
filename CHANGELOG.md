@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.0] - 2026-06-25
+
+### Added (Fase 2A — Núcleo de Terrenos de Jogadores)
+* **Sistema de Ownership e Cargos**: Suporte para cargos internos (`OWNER`, `LEADER`, `MEMBER`, `VISITOR`) em `PLAYER_REGION`.
+* **Políticas baseadas em Cargos**: Nova camada central de verificação `RegionAccessService` e `RegionRolePolicy` que avalia a política de cargo intersectando com as flags da região.
+* **Cache em Memória de Membros**: Cache de membership O(1) de alta performance que evita qualquer consulta SQL no hot path de proteção.
+* **Persistência de Membros no SQLite**: Tabela `region_members` estendida com metadados de auditoria (`addedByUuid`, `createdAt`, `updatedAt`).
+* **Comandos de Jogador em Português**:
+  - `/regiao info` (mostra o papel do jogador e informações contextuais).
+  - `/regiao membros listar/adicionar/remover/promover/rebaixar`.
+  - `/regiao sair` (saída voluntária de membros).
+  - `/regiao flags listar/ver/definir` (gerenciamento restrito de flags para donos e líderes).
+* **Comandos de Administração**:
+  - `/regions create player <regionId> <owner> [priority]` (criação manual e validação de limite/sobreposição).
+  - `/regions player owner/members/addmember/removemember/setrole` (gerenciamento administrativo de claims).
+* **Testes Automatizados**: Suíte de testes expandida para 60 casos com cobertura para resolução de cargos, herança de precedência, limites de claims e integridade transacional.
+
 ## [1.0.0] - 2026-06-25
 
 ### Added

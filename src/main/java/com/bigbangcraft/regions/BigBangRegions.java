@@ -10,7 +10,8 @@ import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.flag.FlagResolver;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.protection.*;
-import com.bigbangcraft.regions.region.RegionResolver;
+import com.bigbangcraft.regions.region.*;
+import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.repository.AuditRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
@@ -56,6 +57,26 @@ public class BigBangRegions implements ModInitializer {
     private static RegionRepository regionRepository;
     private static AuditService auditService;
     private static SelectionManager selectionManager;
+    private static RegionMembershipCache membershipCache;
+    private static RegionRoleResolver roleResolver;
+    private static RegionMembershipService membershipService;
+    private static RegionAccessService regionAccessService;
+
+    public static RegionMembershipCache getMembershipCache() {
+        return membershipCache;
+    }
+
+    public static RegionRoleResolver getRoleResolver() {
+        return roleResolver;
+    }
+
+    public static RegionMembershipService getMembershipService() {
+        return membershipService;
+    }
+
+    public static RegionAccessService getRegionAccessService() {
+        return regionAccessService;
+    }
 
     @Override
     public void onInitialize() {
@@ -86,11 +107,13 @@ public class BigBangRegions implements ModInitializer {
         RegionCache regionCache = new RegionCache();
         RegionResolver regionResolver = new RegionResolver(regionCache);
         FlagResolver flagResolver = new FlagResolver();
+        membershipCache = new RegionMembershipCache();
 
         // Load all regions into cache
         List<Region> regions = regionRepository.loadAll();
         for (Region r : regions) {
             regionCache.add(r);
+            membershipCache.loadFromRegion(r);
         }
         LOGGER.info("Loaded {} regions into cache.", regions.size());
 
@@ -98,7 +121,11 @@ public class BigBangRegions implements ModInitializer {
         selectionManager = new SelectionManager();
         int operatorFallback = configManager.getConfig().getPermissions().getOperatorFallbackLevel();
         PermissionManager permissionManager = new PermissionManager(operatorFallback);
-        protectionService = new ProtectionService(regionResolver, flagResolver, permissionManager, configManager);
+        
+        roleResolver = new RegionRoleResolver(membershipCache);
+        membershipService = new RegionMembershipService(regionRepository, membershipCache, auditService, roleResolver);
+        regionAccessService = new RegionAccessService(roleResolver, flagResolver, configManager);
+        protectionService = new ProtectionService(regionResolver, permissionManager, regionAccessService);
 
         // 6. Public API
         api = new BigBangRegionsApiImpl(regionResolver, protectionService);

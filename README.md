@@ -23,27 +23,45 @@ BigBang Regions é a fundação funcional do sistema de proteção territorial p
 ## Comandos Disponíveis
 O mod oferece comandos principais com os aliases `/regiao` e `/regioes`:
 
+### Comandos de Administração
 * `/regions pos1` - Salva a primeira posição (bloco atual) do jogador.
 * `/regions pos2` - Salva a segunda posição (bloco atual) do jogador.
-* `/regions create admin <id> [priority]` - Cria uma região cubóide administrativa com o ID e prioridade fornecidos.
+* `/regions create admin <id> [priority]` - Cria uma região cubóide administrativa.
+* `/regions create player <id> <owner> [priority]` - Cria um terreno de jogador manual atribuindo o proprietário.
 * `/regions delete <id>` - Deleta uma região.
-* `/regions info` - Mostra detalhes da região efetiva no bloco atual do jogador.
 * `/regions list [page]` - Lista todas as regiões registradas de forma paginada.
-* `/regions flag set <regionId> <flag> <allow|deny|inherit>` - Altera o valor de uma flag em uma região.
-* `/regions flag get <regionId> <flag>` - Mostra o valor explícito e efetivo de uma flag na região.
-* `/regions flags <regionId>` - Lista todas as flags customizadas configuradas na região.
-* `/regions reload` - Recarrega a configuração e limpa/recarrega as regiões da base de dados.
+* `/regions player owner <id> [newOwner]` - Mostra ou altera o dono de uma região de jogador.
+* `/regions player members <id>` - Lista membros de uma região administrativamente.
+* `/regions player addmember <id> <player>` - Adiciona membro administrativamente.
+* `/regions player removemember <id> <player>` - Remove membro administrativamente.
+* `/regions player setrole <id> <player> <leader|member>` - Define papel administrativamente.
+* `/regions reload` - Recarrega a configuração, limpa e recarrega os caches e banco de dados.
+
+### Comandos de Jogador
+* `/regiao info` - Mostra detalhes da região no bloco atual (papel, membros, e flags).
+* `/regiao membros listar` - Lista membros do terreno pertencente ao jogador.
+* `/regiao membros adicionar <player>` - Adiciona um membro (cargo MEMBER) no terreno.
+* `/regiao membros remover <player>` - Remove um membro do terreno.
+* `/regiao membros promover <player>` - Promove um membro a LEADER (apenas dono).
+* `/regiao membros rebaixar <player>` - Rebaixa um LEADER para MEMBER (apenas dono).
+* `/regiao sair` - Sai voluntariamente de uma região em que é membro.
+* `/regiao flags listar` - Lista todas as flags do seu terreno.
+* `/regiao flags ver <flag>` - Mostra o valor de uma flag específica.
+* `/regiao flags definir <flag> <allow|deny|inherit>` - Altera o valor de uma flag no seu terreno.
 
 ## Permissões
 * `bigbangregions.admin.create` - Permissão para selecionar posições e criar regiões.
+* `bigbangregions.admin.player.create` - Permissão para criar regiões de jogador.
+* `bigbangregions.admin.player.owner` - Permissão para gerenciar/visualizar proprietários de terrenos.
+* `bigbangregions.admin.player.members` - Permissão para gerenciar membros administrativamente.
 * `bigbangregions.admin.delete` - Permissão para deletar regiões.
-* `bigbangregions.admin.edit` - Permissão para editar propriedades e flags de regiões.
-* `bigbangregions.admin.flags` - Permissão para visualizar e configurar flags.
+* `bigbangregions.admin.edit` - Permissão para editar propriedades de regiões.
+* `bigbangregions.admin.flags` - Permissão para visualizar e configurar flags de forma administrativa.
 * `bigbangregions.admin.list` - Permissão para listar regiões.
 * `bigbangregions.admin.reload` - Permissão para recarregar o mod.
 * `bigbangregions.inspect` - Permissão para inspecionar regiões com `/regions info`.
 * `bigbangregions.bypass` - Permissão para ignorar todas as proteções territoriais.
-* `bigbangregions.bypass.<flag>` - Permissão para ignorar a proteção de uma flag específica (ex: `bigbangregions.bypass.pvp`).
+* `bigbangregions.bypass.<flag>` - Permissão para ignorar a proteção de uma flag específica.
 
 Se o LuckPerms ou outra API de permissões não estiver presente, o mod utiliza o nível do Operador (OP level 2) como fallback padrão.
 
@@ -58,6 +76,12 @@ Se o LuckPerms ou outra API de permissões não estiver presente, o mod utiliza 
   },
   "permissions": {
     "operatorFallbackLevel": 2
+  },
+  "playerRegions": {
+    "maxRegionsPerOwner": 1,
+    "rejectOverlapWithAdminRegions": true,
+    "rejectOverlapWithSystemRegions": true,
+    "rejectOverlapWithPlayerRegions": true
   },
   "defaults": {
     "global": {
@@ -78,6 +102,17 @@ Se o LuckPerms ou outra API de permissões não estiver presente, o mod utiliza 
       "door-use": "DENY",
       "redstone-use": "DENY",
       "entity-interact": "DENY",
+      "pvp": "DENY",
+      "item-pickup": "ALLOW",
+      "item-drop": "ALLOW"
+    },
+    "playerRegion": {
+      "player-build": "ALLOW",
+      "player-interact": "ALLOW",
+      "container-access": "ALLOW",
+      "door-use": "ALLOW",
+      "redstone-use": "ALLOW",
+      "entity-interact": "ALLOW",
       "pvp": "DENY",
       "item-pickup": "ALLOW",
       "item-drop": "ALLOW"

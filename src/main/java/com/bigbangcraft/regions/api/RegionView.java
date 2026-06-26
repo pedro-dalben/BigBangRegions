@@ -25,7 +25,7 @@ public record RegionView(
     public static RegionView from(Region region) {
         if (region == null) return null;
         Map<UUID, String> memberRoles = new HashMap<>();
-        region.getMembers().forEach((uuid, role) -> memberRoles.put(uuid, role.name()));
+        region.getMembers().forEach((uuid, member) -> memberRoles.put(uuid, member.getRole().name()));
         return new RegionView(
             region.getId(),
             region.getName(),

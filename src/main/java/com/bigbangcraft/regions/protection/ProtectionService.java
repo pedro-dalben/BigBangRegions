@@ -13,19 +13,16 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 
 import java.util.Optional;
-
 public class ProtectionService {
     private final RegionResolver regionResolver;
-    private final FlagResolver flagResolver;
     private final PermissionManager permissionManager;
-    private final ConfigManager configManager;
+    private final RegionAccessService accessService;
 
-    public ProtectionService(RegionResolver regionResolver, FlagResolver flagResolver,
-                             PermissionManager permissionManager, ConfigManager configManager) {
+    public ProtectionService(RegionResolver regionResolver, PermissionManager permissionManager,
+                             RegionAccessService accessService) {
         this.regionResolver = regionResolver;
-        this.flagResolver = flagResolver;
         this.permissionManager = permissionManager;
-        this.configManager = configManager;
+        this.accessService = accessService;
     }
 
     public ProtectionResult check(ProtectionContext context) {
@@ -33,47 +30,34 @@ public class ProtectionService {
         BlockPos pos = context.getTargetPosition();
         RegionAction action = context.getAction();
         String flagId = action.getFlagId();
-
-        // 1. Check administrative bypass
         ServerPlayer player = context.getPlayer();
-        if (player != null && permissionManager.hasBypass(player, flagId)) {
-            return new ProtectionResult(ProtectionDecision.BYPASS, "Player has bypass permission", null, flagId);
-        }
 
         // 2. Resolve region
         Optional<Region> optRegion = regionResolver.resolveRegionAt(dimension, pos.getX(), pos.getY(), pos.getZ());
+        
+        // 3. No region -> NO_REGION
         if (optRegion.isEmpty()) {
             return new ProtectionResult(ProtectionDecision.NO_REGION, "No region at position", null, flagId);
         }
 
         Region region = optRegion.get();
 
-        // 3. Handle actor rules
+        // 4. Administrative bypass
+        if (player != null && permissionManager.hasBypass(player, flagId)) {
+            return new ProtectionResult(ProtectionDecision.BYPASS, "ALLOW_REASON_BYPASS", region, flagId);
+        }
+
+        // Handle UNKNOWN actor type
         ActorType actorType = context.getActorType();
-        if (actorType == ActorType.UNKNOWN) {
-            // "UNKNOWN -> negar ações destrutivas dentro de regiões protegidas quando a origem não puder ser validada."
+        if (actorType == ActorType.UNKNOWN && player == null) {
             if (action == RegionAction.BLOCK_BREAK || action == RegionAction.BLOCK_PLACE || action == RegionAction.PVP) {
                 return new ProtectionResult(ProtectionDecision.DENY, "Unknown actor performing destructive action", region, flagId);
             }
         }
 
-        // 4. If actor is player (or fake player acting as player), check region membership
-        if (player != null && isMemberAction(action)) {
-            RegionRole role = region.getRole(player.getUUID());
-            if (role.isAtLeast(RegionRole.MEMBER)) {
-                return new ProtectionResult(ProtectionDecision.ALLOW, "Player is member of the region", region, flagId);
-            }
-        }
-
-        // 5. Evaluate the flag policy
-        Config config = configManager.getConfig();
-        EffectiveRegionPolicy effectivePolicy = flagResolver.resolve(region, flagId, config);
-
-        if (effectivePolicy.isAllowed()) {
-            return new ProtectionResult(ProtectionDecision.ALLOW, "Flag policy is ALLOW (" + effectivePolicy.source() + ")", region, flagId);
-        } else {
-            return new ProtectionResult(ProtectionDecision.DENY, "Flag policy is DENY (" + effectivePolicy.source() + ")", region, flagId);
-        }
+        // 5 & 6. Evaluate access based on type and roles/flags via RegionAccessService
+        java.util.UUID playerUuid = player != null ? player.getUUID() : null;
+        return accessService.checkAccess(region, playerUuid, action);
     }
 
     public boolean canPlayer(ServerPlayer player, BlockPos pos, RegionAction action) {
@@ -82,10 +66,5 @@ public class ProtectionService {
                 .player(player)
                 .build();
         return check(context).isAllowed();
-    }
-
-    private boolean isMemberAction(RegionAction action) {
-        // PVP applies to everyone (even region members)
-        return action != RegionAction.PVP;
     }
 }

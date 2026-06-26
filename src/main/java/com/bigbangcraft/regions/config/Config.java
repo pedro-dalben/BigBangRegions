@@ -8,6 +8,7 @@ public class Config {
     private DefaultPriorities defaultPriorities = new DefaultPriorities();
     private Permissions permissions = new Permissions();
     private Defaults defaults = new Defaults();
+    private PlayerRegionsConfig playerRegions = new PlayerRegionsConfig();
 
     public static class DefaultPriorities {
         private int systemRegion = 10000;
@@ -28,7 +29,7 @@ public class Config {
     public static class Defaults {
         private Map<String, String> global = new HashMap<>();
         private Map<String, String> adminRegion = new HashMap<>();
-
+        private Map<String, String> playerRegion = new HashMap<>();
         public Defaults() {
             // Global default policies
             global.put("player-build", "ALLOW");
@@ -51,14 +52,66 @@ public class Config {
             adminRegion.put("pvp", "DENY");
             adminRegion.put("item-pickup", "ALLOW");
             adminRegion.put("item-drop", "ALLOW");
+
+            // Player Region default policies
+            playerRegion.put("player-build", "ALLOW");
+            playerRegion.put("player-interact", "ALLOW");
+            playerRegion.put("container-access", "ALLOW");
+            playerRegion.put("door-use", "ALLOW");
+            playerRegion.put("redstone-use", "ALLOW");
+            playerRegion.put("entity-interact", "ALLOW");
+            playerRegion.put("pvp", "DENY");
+            playerRegion.put("item-pickup", "ALLOW");
+            playerRegion.put("item-drop", "ALLOW");
         }
 
         public Map<String, String> getGlobal() { return global; }
         public Map<String, String> getAdminRegion() { return adminRegion; }
+        public Map<String, String> getPlayerRegion() { return playerRegion; }
+    }
+
+    public static class PlayerRegionsConfig {
+        private int maxRegionsPerOwner = 1;
+        private boolean rejectOverlapWithAdminRegions = true;
+        private boolean rejectOverlapWithSystemRegions = true;
+        private boolean rejectOverlapWithPlayerRegions = true;
+
+        public int getMaxRegionsPerOwner() {
+            return maxRegionsPerOwner;
+        }
+
+        public void setMaxRegionsPerOwner(int maxRegionsPerOwner) {
+            this.maxRegionsPerOwner = maxRegionsPerOwner;
+        }
+
+        public boolean isRejectOverlapWithAdminRegions() {
+            return rejectOverlapWithAdminRegions;
+        }
+
+        public void setRejectOverlapWithAdminRegions(boolean val) {
+            this.rejectOverlapWithAdminRegions = val;
+        }
+
+        public boolean isRejectOverlapWithSystemRegions() {
+            return rejectOverlapWithSystemRegions;
+        }
+
+        public void setRejectOverlapWithSystemRegions(boolean val) {
+            this.rejectOverlapWithSystemRegions = val;
+        }
+
+        public boolean isRejectOverlapWithPlayerRegions() {
+            return rejectOverlapWithPlayerRegions;
+        }
+
+        public void setRejectOverlapWithPlayerRegions(boolean val) {
+            this.rejectOverlapWithPlayerRegions = val;
+        }
     }
 
     public int getSchemaVersion() { return schemaVersion; }
     public DefaultPriorities getDefaultPriorities() { return defaultPriorities; }
     public Permissions getPermissions() { return permissions; }
     public Defaults getDefaults() { return defaults; }
+    public PlayerRegionsConfig getPlayerRegions() { return playerRegions; }
 }
