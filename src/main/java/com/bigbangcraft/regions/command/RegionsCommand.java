@@ -241,6 +241,11 @@ public class RegionsCommand {
             .then(Commands.literal("explorar")
                 .executes(RegionsCommand::teleportToExplorationZone)
             )
+            .then(Commands.literal("expandir")
+                .then(Commands.argument("tamanho", IntegerArgumentType.integer(1, 256))
+                    .executes(RegionsCommand::resizeClaim)
+                )
+            )
             .then(Commands.literal("reload").executes(RegionsCommand::reloadMod));
 
         LiteralCommandNode<CommandSourceStack> mainNode = dispatcher.register(builder);
@@ -791,6 +796,24 @@ public class RegionsCommand {
         try {
             BigBangRegions.getExplorationZoneService().teleportToExplorationZone(player);
             source.sendSuccess(() -> Component.literal("§aTeleportado para a zona de exploracao!").withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int resizeClaim(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        int newSize = IntegerArgumentType.getInteger(context, "tamanho");
+        try {
+            int result = BigBangRegions.getAllocationCoordinator().resizeClaim(player, newSize);
+            source.sendSuccess(() -> Component.literal("§aRegiao expandida para " + result + "x" + result + " blocos!").withStyle(ChatFormatting.GREEN), false);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));

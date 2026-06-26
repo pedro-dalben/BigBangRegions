@@ -6,7 +6,7 @@ public class Region {
     private final String id;
     private final String name;
     private final RegionType type;
-    private final RegionBounds bounds;
+    private RegionBounds bounds;
     private int priority;
     private UUID ownerUuid;
     private final UUID createdByUuid;
@@ -55,6 +55,12 @@ public class Region {
 
     public RegionBounds getBounds() {
         return bounds;
+    }
+
+    public void setBounds(RegionBounds newBounds) {
+        Objects.requireNonNull(newBounds, "Bounds cannot be null");
+        this.bounds = newBounds;
+        this.updatedAt = System.currentTimeMillis();
     }
 
     public int getPriority() {
