@@ -344,6 +344,19 @@ public class TerrainAllocationCoordinator {
         }
     }
 
+    public void cleanCooldowns() {
+        long now = System.currentTimeMillis();
+        Config.SchedulerConfig sc = configManager.getConfig().getPlayerLandAllocation().getScheduler();
+        long creationCooldownMs = sc.getCreationCooldownSeconds() * 1000L;
+        long homeCooldownMs = sc.getHomeTeleportCooldownSeconds() * 1000L;
+        if (creationCooldownMs > 0) {
+            creationCooldowns.entrySet().removeIf(e -> now - e.getValue() >= creationCooldownMs);
+        }
+        if (homeCooldownMs > 0) {
+            homeTeleportCooldowns.entrySet().removeIf(e -> now - e.getValue() >= homeCooldownMs);
+        }
+    }
+
     public int resizeClaim(ServerPlayer player, int newSize) {
         UUID ownerUuid = player.getUUID();
         Optional<Region> playerRegion = regionCache.getAll().stream()

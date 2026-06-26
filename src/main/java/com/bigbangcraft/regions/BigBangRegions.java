@@ -22,6 +22,7 @@ import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import com.bigbangcraft.regions.util.MessageHelper;
 import com.bigbangcraft.regions.util.SelectionManager;
+import com.bigbangcraft.regions.config.Config;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -52,6 +53,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.UUID;
 
 public class BigBangRegions implements ModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions");
@@ -211,12 +213,24 @@ public class BigBangRegions implements ModInitializer {
                     boundaryRenderer.tick(p);
                 }
             }
+            if (server.getTickCount() % 200 == 0) {
+                MessageHelper.cleanCache();
+                if (allocationCoordinator != null) {
+                    allocationCoordinator.cleanCooldowns();
+                }
+            }
         });
 
         // 12. Player disconnect cleanup
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-            if (entryExitService != null && handler.getPlayer() != null) {
-                entryExitService.removePlayer(handler.getPlayer().getUUID());
+            if (handler.getPlayer() != null) {
+                UUID uuid = handler.getPlayer().getUUID();
+                if (entryExitService != null) {
+                    entryExitService.removePlayer(uuid);
+                }
+                if (boundaryRenderer != null) {
+                    boundaryRenderer.setVisibility(uuid, false);
+                }
             }
         });
 
