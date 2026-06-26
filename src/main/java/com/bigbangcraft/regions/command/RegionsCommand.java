@@ -238,6 +238,9 @@ public class RegionsCommand {
                     .executes(context -> setBoundaries(context, false))
                 )
             )
+            .then(Commands.literal("explorar")
+                .executes(RegionsCommand::teleportToExplorationZone)
+            )
             .then(Commands.literal("reload").executes(RegionsCommand::reloadMod));
 
         LiteralCommandNode<CommandSourceStack> mainNode = dispatcher.register(builder);
@@ -772,6 +775,27 @@ public class RegionsCommand {
             source.sendSuccess(() -> Component.literal("§eLimites visiveis desativados.").withStyle(ChatFormatting.YELLOW), false);
         }
         return 1;
+    }
+
+    private static int teleportToExplorationZone(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.player.explore")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        try {
+            BigBangRegions.getExplorationZoneService().teleportToExplorationZone(player);
+            source.sendSuccess(() -> Component.literal("§aTeleportado para a zona de exploracao!").withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
     }
 
     private static int adminAllocate(CommandContext<CommandSourceStack> context) {

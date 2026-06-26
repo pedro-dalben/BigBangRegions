@@ -70,6 +70,7 @@ public class BigBangRegions implements ModInitializer {
     private static TerrainAllocationCoordinator allocationCoordinator;
     private static AllocationScheduler allocationScheduler;
     private static RegionCache regionCache;
+    private static ExplorationZoneService explorationZoneService;
     private static RegionEntryExitService entryExitService;
     private static RegionBoundaryRenderer boundaryRenderer;
 
@@ -99,6 +100,10 @@ public class BigBangRegions implements ModInitializer {
 
     public static RegionBoundaryRenderer getBoundaryRenderer() {
         return boundaryRenderer;
+    }
+
+    public static ExplorationZoneService getExplorationZoneService() {
+        return explorationZoneService;
     }
 
     @Override
@@ -170,10 +175,13 @@ public class BigBangRegions implements ModInitializer {
         // 8. Region Entry/Exit notification service
         entryExitService = new RegionEntryExitService(regionCache, roleResolver, configManager);
 
-        // 9. Region Boundary Renderer (visual particles)
+        // 9. Exploration Zone Service
+        explorationZoneService = new ExplorationZoneService(configManager);
+
+        // 10. Region Boundary Renderer (visual particles)
         boundaryRenderer = new RegionBoundaryRenderer(regionCache, roleResolver);
 
-        // 10. Public API
+        // 11. Public API
         api = new BigBangRegionsApiImpl(regionResolver, protectionService);
 
         // 10. Command registration
