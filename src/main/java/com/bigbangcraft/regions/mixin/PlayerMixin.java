@@ -35,12 +35,9 @@ public class PlayerMixin {
             if (player.isRemoved() || player.isDeadOrDying()) {
                 return;
             }
+            // Cancel at HEAD before vanilla removes item from inventory.
+            // If denied, simply return null — the item stays naturally in the player's inventory.
             if (!BigBangRegions.handlePlayerAction(player, player.blockPosition(), RegionAction.ITEM_DROP)) {
-                player.getInventory().add(stack);
-                if (!stack.isEmpty()) {
-                    player.containerMenu.setCarried(stack);
-                }
-                player.containerMenu.broadcastChanges();
                 cir.setReturnValue(null);
             }
         }

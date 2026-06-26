@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.Statement;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,6 +25,19 @@ public class PlayerRegionHomeRepositoryIntegrationTest {
         dbManager = new DatabaseManager(tempDir.resolve("test_homes.db"));
         dbManager.initialize();
         repository = new PlayerRegionHomeRepository(dbManager);
+
+        // Insert a minimal region so the FK constraint in player_region_homes is satisfied
+        try (Connection conn = dbManager.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("INSERT INTO regions (id, name, type, dimensionKey, " +
+                    "minX, minY, minZ, maxX, maxY, maxZ, priority, " +
+                    "ownerUuid, createdByUuid, createdAt, updatedAt, status) " +
+                    "VALUES ('reg1', 'Test Region', 'PLAYER_REGION', 'minecraft:overworld', " +
+                    "0, -64, 0, 50, 320, 50, 100, " +
+                    "'00000000-0000-0000-0000-000000000001', " +
+                    "'00000000-0000-0000-0000-000000000002', " +
+                    "1000, 1000, 'ACTIVE')");
+        }
     }
 
     @AfterEach
