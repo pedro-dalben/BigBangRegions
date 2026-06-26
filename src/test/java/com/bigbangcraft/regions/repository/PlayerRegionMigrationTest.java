@@ -155,11 +155,22 @@ public class PlayerRegionMigrationTest {
         try (Connection conn = dbManager.getConnection();
              Statement stmt = conn.createStatement()) {
 
-            // Check schema version is 2
+            // Check schema version is 3
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(2, rs.getInt(1));
+                assertEquals(3, rs.getInt(1));
             }
+
+            // Verify V3 tables exist
+            List<String> tables = new ArrayList<>();
+            try (ResultSet rs = stmt.executeQuery("SELECT name FROM sqlite_master WHERE type='table';")) {
+                while (rs.next()) {
+                    tables.add(rs.getString("name"));
+                }
+            }
+            assertTrue(tables.contains("player_region_allocation_requests"));
+            assertTrue(tables.contains("plot_slots"));
+            assertTrue(tables.contains("player_region_homes"));
 
             // Verify columns added in V2
             List<String> columns = new ArrayList<>();
