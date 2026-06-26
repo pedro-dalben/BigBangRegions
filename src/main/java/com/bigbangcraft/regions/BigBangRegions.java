@@ -1,5 +1,6 @@
 package com.bigbangcraft.regions;
 
+import com.bigbangcraft.regions.allocation.*;
 import com.bigbangcraft.regions.api.BigBangRegionsApi;
 import com.bigbangcraft.regions.api.BigBangRegionsApiImpl;
 import com.bigbangcraft.regions.audit.AuditService;
@@ -12,7 +13,10 @@ import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.protection.*;
 import com.bigbangcraft.regions.region.*;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
+import com.bigbangcraft.regions.repository.AllocationRequestRepository;
 import com.bigbangcraft.regions.repository.AuditRepository;
+import com.bigbangcraft.regions.repository.PlayerRegionHomeRepository;
+import com.bigbangcraft.regions.repository.PlotSlotRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import com.bigbangcraft.regions.util.MessageHelper;
@@ -20,6 +24,7 @@ import com.bigbangcraft.regions.util.SelectionManager;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
@@ -61,6 +66,9 @@ public class BigBangRegions implements ModInitializer {
     private static RegionRoleResolver roleResolver;
     private static RegionMembershipService membershipService;
     private static RegionAccessService regionAccessService;
+    private static TerrainAllocationCoordinator allocationCoordinator;
+    private static AllocationScheduler allocationScheduler;
+    private static RegionCache regionCache;
 
     public static RegionMembershipCache getMembershipCache() {
         return membershipCache;
@@ -76,6 +84,10 @@ public class BigBangRegions implements ModInitializer {
 
     public static RegionAccessService getRegionAccessService() {
         return regionAccessService;
+    }
+
+    public static TerrainAllocationCoordinator getAllocationCoordinator() {
+        return allocationCoordinator;
     }
 
     @Override
@@ -104,7 +116,7 @@ public class BigBangRegions implements ModInitializer {
         auditService = new AuditService(auditRepository);
 
         // 4. Cache and Resolver
-        RegionCache regionCache = new RegionCache();
+        regionCache = new RegionCache();
         RegionResolver regionResolver = new RegionResolver(regionCache);
         FlagResolver flagResolver = new FlagResolver();
         membershipCache = new RegionMembershipCache();
@@ -117,7 +129,24 @@ public class BigBangRegions implements ModInitializer {
         }
         LOGGER.info("Loaded {} regions into cache.", regions.size());
 
-        // 5. Services and Managers
+        // 5. Allocation repositories
+        AllocationRequestRepository allocationRequestRepository = new AllocationRequestRepository(databaseManager);
+        PlotSlotRepository plotSlotRepository = new PlotSlotRepository(databaseManager);
+        PlayerRegionHomeRepository playerRegionHomeRepository = new PlayerRegionHomeRepository(databaseManager);
+
+        // 6. Allocation services
+        BiomeOptionRegistry biomeOptionRegistry = new BiomeOptionRegistry(configManager);
+        biomeOptionRegistry.load();
+        BiomeSearchService biomeSearchService = new BiomeSearchService(configManager);
+        PlotSlotService plotSlotService = new PlotSlotService(configManager, plotSlotRepository, regionCache);
+        allocationCoordinator = new TerrainAllocationCoordinator(
+            configManager, allocationRequestRepository, plotSlotRepository, plotSlotService,
+            playerRegionHomeRepository, regionRepository, biomeSearchService, biomeOptionRegistry,
+            regionCache, membershipCache
+        );
+        allocationScheduler = new AllocationScheduler(allocationCoordinator, configManager);
+
+        // 7. Services and Managers
         selectionManager = new SelectionManager();
         int operatorFallback = configManager.getConfig().getPermissions().getOperatorFallbackLevel();
         PermissionManager permissionManager = new PermissionManager(operatorFallback);
@@ -127,19 +156,29 @@ public class BigBangRegions implements ModInitializer {
         regionAccessService = new RegionAccessService(roleResolver, flagResolver, configManager);
         protectionService = new ProtectionService(regionResolver, permissionManager, regionAccessService);
 
-        // 6. Public API
+        // 8. Public API
         api = new BigBangRegionsApiImpl(regionResolver, protectionService);
 
-        // 7. Command registration
+        // 9. Command registration
         RegionsCommand.initialize(permissionManager, selectionManager, regionCache, regionRepository, regionResolver, auditService, configManager);
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             RegionsCommand.register(dispatcher);
         });
 
-        // 8. Register Event Listeners
+        // 10. Register Event Listeners
         registerListeners();
 
-        // 9. Clean shutdown handler
+        // 11. Server tick scheduler for allocation processing
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            LOGGER.info("Allocation scheduler started.");
+        });
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (allocationScheduler != null) {
+                allocationScheduler.tick(server);
+            }
+        });
+
+        // 12. Clean shutdown handler
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             LOGGER.info("Server is stopping. Shutting down BigBang Regions services...");
             if (auditService != null) {

@@ -110,6 +110,21 @@ public class RegionsCommand {
                         )
                     )
                 )
+                .then(Commands.literal("allocate")
+                    .then(Commands.argument("player", StringArgumentType.word())
+                        .then(Commands.argument("bioma", StringArgumentType.greedyString())
+                            .executes(RegionsCommand::adminAllocate)
+                        )
+                    )
+                )
+                .then(Commands.literal("allocation")
+                    .then(Commands.argument("player", StringArgumentType.word())
+                        .executes(RegionsCommand::adminAllocationStatus)
+                        .then(Commands.literal("cancel")
+                            .executes(RegionsCommand::adminCancelAllocation)
+                        )
+                    )
+                )
             )
             .then(Commands.literal("delete")
                 .then(Commands.argument("id", StringArgumentType.word())
@@ -188,6 +203,17 @@ public class RegionsCommand {
             )
             .then(Commands.literal("sair")
                 .executes(RegionsCommand::leavePlayerRegion)
+            )
+            .then(Commands.literal("biomas")
+                .executes(RegionsCommand::listBiomes)
+            )
+            .then(Commands.literal("criar")
+                .then(Commands.argument("bioma", StringArgumentType.greedyString())
+                    .executes(RegionsCommand::createPlayerAllocation)
+                )
+            )
+            .then(Commands.literal("casa")
+                .executes(RegionsCommand::teleportHome)
             )
             .then(Commands.literal("reload").executes(RegionsCommand::reloadMod));
 
@@ -542,6 +568,157 @@ public class RegionsCommand {
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("Erro ao recarregar o mod. Veja os logs para mais detalhes."));
+            return 0;
+        }
+    }
+
+    private static int listBiomes(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        try {
+            var options = BigBangRegions.getAllocationCoordinator().getBiomeOptions();
+            if (options.isEmpty()) {
+                source.sendSuccess(() -> Component.literal("Nenhuma opção de bioma disponível.").withStyle(ChatFormatting.YELLOW), false);
+                return 1;
+            }
+            StringBuilder sb = new StringBuilder("§6Opções de biomas disponíveis:\n");
+            for (var opt : options) {
+                sb.append("§e- ").append(opt.getKey()).append(" §7(").append(opt.getDisplayName()).append(")\n");
+            }
+            String result = sb.toString();
+            source.sendSuccess(() -> Component.literal(result), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Erro ao listar biomas: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int createPlayerAllocation(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.player.create")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        String biome = StringArgumentType.getString(context, "bioma");
+        try {
+            String requestId = BigBangRegions.getAllocationCoordinator().createRequest(player, biome, "player_command");
+            source.sendSuccess(() -> Component.literal("§aPedido de alocação criado! ID: " + requestId)
+                .withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int teleportHome(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.player.home")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        try {
+            boolean success = BigBangRegions.getAllocationCoordinator().teleportToHome(player);
+            if (success) {
+                source.sendSuccess(() -> Component.literal("§aTeleportado para sua casa na região!").withStyle(ChatFormatting.GREEN), false);
+            }
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int adminAllocate(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.player.allocate")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        String playerName = StringArgumentType.getString(context, "player");
+        String biome = StringArgumentType.getString(context, "bioma");
+        try {
+            var opt = lookupProfile(source, playerName);
+            if (opt.isEmpty()) {
+                source.sendFailure(Component.literal("Jogador não encontrado: " + playerName));
+                return 0;
+            }
+            ServerPlayer targetPlayer = source.getServer().getPlayerList().getPlayer(opt.get().getId());
+            if (targetPlayer == null) {
+                source.sendFailure(Component.literal("Jogador '" + playerName + "' não está online."));
+                return 0;
+            }
+            String requestId = BigBangRegions.getAllocationCoordinator().createRequest(targetPlayer, biome, "admin_command");
+            source.sendSuccess(() -> Component.literal("§aPedido de alocação criado para " + playerName + "! ID: " + requestId)
+                .withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int adminAllocationStatus(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.player.allocation.inspect")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        String playerName = StringArgumentType.getString(context, "player");
+        try {
+            var opt = lookupProfile(source, playerName);
+            if (opt.isEmpty()) {
+                source.sendFailure(Component.literal("Jogador não encontrado: " + playerName));
+                return 0;
+            }
+            var request = BigBangRegions.getAllocationCoordinator().getActiveRequest(opt.get().getId());
+            if (request == null) {
+                source.sendSuccess(() -> Component.literal("Jogador '" + playerName + "' não possui pedido de alocação ativo.")
+                    .withStyle(ChatFormatting.YELLOW), false);
+                return 1;
+            }
+            source.sendSuccess(() -> Component.literal("§6Pedido de alocação:\n" +
+                "§eID: §f" + request.getId() + "\n" +
+                "§eEstado: §f" + request.getState() + "\n" +
+                "§eBioma: §f" + request.getRequestedBiomeOption() + "\n" +
+                "§eTentativas: §f" + request.getAttempts() + "\n" +
+                "§eCriado em: §f" + new java.util.Date(request.getCreatedAt())), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int adminCancelAllocation(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.player.allocation.cancel")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        String playerName = StringArgumentType.getString(context, "player");
+        try {
+            var opt = lookupProfile(source, playerName);
+            if (opt.isEmpty()) {
+                source.sendFailure(Component.literal("Jogador não encontrado: " + playerName));
+                return 0;
+            }
+            BigBangRegions.getAllocationCoordinator().cancelRequest(opt.get().getId());
+            source.sendSuccess(() -> Component.literal("§aPedido de alocação cancelado para " + playerName + ".")
+                .withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
             return 0;
         }
     }
