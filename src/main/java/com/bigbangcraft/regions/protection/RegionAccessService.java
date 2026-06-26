@@ -27,12 +27,6 @@ public class RegionAccessService {
         Config config = configManager.getConfig();
 
         if (region.getType() == RegionType.SYSTEM_REGION || region.getType() == RegionType.ADMIN_REGION) {
-            if (playerUuid != null && action != RegionAction.PVP) {
-                RegionRole role = roleResolver.resolveRole(region, playerUuid);
-                if (role.isAtLeast(RegionRole.MEMBER)) {
-                    return new ProtectionResult(ProtectionDecision.ALLOW, "ALLOW_REASON_" + role.name(), region, flagId);
-                }
-            }
             EffectiveRegionPolicy effectivePolicy = flagResolver.resolve(region, flagId, config);
             if (effectivePolicy.isAllowed()) {
                 return new ProtectionResult(ProtectionDecision.ALLOW, "ALLOW_REASON_REGION_FLAG", region, flagId);

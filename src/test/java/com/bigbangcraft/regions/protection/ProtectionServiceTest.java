@@ -140,6 +140,13 @@ public class ProtectionServiceTest {
         // Region covers position
         when(regionResolver.resolveRegionAt("minecraft:overworld", 10, 10, 10)).thenReturn(Optional.of(region));
 
+        // Members of ADMIN_REGION are now subject to flag checks
+        // Set flag resolver to return ALLOW for the flag check
+        Config config = new Config();
+        when(configManager.getConfig()).thenReturn(config);
+        when(flagResolver.resolve(region, "player-build", config))
+                .thenReturn(new EffectiveRegionPolicy(FlagPolicy.ALLOW, "region_explicit", region));
+
         membershipCache.loadFromRegion(region);
 
         ProtectionContext context = new ProtectionContext.Builder(RegionAction.BLOCK_BREAK, level, pos)
@@ -148,7 +155,7 @@ public class ProtectionServiceTest {
 
         ProtectionResult result = protectionService.check(context);
         assertEquals(ProtectionDecision.ALLOW, result.getDecision());
-        assertEquals("ALLOW_REASON_MEMBER", result.getReason());
+        assertEquals("ALLOW_REASON_REGION_FLAG", result.getReason());
     }
 
     @Test
