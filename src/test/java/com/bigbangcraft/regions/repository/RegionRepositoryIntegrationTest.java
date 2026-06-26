@@ -2,6 +2,7 @@ package com.bigbangcraft.regions.repository;
 
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
+import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.domain.RegionType;
 import com.bigbangcraft.regions.storage.DatabaseManager;
@@ -10,7 +11,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,13 +46,15 @@ public class RegionRepositoryIntegrationTest {
         UUID member = UUID.randomUUID();
 
         RegionBounds bounds = new RegionBounds("overworld", 0, 0, 0, 100, 100, 100);
-        Region region = new Region("reg1", "Main Region", RegionType.PLAYER_REGION, bounds, 100, owner, creator, 1000L, 1000L, "ACTIVE");
-        region.setMember(member, RegionRole.MEMBER);
+        Map<UUID, RegionMember> members = new HashMap<>();
+        members.put(member, new RegionMember(member, RegionRole.MEMBER, creator, 1000L, 1000L));
+        Region region = new Region("reg1", "Main Region", RegionType.PLAYER_REGION, bounds, 100, owner, creator, 1000L, 1000L, "ACTIVE", members);
         region.setFlag("pvp", "DENY");
         region.setFlag("player-build", "ALLOW");
 
         // Create / Save
         repository.save(region);
+        repository.saveMembers(region.getId(), region.getMembers());
 
         // Load & Read
         List<Region> loaded = repository.loadAll();
@@ -74,8 +79,10 @@ public class RegionRepositoryIntegrationTest {
 
         // Update
         reg.setFlag("pvp", "ALLOW");
-        reg.setMember(member, RegionRole.LEADER);
         repository.save(reg);
+        Map<UUID, RegionMember> updatedMembers = new HashMap<>(reg.getMembers());
+        updatedMembers.put(member, new RegionMember(member, RegionRole.LEADER, creator, 1000L, System.currentTimeMillis()));
+        repository.saveMembers("reg1", updatedMembers);
 
         List<Region> updatedList = repository.loadAll();
         assertEquals(1, updatedList.size());

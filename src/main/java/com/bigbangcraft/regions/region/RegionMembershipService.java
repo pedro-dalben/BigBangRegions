@@ -7,6 +7,8 @@ import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.repository.RegionRepository;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 public class RegionMembershipService {
@@ -35,10 +37,10 @@ public class RegionMembershipService {
             throw new IllegalArgumentException("Cannot add the owner as a member");
         }
 
-        // if member already exists with the same role
-        RegionMember existing = region.getMembers().get(memberUuid);
-        if (existing != null) {
-            if (existing.getRole() == role) {
+        // if member already exists with the same role (use cache since region is immutable)
+        RegionRole existingRole = cache.getRole(region.getId(), memberUuid, region.getOwnerUuid());
+        if (existingRole != RegionRole.VISITOR && existingRole != RegionRole.OWNER) {
+            if (existingRole == role) {
                 throw new IllegalArgumentException("Player is already a " + role.name() + " in this region");
             }
         }
@@ -62,13 +64,14 @@ public class RegionMembershipService {
             }
         }
 
-        // Perform additions
+        // Perform additions — build new members map (immutable region)
         long now = System.currentTimeMillis();
         RegionMember member = new RegionMember(memberUuid, role, actorUuid, now, now);
-        region.setMember(member);
+        Map<UUID, RegionMember> updatedMembers = new HashMap<>(region.getMembers());
+        updatedMembers.put(memberUuid, member);
         
         // Save to DB and update cache
-        repository.save(region);
+        repository.saveMembers(region.getId(), updatedMembers);
         cache.updateMember(region.getId(), memberUuid, role);
 
         // Audit log
@@ -84,8 +87,8 @@ public class RegionMembershipService {
             throw new IllegalArgumentException("Cannot remove the owner of the region");
         }
 
-        RegionMember existing = region.getMembers().get(memberUuid);
-        if (existing == null) {
+        RegionRole existingRole = cache.getRole(region.getId(), memberUuid, region.getOwnerUuid());
+        if (existingRole == RegionRole.VISITOR || existingRole == RegionRole.OWNER) {
             throw new IllegalArgumentException("Player is not a member of this region");
         }
 
@@ -99,7 +102,7 @@ public class RegionMembershipService {
                 throw new IllegalArgumentException("Only owners and leaders can remove members");
             }
             if (actorRole == RegionRole.LEADER) {
-                if (existing.getRole() == RegionRole.LEADER) {
+                if (existingRole == RegionRole.LEADER) {
                     throw new IllegalArgumentException("Leaders cannot remove other leaders");
                 }
             }
@@ -108,14 +111,15 @@ public class RegionMembershipService {
             }
         }
 
-        // Perform removal
-        region.removeMember(memberUuid);
-        repository.save(region);
+        // Perform removal — build new members map (immutable region)
+        Map<UUID, RegionMember> updatedMembers = new HashMap<>(region.getMembers());
+        updatedMembers.remove(memberUuid);
+        repository.saveMembers(region.getId(), updatedMembers);
         cache.updateMember(region.getId(), memberUuid, null);
 
         // Audit log
         String metadata = "{\"removedByUuid\":\"" + (actorUuid != null ? actorUuid.toString() : "admin") + "\"}";
-        auditService.log(region.getId(), actorUuid, "REMOVE_MEMBER", existing.getRole().name(), null, metadata);
+        auditService.log(region.getId(), actorUuid, "REMOVE_MEMBER", existingRole.name(), null, metadata);
     }
 
     public void setRole(Region region, UUID actorUuid, UUID memberUuid, RegionRole role, boolean isAdmin) {
@@ -129,12 +133,12 @@ public class RegionMembershipService {
             throw new IllegalArgumentException("Cannot set member role for the owner");
         }
 
-        RegionMember existing = region.getMembers().get(memberUuid);
-        if (existing == null) {
+        RegionRole existingRole = cache.getRole(region.getId(), memberUuid, region.getOwnerUuid());
+        if (existingRole == RegionRole.VISITOR || existingRole == RegionRole.OWNER) {
             throw new IllegalArgumentException("Player is not a member of this region");
         }
 
-        if (existing.getRole() == role) {
+        if (existingRole == role) {
             throw new IllegalArgumentException("Player already has this role");
         }
 
@@ -152,11 +156,12 @@ public class RegionMembershipService {
             }
         }
 
-        RegionRole oldRole = existing.getRole();
-        existing.setRole(role);
-        existing.setUpdatedAt(System.currentTimeMillis());
-        // To persist properly we must call save on repo
-        repository.save(region);
+        RegionRole oldRole = existingRole;
+        RegionMember updatedMember = new RegionMember(memberUuid, role, actorUuid,
+            System.currentTimeMillis(), System.currentTimeMillis());
+        Map<UUID, RegionMember> updatedMembers = new HashMap<>(region.getMembers());
+        updatedMembers.put(memberUuid, updatedMember);
+        repository.saveMembers(region.getId(), updatedMembers);
         cache.updateMember(region.getId(), memberUuid, role);
 
         // Audit log
@@ -173,17 +178,18 @@ public class RegionMembershipService {
             throw new IllegalArgumentException("The owner cannot leave the region");
         }
 
-        RegionMember existing = region.getMembers().get(memberUuid);
-        if (existing == null) {
+        RegionRole existingRole = cache.getRole(region.getId(), memberUuid, region.getOwnerUuid());
+        if (existingRole == RegionRole.VISITOR || existingRole == RegionRole.OWNER) {
             throw new IllegalArgumentException("You are not a member of this region");
         }
 
-        region.removeMember(memberUuid);
-        repository.save(region);
+        Map<UUID, RegionMember> updatedMembers = new HashMap<>(region.getMembers());
+        updatedMembers.remove(memberUuid);
+        repository.saveMembers(region.getId(), updatedMembers);
         cache.updateMember(region.getId(), memberUuid, null);
 
         // Audit log
         String metadata = "{\"source\":\"player-leave\"}";
-        auditService.log(region.getId(), memberUuid, "MEMBER_LEAVE", existing.getRole().name(), null, metadata);
+        auditService.log(region.getId(), memberUuid, "MEMBER_LEAVE", existingRole.name(), null, metadata);
     }
 }

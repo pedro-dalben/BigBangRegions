@@ -9,6 +9,8 @@ import com.bigbangcraft.regions.domain.RegionType;
 import com.bigbangcraft.regions.region.RegionRoleResolver;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -24,12 +26,12 @@ public class RegionRoleResolverTest {
         UUID member = UUID.randomUUID();
         UUID visitor = UUID.randomUUID();
 
-        Region region = new Region("reg1", "Player Claim", RegionType.PLAYER_REGION,
-                new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, owner, UUID.randomUUID(), 0, 0, "ACTIVE");
+        Map<UUID, RegionMember> members = new HashMap<>();
+        members.put(leader, new RegionMember(leader, RegionRole.LEADER, owner, 0, 0));
+        members.put(member, new RegionMember(member, RegionRole.MEMBER, owner, 0, 0));
 
-        // Set up memberships
-        region.setMember(new RegionMember(leader, RegionRole.LEADER, owner, 0, 0));
-        region.setMember(new RegionMember(member, RegionRole.MEMBER, owner, 0, 0));
+        Region region = new Region("reg1", "Player Claim", RegionType.PLAYER_REGION,
+                new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, owner, UUID.randomUUID(), 0, 0, "ACTIVE", members);
 
         // Load into cache
         cache.loadFromRegion(region);

@@ -14,11 +14,17 @@ public class Region {
     private long updatedAt;
     private String status;
 
-    private final Map<UUID, RegionMember> members = new HashMap<>();
+    private final Map<UUID, RegionMember> members;
     private final Map<String, String> flags = new HashMap<>();
 
     public Region(String id, String name, RegionType type, RegionBounds bounds, int priority,
                   UUID ownerUuid, UUID createdByUuid, long createdAt, long updatedAt, String status) {
+        this(id, name, type, bounds, priority, ownerUuid, createdByUuid, createdAt, updatedAt, status, Collections.emptyMap());
+    }
+
+    public Region(String id, String name, RegionType type, RegionBounds bounds, int priority,
+                  UUID ownerUuid, UUID createdByUuid, long createdAt, long updatedAt, String status,
+                  Map<UUID, RegionMember> members) {
         if (type == RegionType.PLAYER_REGION && ownerUuid == null) {
             throw new IllegalArgumentException("PLAYER_REGION must have a valid owner UUID");
         }
@@ -32,6 +38,7 @@ public class Region {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.status = Objects.requireNonNull(status, "Status cannot be null");
+        this.members = members != null ? Collections.unmodifiableMap(new HashMap<>(members)) : Collections.emptyMap();
     }
 
     public String getId() {
@@ -94,33 +101,7 @@ public class Region {
     }
 
     public Map<UUID, RegionMember> getMembers() {
-        return Collections.unmodifiableMap(members);
-    }
-
-    public void setMember(UUID uuid, RegionRole role) {
-        if (role == null || role == RegionRole.VISITOR) {
-            members.remove(uuid);
-        } else {
-            long now = System.currentTimeMillis();
-            members.put(uuid, new RegionMember(uuid, role, null, now, now));
-        }
-        this.updatedAt = System.currentTimeMillis();
-    }
-
-    public void setMember(RegionMember member) {
-        if (member == null || member.getRole() == RegionRole.VISITOR) {
-            if (member != null) {
-                members.remove(member.getUuid());
-            }
-        } else {
-            members.put(member.getUuid(), member);
-        }
-        this.updatedAt = System.currentTimeMillis();
-    }
-
-    public void removeMember(UUID uuid) {
-        members.remove(uuid);
-        this.updatedAt = System.currentTimeMillis();
+        return members;
     }
 
     public RegionRole getRole(UUID uuid) {

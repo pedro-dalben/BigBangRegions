@@ -5,6 +5,8 @@ import com.bigbangcraft.regions.storage.DatabaseManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,15 +27,15 @@ public class RegionMemberRepositoryIntegrationTest {
         UUID member1 = UUID.randomUUID();
         UUID leader1 = UUID.randomUUID();
 
-        Region region = new Region("player_claim", "PlayerClaim", RegionType.PLAYER_REGION,
-                new RegionBounds("minecraft:overworld", 0, 0, 0, 10, 10, 10), 100, owner, creator, 1000L, 2000L, "ACTIVE");
+        Map<UUID, RegionMember> members = new HashMap<>();
+        members.put(member1, new RegionMember(member1, RegionRole.MEMBER, owner, 3000L, 4000L));
+        members.put(leader1, new RegionMember(leader1, RegionRole.LEADER, owner, 5000L, 6000L));
 
-        RegionMember m1 = new RegionMember(member1, RegionRole.MEMBER, owner, 3000L, 4000L);
-        RegionMember l1 = new RegionMember(leader1, RegionRole.LEADER, owner, 5000L, 6000L);
-        region.setMember(m1);
-        region.setMember(l1);
+        Region region = new Region("player_claim", "PlayerClaim", RegionType.PLAYER_REGION,
+                new RegionBounds("minecraft:overworld", 0, 0, 0, 10, 10, 10), 100, owner, creator, 1000L, 2000L, "ACTIVE", members);
 
         repository.save(region);
+        repository.saveMembers(region.getId(), region.getMembers());
 
         List<Region> loaded = repository.loadAll();
         assertEquals(1, loaded.size());

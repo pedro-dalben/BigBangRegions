@@ -4,6 +4,7 @@ import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
+import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.domain.RegionType;
 import com.bigbangcraft.regions.flag.EffectiveRegionPolicy;
@@ -21,6 +22,8 @@ import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
@@ -43,6 +46,7 @@ public class ProtectionServiceTest {
     private Level level;
     private ServerPlayer player;
     private BlockPos pos;
+    private RegionBounds bounds;
     private Region region;
     private UUID playerUuid;
 
@@ -78,7 +82,7 @@ public class ProtectionServiceTest {
         when(pos.getZ()).thenReturn(10);
 
         // Mock Region
-        RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 20, 20, 20);
+        bounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 20, 20, 20);
         region = new Region("regA", "Region A", RegionType.ADMIN_REGION, bounds, 1000, null, UUID.randomUUID(), 0, 0, "ACTIVE");
     }
 
@@ -128,11 +132,14 @@ public class ProtectionServiceTest {
 
     @Test
     public void testRegionMemberIsAllowed() {
+        // Create region with member
+        Map<UUID, RegionMember> members = new HashMap<>();
+        members.put(playerUuid, new RegionMember(playerUuid, RegionRole.MEMBER, null, 0, 0));
+        region = new Region("regA", "Region A", RegionType.ADMIN_REGION, bounds, 1000, null, UUID.randomUUID(), 0, 0, "ACTIVE", members);
+
         // Region covers position
         when(regionResolver.resolveRegionAt("minecraft:overworld", 10, 10, 10)).thenReturn(Optional.of(region));
 
-        // Player is a member
-        region.setMember(playerUuid, RegionRole.MEMBER);
         membershipCache.loadFromRegion(region);
 
         ProtectionContext context = new ProtectionContext.Builder(RegionAction.BLOCK_BREAK, level, pos)

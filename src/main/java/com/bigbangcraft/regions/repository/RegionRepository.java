@@ -27,78 +27,91 @@ public class RegionRepository {
             Connection conn = null;
             try {
                 conn = dbManager.getConnection();
-                
-                // 1. Load regions
+
+                // 1. Load region rows
                 String regionSql = "SELECT * FROM regions;";
-                Map<String, Region> regionMap = new HashMap<>();
-                
+                Map<String, Object[]> regionRows = new LinkedHashMap<>();
+
                 try (Statement stmt = conn.createStatement();
                      ResultSet rs = stmt.executeQuery(regionSql)) {
                     while (rs.next()) {
-                        String id = rs.getString("id");
-                        String name = rs.getString("name");
-                        RegionType type = RegionType.valueOf(rs.getString("type"));
-                        String dimensionKey = rs.getString("dimensionKey");
-                        int minX = rs.getInt("minX");
-                        int minY = rs.getInt("minY");
-                        int minZ = rs.getInt("minZ");
-                        int maxX = rs.getInt("maxX");
-                        int maxY = rs.getInt("maxY");
-                        int maxZ = rs.getInt("maxZ");
-                        int priority = rs.getInt("priority");
-                        
-                        String ownerStr = rs.getString("ownerUuid");
-                        UUID ownerUuid = (ownerStr != null && !ownerStr.isEmpty()) ? UUID.fromString(ownerStr) : null;
-                        
-                        UUID createdByUuid = UUID.fromString(rs.getString("createdByUuid"));
-                        long createdAt = rs.getLong("createdAt");
-                        long updatedAt = rs.getLong("updatedAt");
-                        String status = rs.getString("status");
-
-                        RegionBounds bounds = new RegionBounds(dimensionKey, minX, minY, minZ, maxX, maxY, maxZ);
-                        Region region = new Region(id, name, type, bounds, priority, ownerUuid, createdByUuid, createdAt, updatedAt, status);
-                        
-                        regionMap.put(id, region);
-                        list.add(region);
+                        regionRows.put(rs.getString("id"), new Object[]{
+                            rs.getString("name"),
+                            rs.getString("type"),
+                            rs.getString("dimensionKey"),
+                            rs.getInt("minX"), rs.getInt("minY"), rs.getInt("minZ"),
+                            rs.getInt("maxX"), rs.getInt("maxY"), rs.getInt("maxZ"),
+                            rs.getInt("priority"),
+                            rs.getString("ownerUuid"),
+                            rs.getString("createdByUuid"),
+                            rs.getLong("createdAt"),
+                            rs.getLong("updatedAt"),
+                            rs.getString("status")
+                        });
                     }
                 }
 
-                // 2. Load members
+                // 2. Load members grouped by region
+                Map<String, Map<UUID, RegionMember>> membersByRegion = new HashMap<>();
                 String memberSql = "SELECT * FROM region_members;";
                 try (Statement stmt = conn.createStatement();
                      ResultSet rs = stmt.executeQuery(memberSql)) {
                     while (rs.next()) {
                         String regionId = rs.getString("regionId");
-                        Region region = regionMap.get(regionId);
-                        if (region != null) {
-                            UUID uuid = UUID.fromString(rs.getString("uuid"));
-                            RegionRole role = RegionRole.valueOf(rs.getString("role"));
-                            String addedByStr = rs.getString("addedByUuid");
-                            UUID addedByUuid = (addedByStr != null && !addedByStr.isEmpty()) ? UUID.fromString(addedByStr) : null;
-                            long createdAt = rs.getLong("createdAt");
-                            long updatedAt = rs.getLong("updatedAt");
-                            if (rs.wasNull()) {
-                                updatedAt = createdAt;
-                            }
-                            RegionMember member = new RegionMember(uuid, role, addedByUuid, createdAt, updatedAt);
-                            region.setMember(member);
+                        if (!regionRows.containsKey(regionId)) continue;
+                        UUID uuid = UUID.fromString(rs.getString("uuid"));
+                        RegionRole role = RegionRole.valueOf(rs.getString("role"));
+                        String addedByStr = rs.getString("addedByUuid");
+                        UUID addedByUuid = (addedByStr != null && !addedByStr.isEmpty()) ? UUID.fromString(addedByStr) : null;
+                        long createdAt = rs.getLong("createdAt");
+                        long updatedAt = rs.getLong("updatedAt");
+                        if (rs.wasNull()) {
+                            updatedAt = createdAt;
                         }
+                        membersByRegion.computeIfAbsent(regionId, k -> new HashMap<>())
+                            .put(uuid, new RegionMember(uuid, role, addedByUuid, createdAt, updatedAt));
                     }
                 }
 
-                // 3. Load flags
+                // 3. Load flags grouped by region
+                Map<String, Map<String, String>> flagsByRegion = new HashMap<>();
                 String flagSql = "SELECT * FROM region_flags;";
                 try (Statement stmt = conn.createStatement();
                      ResultSet rs = stmt.executeQuery(flagSql)) {
                     while (rs.next()) {
                         String regionId = rs.getString("regionId");
-                        Region region = regionMap.get(regionId);
-                        if (region != null) {
-                            String flag = rs.getString("flag");
-                            String value = rs.getString("value");
-                            region.setFlag(flag, value);
-                        }
+                        if (!regionRows.containsKey(regionId)) continue;
+                        flagsByRegion.computeIfAbsent(regionId, k -> new HashMap<>())
+                            .put(rs.getString("flag"), rs.getString("value"));
                     }
+                }
+
+                // 4. Build region objects with immutable members and flags
+                // Array index: [0]=name, [1]=type, [2]=dimensionKey,
+                // [3]=minX, [4]=minY, [5]=minZ, [6]=maxX, [7]=maxY, [8]=maxZ,
+                // [9]=priority, [10]=ownerUuid, [11]=createdByUuid, [12]=createdAt, [13]=updatedAt, [14]=status
+                for (Map.Entry<String, Object[]> entry : regionRows.entrySet()) {
+                    String id = entry.getKey();
+                    Object[] row = entry.getValue();
+                    RegionType type = RegionType.valueOf((String) row[1]);
+                    RegionBounds bounds = new RegionBounds(
+                        (String) row[2], (int) row[3], (int) row[4], (int) row[5],
+                        (int) row[6], (int) row[7], (int) row[8]
+                    );
+                    String ownerStr = (String) row[10];
+                    UUID ownerUuid = (ownerStr != null && !ownerStr.isEmpty()) ? UUID.fromString(ownerStr) : null;
+                    Map<UUID, RegionMember> regionMembers = membersByRegion.getOrDefault(id, Collections.emptyMap());
+                    Region region = new Region(
+                        id, (String) row[0], type, bounds, (int) row[9],
+                        ownerUuid, UUID.fromString((String) row[11]),
+                        (long) row[12], (long) row[13], (String) row[14],
+                        regionMembers
+                    );
+                    Map<String, String> regionFlags = flagsByRegion.getOrDefault(id, Collections.emptyMap());
+                    for (Map.Entry<String, String> fe : regionFlags.entrySet()) {
+                        region.setFlag(fe.getKey(), fe.getValue());
+                    }
+                    list.add(region);
                 }
 
             } catch (SQLException e) {
@@ -115,13 +128,12 @@ public class RegionRepository {
                 conn = dbManager.getConnection();
                 conn.setAutoCommit(false);
 
-                // 1. Insert or replace region
-                String regionSql = "INSERT OR REPLACE INTO regions (" +
+                String sql = "INSERT OR REPLACE INTO regions (" +
                         "id, name, type, dimensionKey, minX, minY, minZ, maxX, maxY, maxZ, " +
                         "priority, ownerUuid, createdByUuid, createdAt, updatedAt, status" +
                         ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
-                
-                try (PreparedStatement pstmt = conn.prepareStatement(regionSql)) {
+
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
                     pstmt.setString(1, region.getId());
                     pstmt.setString(2, region.getName());
                     pstmt.setString(3, region.getType().name());
@@ -141,44 +153,7 @@ public class RegionRepository {
                     pstmt.executeUpdate();
                 }
 
-                // 2. Update members (delete all and re-insert)
-                String deleteMembersSql = "DELETE FROM region_members WHERE regionId = ?;";
-                try (PreparedStatement pstmt = conn.prepareStatement(deleteMembersSql)) {
-                    pstmt.setString(1, region.getId());
-                    pstmt.executeUpdate();
-                }
-
-                String insertMemberSql = "INSERT INTO region_members (regionId, uuid, role, addedByUuid, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?);";
-                try (PreparedStatement pstmt = conn.prepareStatement(insertMemberSql)) {
-                    for (RegionMember member : region.getMembers().values()) {
-                        pstmt.setString(1, region.getId());
-                        pstmt.setString(2, member.getUuid().toString());
-                        pstmt.setString(3, member.getRole().name());
-                        pstmt.setString(4, member.getAddedByUuid() != null ? member.getAddedByUuid().toString() : null);
-                        pstmt.setLong(5, member.getCreatedAt());
-                        pstmt.setLong(6, member.getUpdatedAt());
-                        pstmt.addBatch();
-                    }
-                    pstmt.executeBatch();
-                }
-
-                // 3. Update flags (delete all and re-insert)
-                String deleteFlagsSql = "DELETE FROM region_flags WHERE regionId = ?;";
-                try (PreparedStatement pstmt = conn.prepareStatement(deleteFlagsSql)) {
-                    pstmt.setString(1, region.getId());
-                    pstmt.executeUpdate();
-                }
-
-                String insertFlagSql = "INSERT INTO region_flags (regionId, flag, value) VALUES (?, ?, ?);";
-                try (PreparedStatement pstmt = conn.prepareStatement(insertFlagSql)) {
-                    for (Map.Entry<String, String> entry : region.getFlags().entrySet()) {
-                        pstmt.setString(1, region.getId());
-                        pstmt.setString(2, entry.getKey());
-                        pstmt.setString(3, entry.getValue());
-                        pstmt.addBatch();
-                    }
-                    pstmt.executeBatch();
-                }
+                saveFlags(conn, region.getId(), region.getFlags());
 
                 conn.commit();
             } catch (SQLException e) {
@@ -202,6 +177,74 @@ public class RegionRepository {
         }
     }
 
+    public void saveMembers(String regionId, Map<UUID, RegionMember> members) {
+        synchronized (dbManager) {
+            Connection conn = null;
+            try {
+                conn = dbManager.getConnection();
+                conn.setAutoCommit(false);
+
+                String deleteSql = "DELETE FROM region_members WHERE regionId = ?;";
+                try (PreparedStatement pstmt = conn.prepareStatement(deleteSql)) {
+                    pstmt.setString(1, regionId);
+                    pstmt.executeUpdate();
+                }
+
+                String insertSql = "INSERT INTO region_members (regionId, uuid, role, addedByUuid, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?);";
+                try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+                    for (RegionMember member : members.values()) {
+                        pstmt.setString(1, regionId);
+                        pstmt.setString(2, member.getUuid().toString());
+                        pstmt.setString(3, member.getRole().name());
+                        pstmt.setString(4, member.getAddedByUuid() != null ? member.getAddedByUuid().toString() : null);
+                        pstmt.setLong(5, member.getCreatedAt());
+                        pstmt.setLong(6, member.getUpdatedAt());
+                        pstmt.addBatch();
+                    }
+                    pstmt.executeBatch();
+                }
+
+                conn.commit();
+            } catch (SQLException e) {
+                LOGGER.error("Failed to save members for region " + regionId + ": ", e);
+                if (conn != null) {
+                    try {
+                        conn.rollback();
+                    } catch (SQLException ex) {
+                        LOGGER.error("Error rolling back transaction: ", ex);
+                    }
+                }
+            } finally {
+                if (conn != null) {
+                    try {
+                        conn.setAutoCommit(true);
+                    } catch (SQLException e) {
+                        LOGGER.error("Failed to reset auto-commit: ", e);
+                    }
+                }
+            }
+        }
+    }
+
+    private void saveFlags(Connection conn, String regionId, Map<String, String> flags) throws SQLException {
+        String deleteSql = "DELETE FROM region_flags WHERE regionId = ?;";
+        try (PreparedStatement pstmt = conn.prepareStatement(deleteSql)) {
+            pstmt.setString(1, regionId);
+            pstmt.executeUpdate();
+        }
+
+        String insertSql = "INSERT INTO region_flags (regionId, flag, value) VALUES (?, ?, ?);";
+        try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+            for (Map.Entry<String, String> entry : flags.entrySet()) {
+                pstmt.setString(1, regionId);
+                pstmt.setString(2, entry.getKey());
+                pstmt.setString(3, entry.getValue());
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
+        }
+    }
+
     public void delete(String regionId) {
         synchronized (dbManager) {
             String sql = "DELETE FROM regions WHERE id = ?;";
@@ -215,12 +258,10 @@ public class RegionRepository {
     }
 
     public void updateFlags(Region region) {
-        // Simple delegator to save for this implementation stage
         save(region);
     }
 
     public void updateMembers(Region region) {
-        // Simple delegator to save for this implementation stage
-        save(region);
+        saveMembers(region.getId(), region.getMembers());
     }
 }

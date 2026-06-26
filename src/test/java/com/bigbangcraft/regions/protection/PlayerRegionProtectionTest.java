@@ -19,6 +19,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
@@ -62,10 +64,11 @@ public class PlayerRegionProtectionTest {
         member = UUID.randomUUID();
         visitor = UUID.randomUUID();
 
-        region = new Region("player_claim", "PlayerClaim", RegionType.PLAYER_REGION,
-                new RegionBounds("minecraft:overworld", 0, 0, 0, 10, 10, 10), 100, owner, UUID.randomUUID(), 0, 0, "ACTIVE");
+        Map<UUID, RegionMember> members = new HashMap<>();
+        members.put(member, new RegionMember(member, RegionRole.MEMBER, owner, 0, 0));
 
-        region.setMember(new RegionMember(member, RegionRole.MEMBER, owner, 0, 0));
+        region = new Region("player_claim", "PlayerClaim", RegionType.PLAYER_REGION,
+                new RegionBounds("minecraft:overworld", 0, 0, 0, 10, 10, 10), 100, owner, UUID.randomUUID(), 0, 0, "ACTIVE", members);
         membershipCache.loadFromRegion(region);
 
         when(regionResolver.resolveRegionAt("minecraft:overworld", 5, 5, 5)).thenReturn(Optional.of(region));
