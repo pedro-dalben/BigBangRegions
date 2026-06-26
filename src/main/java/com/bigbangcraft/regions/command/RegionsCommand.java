@@ -298,6 +298,7 @@ public class RegionsCommand {
 
         regionRepository.delete(id);
         regionCache.remove(id);
+        BigBangRegions.getMembershipCache().removeRegion(id);
 
         UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
         auditService.log(id, actorUuid, "DELETE_REGION", region.getType().name(), null, null);

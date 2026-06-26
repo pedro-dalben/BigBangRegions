@@ -247,12 +247,42 @@ public class RegionRepository {
 
     public void delete(String regionId) {
         synchronized (dbManager) {
-            String sql = "DELETE FROM regions WHERE id = ?;";
-            try (PreparedStatement pstmt = dbManager.getConnection().prepareStatement(sql)) {
-                pstmt.setString(1, regionId);
-                pstmt.executeUpdate();
+            Connection conn = null;
+            try {
+                conn = dbManager.getConnection();
+                conn.setAutoCommit(false);
+
+                try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM region_members WHERE regionId = ?;")) {
+                    pstmt.setString(1, regionId);
+                    pstmt.executeUpdate();
+                }
+                try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM region_flags WHERE regionId = ?;")) {
+                    pstmt.setString(1, regionId);
+                    pstmt.executeUpdate();
+                }
+                try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM regions WHERE id = ?;")) {
+                    pstmt.setString(1, regionId);
+                    pstmt.executeUpdate();
+                }
+
+                conn.commit();
             } catch (SQLException e) {
                 LOGGER.error("Failed to delete region " + regionId + " from database: ", e);
+                if (conn != null) {
+                    try {
+                        conn.rollback();
+                    } catch (SQLException ex) {
+                        LOGGER.error("Error rolling back transaction: ", ex);
+                    }
+                }
+            } finally {
+                if (conn != null) {
+                    try {
+                        conn.setAutoCommit(true);
+                    } catch (SQLException e) {
+                        LOGGER.error("Failed to reset auto-commit: ", e);
+                    }
+                }
             }
         }
     }
