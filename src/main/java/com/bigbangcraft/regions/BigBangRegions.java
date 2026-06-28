@@ -81,6 +81,7 @@ public class BigBangRegions implements ModInitializer {
     private static ExplorationZoneService explorationZoneService;
     private static RegionEntryExitService entryExitService;
     private static RegionBoundaryRenderer boundaryRenderer;
+    private static RegionContainmentService containmentService;
     private static LandPaymentGateway paymentGateway;
     private static LandOperationRecoveryService recoveryService;
     private static RegionExpansionOperationRepository expansionOperationRepository;
@@ -117,6 +118,10 @@ public class BigBangRegions implements ModInitializer {
 
     public static RegionBoundaryRenderer getBoundaryRenderer() {
         return boundaryRenderer;
+    }
+
+    public static RegionContainmentService getContainmentService() {
+        return containmentService;
     }
 
     public static ExplorationZoneService getExplorationZoneService() {
@@ -233,6 +238,9 @@ public class BigBangRegions implements ModInitializer {
         // 10. Region Boundary Renderer (visual particles)
         boundaryRenderer = new RegionBoundaryRenderer(regionCache, roleResolver);
 
+        // 10.5 Region Containment Service
+        containmentService = new RegionContainmentService(configManager);
+
         // 11. Public API
         api = new BigBangRegionsApiImpl(regionResolver, protectionService);
 
@@ -274,6 +282,11 @@ public class BigBangRegions implements ModInitializer {
                     boundaryRenderer.tick(p);
                 }
             }
+            if (containmentService != null) {
+                for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+                    containmentService.tick(p);
+                }
+            }
             if (server.getTickCount() % 200 == 0) {
                 MessageHelper.cleanCache();
                 if (allocationCoordinator != null) {
@@ -292,6 +305,16 @@ public class BigBangRegions implements ModInitializer {
                 if (boundaryRenderer != null) {
                     boundaryRenderer.setVisibility(uuid, false);
                 }
+                if (containmentService != null) {
+                    containmentService.removePlayer(uuid);
+                }
+            }
+        });
+
+        // 12.5 Player connect reposition check
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            if (handler.getPlayer() != null && containmentService != null) {
+                containmentService.onPlayerJoin(handler.getPlayer());
             }
         });
 

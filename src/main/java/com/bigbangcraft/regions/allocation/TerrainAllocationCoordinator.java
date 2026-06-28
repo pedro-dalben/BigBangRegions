@@ -656,6 +656,10 @@ public class TerrainAllocationCoordinator {
         LOGGER.info("Slot {} recycled", slotId);
     }
 
+    public PlayerRegionHome getHome(String regionId) {
+        return homeRepository.get(regionId);
+    }
+
     public Collection<BiomeOption> getBiomeOptions() {
         return biomeOptionRegistry.getAll();
     }
