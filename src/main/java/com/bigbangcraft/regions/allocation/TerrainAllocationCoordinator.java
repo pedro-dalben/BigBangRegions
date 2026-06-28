@@ -177,7 +177,7 @@ public class TerrainAllocationCoordinator {
 
         if (request.getState() == AllocationRequestState.PENDING) {
             if (isTimedOut(request, sc)) {
-                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido", level);
                 return 1;
             }
             request.transitionTo(AllocationRequestState.SEARCHING);
@@ -187,16 +187,23 @@ public class TerrainAllocationCoordinator {
 
         if (request.getState() == AllocationRequestState.SEARCHING) {
             if (isTimedOut(request, sc)) {
-                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante busca");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante busca", level);
                 return 1;
             }
             Optional<BiomeOption> biomeOpt = biomeOptionRegistry.lookup(request.getRequestedBiomeOption());
             if (biomeOpt.isEmpty()) {
-                failRequest(request, AllocationRequestState.FAILED_VALIDATION, "Opcao de bioma nao encontrada: " + request.getRequestedBiomeOption());
+                failRequest(request, AllocationRequestState.FAILED_VALIDATION, "Opcao de bioma nao encontrada: " + request.getRequestedBiomeOption(), level);
                 return 1;
             }
             int maxCandidates = sc.getMaxCandidateEvaluationsPerTick();
-            List<PlotSlotService.PlotSlotCandidate> candidates = slotService.getCandidates(request.getOwnerUuid(), maxCandidates);
+            int offset = request.getAttempts() * maxCandidates;
+            List<PlotSlotService.PlotSlotCandidate> candidates = slotService.getCandidates(request.getOwnerUuid(), offset, maxCandidates);
+            
+            if (candidates.isEmpty()) {
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Nenhum terreno com bioma adequado encontrado no raio limite", level);
+                return 1;
+            }
+
             for (PlotSlotService.PlotSlotCandidate candidate : candidates) {
                 int claimOffset = (lac.getSlotSize() - lac.getInitialClaimSize()) / 2;
                 int claimMinX = candidate.minX + claimOffset;
@@ -232,13 +239,16 @@ public class TerrainAllocationCoordinator {
                 LOGGER.info("Slot reserved: slotId={}, request={}, grid=({},{})", slotId, request.getId(), candidate.gridX, candidate.gridZ);
                 return 1;
             }
-            return 0;
+
+            request.incrementAttempts();
+            requestRepository.save(request);
+            return 1;
         }
 
         if (request.getState() == AllocationRequestState.SLOT_RESERVED) {
             if (isTimedOut(request, sc)) {
                 tryReleaseSlot(request);
-                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante reserva");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante reserva", level);
                 return 1;
             }
             request.transitionTo(AllocationRequestState.PREPARING);
@@ -249,18 +259,18 @@ public class TerrainAllocationCoordinator {
         if (request.getState() == AllocationRequestState.PREPARING) {
             if (isTimedOut(request, sc)) {
                 tryReleaseSlot(request);
-                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante preparacao");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante preparacao", level);
                 return 1;
             }
             String slotId = request.getPlotSlotId();
             if (slotId == null) {
-                failRequest(request, AllocationRequestState.FAILED_VALIDATION, "Slot ID nao definido");
+                failRequest(request, AllocationRequestState.FAILED_VALIDATION, "Slot ID nao definido", level);
                 return 1;
             }
             PlotSlot slot = slotRepository.get(slotId);
             if (slot == null) {
                 tryReleaseSlot(request);
-                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Slot nao encontrado");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Slot nao encontrado", level);
                 return 1;
             }
 
@@ -323,6 +333,11 @@ public class TerrainAllocationCoordinator {
                     requestRepository.saveOnConnection(conn, request);
                     conn.commit();
                     LOGGER.warn("No safe spawn found for request={}, region={}", request.getId(), regionId);
+
+                    ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
+                    if (player != null) {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cNão foi possível criar seu terreno: Nenhum safe spawn encontrado dentro do claim"));
+                    }
                     return;
                 }
                 BlockPos homePos = spawnPos.get();
@@ -341,6 +356,8 @@ public class TerrainAllocationCoordinator {
 
                 LOGGER.info("Region created (free): request={}, regionId={}, claimOffset={}, home=({},{},{})",
                     request.getId(), regionId, claimOffset, homePos.getX(), homePos.getY(), homePos.getZ());
+
+                postRegionCreationSetup(request, bounds, level, homePos);
             } catch (Exception e) {
                 conn.rollback();
                 throw (e instanceof SQLException) ? (SQLException) e : new SQLException(e);
@@ -353,6 +370,112 @@ public class TerrainAllocationCoordinator {
     private void tryReleaseSlotOnly(Connection conn, PlotSlot slot) throws SQLException {
         slot.release();
         slotRepository.saveOnConnection(conn, slot);
+    }
+
+    private void postRegionCreationSetup(AllocationRequest request, RegionBounds bounds, ServerLevel level, BlockPos homePos) {
+        Config config = configManager.getConfig();
+        Config.BorderConfig borderConfig = config.getPlayerLandAllocation().getBorder();
+
+        // 1. Generate glass border
+        generateGlassBorder(level, bounds, borderConfig.getMaterial(), borderConfig.isCreateCeiling());
+
+        // 2. Set biome
+        applyRegionBiome(level, bounds, request.getRequestedBiomeOption());
+
+        // 3. Teleport and notify
+        ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
+        if (player != null) {
+            player.teleportTo(level, homePos.getX() + 0.5, homePos.getY(), homePos.getZ() + 0.5, player.getYRot(), player.getXRot());
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§aSeu terreno foi criado com sucesso!"));
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§7Você foi teleportado para sua nova região."));
+        }
+    }
+
+    private void generateGlassBorder(ServerLevel level, RegionBounds bounds, String materialId, boolean createCeiling) {
+        try {
+            net.minecraft.resources.ResourceLocation loc = net.minecraft.resources.ResourceLocation.parse(materialId);
+            net.minecraft.world.level.block.Block block = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(loc);
+            if (block == null || block == net.minecraft.world.level.block.Blocks.AIR) {
+                block = net.minecraft.world.level.block.Blocks.GLASS;
+            }
+            net.minecraft.world.level.block.state.BlockState glassState = block.defaultBlockState();
+
+            int minX = bounds.getMinX();
+            int maxX = bounds.getMaxX();
+            int minZ = bounds.getMinZ();
+            int maxZ = bounds.getMaxZ();
+            int minY = bounds.getMinY();
+            int maxY = bounds.getMaxY();
+
+            // Set blocks along borders with flag 2 (prevent block physics/neighbor updates)
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    level.setBlock(new BlockPos(minX, y, z), glassState, 2);
+                    level.setBlock(new BlockPos(maxX, y, z), glassState, 2);
+                }
+                for (int x = minX; x <= maxX; x++) {
+                    level.setBlock(new BlockPos(x, y, minZ), glassState, 2);
+                    level.setBlock(new BlockPos(x, y, maxZ), glassState, 2);
+                }
+            }
+
+            if (createCeiling) {
+                for (int x = minX; x <= maxX; x++) {
+                    for (int z = minZ; z <= maxZ; z++) {
+                        level.setBlock(new BlockPos(x, maxY, z), glassState, 2);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to generate glass border", e);
+        }
+    }
+
+    private void applyRegionBiome(ServerLevel level, RegionBounds bounds, String biomeOptionKey) {
+        try {
+            Optional<BiomeOption> opt = biomeOptionRegistry.lookup(biomeOptionKey);
+            if (opt.isEmpty()) return;
+            List<String> acceptedBiomes = opt.get().getAcceptedBiomeIds();
+            if (acceptedBiomes.isEmpty()) return;
+
+            String targetBiomeId = acceptedBiomes.get(0);
+            net.minecraft.resources.ResourceLocation loc = net.minecraft.resources.ResourceLocation.parse(targetBiomeId);
+            var registry = level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.BIOME);
+            var holderOpt = registry.getHolder(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.BIOME, loc));
+            if (holderOpt.isEmpty()) return;
+            var holder = holderOpt.get();
+
+            int minX = bounds.getMinX();
+            int maxX = bounds.getMaxX();
+            int minZ = bounds.getMinZ();
+            int maxZ = bounds.getMaxZ();
+            int minY = bounds.getMinY();
+            int maxY = bounds.getMaxY();
+
+            for (int x = minX; x <= maxX; x += 4) {
+                for (int z = minZ; z <= maxZ; z += 4) {
+                    for (int y = minY; y < maxY; y += 4) {
+                        BlockPos pos = new BlockPos(x, y, z);
+                        var chunk = level.getChunk(pos);
+                        int sectionIndex = chunk.getSectionIndex(y);
+                        if (sectionIndex >= 0 && sectionIndex < chunk.getSections().length) {
+                            var section = chunk.getSections()[sectionIndex];
+                            if (section != null) {
+                                var biomes = section.getBiomes();
+                                if (biomes instanceof net.minecraft.world.level.chunk.PalettedContainer<net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome>> container) {
+                                    int bx = (x & 15) >> 2;
+                                    int by = (y & 15) >> 2;
+                                    int bz = (z & 15) >> 2;
+                                    container.set(bx, by, bz, holder);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to apply biome to region", e);
+        }
     }
 
     private int recoverCreatingFromSqlite(AllocationRequest request, ServerLevel level,
@@ -541,10 +664,16 @@ public class TerrainAllocationCoordinator {
         return System.currentTimeMillis() - request.getUpdatedAt() > sc.getRequestTimeoutSeconds() * 1000L;
     }
 
-    private void failRequest(AllocationRequest request, AllocationRequestState target, String reason) {
+    private void failRequest(AllocationRequest request, AllocationRequestState target, String reason, ServerLevel level) {
         request.forceTransitionTo(target);
         request.setFailureReason(reason);
         requestRepository.save(request);
+        if (level != null) {
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
+            if (player != null) {
+                player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cNão foi possível criar seu terreno: " + reason));
+            }
+        }
     }
 
     private void tryReleaseSlot(AllocationRequest request) {

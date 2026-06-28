@@ -41,7 +41,8 @@ public class BiomeOptionRegistry {
                     key,
                     optionConfig.getDisplayName(),
                     optionConfig.getAliases() != null ? optionConfig.getAliases() : Collections.emptyList(),
-                    optionConfig.getAcceptedBiomeIds()
+                    optionConfig.getAcceptedBiomeIds(),
+                    optionConfig.getIcon()
             );
             options.put(key, option);
         }

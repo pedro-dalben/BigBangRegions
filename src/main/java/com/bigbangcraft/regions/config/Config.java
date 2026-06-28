@@ -31,27 +31,33 @@ public class Config {
     public Config() {
         biomeOptions.put("planicies", new BiomeOptionConfig("Planícies",
             Arrays.asList("plains", "planicie", "planicies"),
-            Arrays.asList("minecraft:plains", "minecraft:sunflower_plains")
+            Arrays.asList("minecraft:plains", "minecraft:sunflower_plains"),
+            "minecraft:grass_block"
         ));
         biomeOptions.put("floresta", new BiomeOptionConfig("Floresta",
             Arrays.asList("forest", "floresta"),
-            Arrays.asList("minecraft:forest", "minecraft:birch_forest", "minecraft:old_growth_birch_forest")
+            Arrays.asList("minecraft:forest", "minecraft:birch_forest", "minecraft:old_growth_birch_forest"),
+            "minecraft:oak_log"
         ));
         biomeOptions.put("taiga", new BiomeOptionConfig("Taiga",
             Arrays.asList("taiga"),
-            Arrays.asList("minecraft:taiga", "minecraft:old_growth_pine_taiga", "minecraft:old_growth_spruce_taiga")
+            Arrays.asList("minecraft:taiga", "minecraft:old_growth_pine_taiga", "minecraft:old_growth_spruce_taiga"),
+            "minecraft:spruce_log"
         ));
         biomeOptions.put("deserto", new BiomeOptionConfig("Deserto",
             Arrays.asList("desert", "deserto"),
-            Arrays.asList("minecraft:desert")
+            Arrays.asList("minecraft:desert"),
+            "minecraft:sand"
         ));
         biomeOptions.put("savana", new BiomeOptionConfig("Savana",
             Arrays.asList("savanna", "savana"),
-            Arrays.asList("minecraft:savanna", "minecraft:savanna_plateau", "minecraft:windswept_savanna")
+            Arrays.asList("minecraft:savanna", "minecraft:savanna_plateau", "minecraft:windswept_savanna"),
+            "minecraft:acacia_log"
         ));
         biomeOptions.put("selva", new BiomeOptionConfig("Selva",
             Arrays.asList("jungle", "selva"),
-            Arrays.asList("minecraft:jungle", "minecraft:sparse_jungle", "minecraft:bamboo_jungle")
+            Arrays.asList("minecraft:jungle", "minecraft:sparse_jungle", "minecraft:bamboo_jungle"),
+            "minecraft:jungle_log"
         ));
     }
 
@@ -167,6 +173,7 @@ public class Config {
         private SchedulerConfig scheduler = new SchedulerConfig();
         private NotificationsConfig notifications = new NotificationsConfig();
         private PaymentConfig payment = new PaymentConfig();
+        private BorderConfig border = new BorderConfig();
 
         public boolean isEnabled() { return enabled; }
         public String getTargetDimension() { return targetDimension; }
@@ -180,6 +187,7 @@ public class Config {
         public SchedulerConfig getScheduler() { return scheduler; }
         public NotificationsConfig getNotifications() { return notifications; }
         public PaymentConfig getPayment() { return payment; }
+        public BorderConfig getBorder() { return border; }
 
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public void setTargetDimension(String targetDimension) { this.targetDimension = targetDimension; }
@@ -292,6 +300,7 @@ public class Config {
         private String displayName;
         private List<String> aliases;
         private List<String> acceptedBiomeIds;
+        private String icon = "minecraft:map";
 
         public BiomeOptionConfig() {}
 
@@ -301,14 +310,41 @@ public class Config {
             this.acceptedBiomeIds = acceptedBiomeIds;
         }
 
+        public BiomeOptionConfig(String displayName, List<String> aliases, List<String> acceptedBiomeIds, String icon) {
+            this.displayName = displayName;
+            this.aliases = aliases;
+            this.acceptedBiomeIds = acceptedBiomeIds;
+            this.icon = icon;
+        }
+
         public String getDisplayName() { return displayName; }
         public List<String> getAliases() { return aliases; }
         public List<String> getAcceptedBiomeIds() { return acceptedBiomeIds; }
-
+        public String getIcon() { return icon; }
         public void setDisplayName(String displayName) { this.displayName = displayName; }
         public void setAliases(List<String> aliases) { this.aliases = aliases; }
         public void setAcceptedBiomeIds(List<String> acceptedBiomeIds) { this.acceptedBiomeIds = acceptedBiomeIds; }
+        public void setIcon(String icon) { this.icon = icon; }
     }
+
+    public static class BorderConfig {
+        private String material = "minecraft:glass";
+        private int thickness = 1;
+        private boolean protect = true;
+        private boolean createCeiling = false;
+
+        public String getMaterial() { return material; }
+        public int getThickness() { return thickness; }
+        public boolean isProtect() { return protect; }
+        public boolean isCreateCeiling() { return createCeiling; }
+
+        public void setMaterial(String material) { this.material = material; }
+        public void setThickness(int thickness) { this.thickness = thickness; }
+        public void setProtect(boolean protect) { this.protect = protect; }
+        public void setCreateCeiling(boolean createCeiling) { this.createCeiling = createCeiling; }
+    }
+
+
 
     public static class RegionExpansionConfig {
         private boolean enabled = false;

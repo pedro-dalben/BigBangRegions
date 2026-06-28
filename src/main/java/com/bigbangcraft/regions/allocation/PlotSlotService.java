@@ -58,7 +58,7 @@ public class PlotSlotService {
         return true;
     }
 
-    public List<PlotSlotCandidate> getCandidates(UUID ownerUuid, int limit) {
+    public List<PlotSlotCandidate> getCandidates(UUID ownerUuid, int offset, int limit) {
         Config config = configManager.getConfig();
         Config.PlayerLandAllocationConfig lac = config.getPlayerLandAllocation();
         int slotSize = lac.getSlotSize();
@@ -72,11 +72,12 @@ public class PlotSlotService {
 
         int ring = startRing;
         int count = 0;
+        int targetAmount = offset + limit;
 
-        while (count < limit && ring < startRing + 1000) {
-            for (int dx = -ring; dx <= ring && count < limit; dx++) {
+        while (count < targetAmount && ring < startRing + 1000) {
+            for (int dx = -ring; dx <= ring && count < targetAmount; dx++) {
                 if (dx == -ring || dx == ring) {
-                    for (int dz = -ring; dz <= ring && count < limit; dz++) {
+                    for (int dz = -ring; dz <= ring && count < targetAmount; dz++) {
                         int gridX = dx;
                         int gridZ = dz;
                         int minX = gridX * slotSize;
@@ -97,7 +98,7 @@ public class PlotSlotService {
 
                     int dz2 = ring;
                     int minZ2 = dz2 * slotSize;
-                    if (isSlotEligible(minX, minZ2, slotSize) && count < limit) {
+                    if (isSlotEligible(minX, minZ2, slotSize) && count < targetAmount) {
                         candidates.add(new PlotSlotCandidate(dx, dz2, minX, minZ2));
                         count++;
                     }
@@ -110,7 +111,10 @@ public class PlotSlotService {
         java.util.Random rnd = new java.util.Random(ownerUuid.getMostSignificantBits() ^ ownerUuid.getLeastSignificantBits());
         java.util.Collections.shuffle(candidates, rnd);
 
-        return candidates;
+        if (offset >= candidates.size()) {
+            return java.util.Collections.emptyList();
+        }
+        return candidates.subList(offset, Math.min(offset + limit, candidates.size()));
     }
 
     public static class PlotSlotCandidate {

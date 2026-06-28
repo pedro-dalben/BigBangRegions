@@ -8,17 +8,21 @@ public class BiomeOption {
     private final List<String> aliases;
     private final List<String> acceptedBiomeIds;
 
-    public BiomeOption(String key, String displayName, List<String> aliases, List<String> acceptedBiomeIds) {
+    private final String icon;
+
+    public BiomeOption(String key, String displayName, List<String> aliases, List<String> acceptedBiomeIds, String icon) {
         this.key = key;
         this.displayName = displayName;
         this.aliases = aliases;
         this.acceptedBiomeIds = acceptedBiomeIds;
+        this.icon = icon;
     }
 
     public String getKey() { return key; }
     public String getDisplayName() { return displayName; }
     public List<String> getAliases() { return aliases; }
     public List<String> getAcceptedBiomeIds() { return acceptedBiomeIds; }
+    public String getIcon() { return icon; }
 
     public boolean matches(String query) {
         if (query == null) return false;
