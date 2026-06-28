@@ -312,6 +312,9 @@ public class TerrainAllocationCoordinator {
                 int claimMaxX = claimMinX + lac.getInitialClaimSize() - 1;
                 int claimMaxZ = claimMinZ + lac.getInitialClaimSize() - 1;
 
+                // Pre-load and fully generate chunks in the claim area to prevent asynchronous corruption
+                forceLoadChunks(level, claimMinX, claimMaxX, claimMinZ, claimMaxZ);
+
                 long now = System.currentTimeMillis();
                 RegionBounds bounds = new RegionBounds(dimension, claimMinX, -64, claimMinZ, claimMaxX, 320, claimMaxZ);
                 Region region = new Region(regionId, "Player Region", RegionType.PLAYER_REGION,
@@ -417,6 +420,23 @@ public class TerrainAllocationCoordinator {
             }
         } catch (Exception e) {
             LOGGER.error("Failed to generate spawn platform", e);
+        }
+    }
+
+    private void forceLoadChunks(ServerLevel level, int minX, int maxX, int minZ, int maxZ) {
+        try {
+            int minChunkX = minX >> 4;
+            int maxChunkX = maxX >> 4;
+            int minChunkZ = minZ >> 4;
+            int maxChunkZ = maxZ >> 4;
+
+            for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+                for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                    level.getChunkSource().getChunk(cx, cz, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to pre-load/generate chunks for region", e);
         }
     }
 
