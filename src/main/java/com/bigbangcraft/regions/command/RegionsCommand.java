@@ -319,6 +319,19 @@ public class RegionsCommand {
         LiteralCommandNode<CommandSourceStack> mainNode = dispatcher.register(builder);
         dispatcher.register(Commands.literal("regiao").redirect(mainNode));
         dispatcher.register(Commands.literal("regioes").redirect(mainNode));
+
+        dispatcher.register(Commands.literal("region")
+            .executes(context -> {
+                CommandSourceStack source = context.getSource();
+                ServerPlayer player = source.getPlayer();
+                if (player == null) {
+                    source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+                    return 0;
+                }
+                com.bigbangcraft.regions.gui.RegionGuiHandler.openMenu(player);
+                return 1;
+            })
+        );
     }
 
     private static boolean checkPermission(CommandSourceStack source, String permission) {

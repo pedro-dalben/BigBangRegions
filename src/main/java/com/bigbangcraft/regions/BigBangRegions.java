@@ -107,6 +107,10 @@ public class BigBangRegions implements ModInitializer {
         return allocationCoordinator;
     }
 
+    public static RegionCache getRegionCache() {
+        return regionCache;
+    }
+
     public static RegionEntryExitService getEntryExitService() {
         return entryExitService;
     }
