@@ -554,6 +554,32 @@ public class RegionExpansionCoordinator {
         return expansionRepository.getActiveOperations();
     }
 
+    public void adminBlockOperation(String operationId) {
+        RegionExpansionOperation op = expansionRepository.get(operationId);
+        if (op == null) {
+            throw new IllegalArgumentException("Operacao nao encontrada: " + operationId);
+        }
+        if (op.getState().isTerminal()) {
+            throw new IllegalStateException("Operacao ja em estado terminal: " + op.getState());
+        }
+        op.forceTransitionTo(RegionExpansionState.BLOCKED_FOR_MANUAL_RECONCILIATION);
+        op.setFailureCode("ADMIN_BLOCKED");
+        op.setFailureDetail("Bloqueado manualmente por administrador.");
+        expansionRepository.save(op);
+    }
+
+    public void adminScheduleRetry(String operationId) {
+        RegionExpansionOperation op = expansionRepository.get(operationId);
+        if (op == null) {
+            throw new IllegalArgumentException("Operacao nao encontrada: " + operationId);
+        }
+        if (op.getState().isTerminal()) {
+            throw new IllegalStateException("Operacao ja em estado terminal: " + op.getState());
+        }
+        op.setNextRetryAt(0L);
+        expansionRepository.save(op);
+    }
+
     private String generateIdempotencyKey(String operationId, String operation) {
         String compactId = operationId.replace("-", "");
         return "regions_" + compactId + "_" + operation;

@@ -9,6 +9,8 @@ import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.domain.RegionType;
 import com.bigbangcraft.regions.flag.FlagPolicy;
 import com.bigbangcraft.regions.flag.FlagRegistry;
+import com.bigbangcraft.regions.expansion.RegionExpansionCoordinator;
+import com.bigbangcraft.regions.expansion.RegionExpansionOperation;
 import com.bigbangcraft.regions.flag.RegionFlag;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.region.RegionResolver;
@@ -262,7 +264,40 @@ public class RegionsCommand {
         if (isCommandEnabled("expandir")) {
             builder.then(Commands.literal("expandir")
                 .then(Commands.argument("tamanho", IntegerArgumentType.integer(1, 256))
-                    .executes(RegionsCommand::resizeClaim)
+                    .executes(RegionsCommand::beginExpansion)
+                )
+                .then(Commands.literal("status")
+                    .executes(RegionsCommand::expansionStatus)
+                )
+                .then(Commands.literal("cancelar")
+                    .executes(RegionsCommand::cancelExpansion)
+                )
+            );
+        }
+        if (isCommandEnabled("expansion")) {
+            builder.then(Commands.literal("expansion")
+                .then(Commands.literal("list")
+                    .executes(RegionsCommand::adminExpansionList)
+                )
+                .then(Commands.literal("inspect")
+                    .then(Commands.argument("operationId", StringArgumentType.word())
+                        .executes(RegionsCommand::adminExpansionInspect)
+                    )
+                )
+                .then(Commands.literal("retry")
+                    .then(Commands.argument("operationId", StringArgumentType.word())
+                        .executes(RegionsCommand::adminExpansionRetry)
+                    )
+                )
+                .then(Commands.literal("reconcile")
+                    .executes(RegionsCommand::adminExpansionReconcile)
+                )
+                .then(Commands.literal("block")
+                    .then(Commands.argument("operationId", StringArgumentType.word())
+                        .then(Commands.literal("confirm")
+                            .executes(RegionsCommand::adminExpansionBlock)
+                        )
+                    )
                 )
             );
         }
@@ -862,7 +897,11 @@ public class RegionsCommand {
         }
     }
 
-    private static int resizeClaim(CommandContext<CommandSourceStack> context) {
+    private static RegionExpansionCoordinator expansionCoordinator() {
+        return BigBangRegions.getExpansionCoordinator();
+    }
+
+    private static int beginExpansion(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         ServerPlayer player = source.getPlayer();
         if (player == null) {
@@ -873,10 +912,146 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
             return 0;
         }
-        int newSize = IntegerArgumentType.getInteger(context, "tamanho");
+        int targetSize = IntegerArgumentType.getInteger(context, "tamanho");
         try {
-            int result = BigBangRegions.getAllocationCoordinator().resizeClaim(player, newSize);
-            source.sendSuccess(() -> Component.literal("§aRegiao expandida para " + result + "x" + result + " blocos!").withStyle(ChatFormatting.GREEN), false);
+            RegionExpansionOperation op = expansionCoordinator().beginExpansion(player, targetSize);
+            source.sendSuccess(() -> Component.literal("§aExpansao iniciada para " + targetSize + "x" + targetSize
+                + " blocos! Custo: " + op.getPriceGems() + " gems. ID: " + op.getOperationId())
+                .withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int expansionStatus(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        RegionExpansionOperation op = expansionCoordinator().getActiveExpansion(player.getUUID());
+        if (op == null) {
+            source.sendFailure(Component.literal("Voce nao possui uma operacao de expansao ativa."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("§7Expansao " + op.getOperationId()
+            + ": " + op.getCurrentSize() + "x" + op.getCurrentSize()
+            + " → " + op.getTargetSize() + "x" + op.getTargetSize()
+            + " (Estado: " + op.getState() + ", Custo: " + op.getPriceGems() + " gems)"), false);
+        return 1;
+    }
+
+    private static int cancelExpansion(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        try {
+            expansionCoordinator().cancelExpansion(player);
+            source.sendSuccess(() -> Component.literal("§aExpansao cancelada.").withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int adminExpansionList(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.expansion")) {
+            source.sendFailure(Component.literal("Sem permissao."));
+            return 0;
+        }
+        List<RegionExpansionOperation> ops = expansionCoordinator().getActiveExpansions();
+        if (ops.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("Nenhuma operacao de expansao ativa."), false);
+            return 1;
+        }
+        for (RegionExpansionOperation op : ops) {
+            source.sendSuccess(() -> Component.literal("§7" + op.getOperationId()
+                + " | Regiao: " + op.getRegionId()
+                + " | " + op.getCurrentSize() + "x" + op.getCurrentSize()
+                + " → " + op.getTargetSize() + "x" + op.getTargetSize()
+                + " | Estado: " + op.getState()
+                + " | Gems: " + op.getPriceGems()), false);
+        }
+        return 1;
+    }
+
+    private static int adminExpansionInspect(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.expansion")) {
+            source.sendFailure(Component.literal("Sem permissao."));
+            return 0;
+        }
+        String operationId = StringArgumentType.getString(context, "operationId");
+        RegionExpansionOperation op = expansionCoordinator().getExpansion(operationId);
+        if (op == null) {
+            source.sendFailure(Component.literal("Operacao nao encontrada: " + operationId));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("§7Operacao: " + op.getOperationId()
+            + "\n  Regiao: " + op.getRegionId()
+            + "\n  Owner: " + op.getOwnerUuid()
+            + "\n  Tamanho: " + op.getCurrentSize() + "x" + op.getCurrentSize()
+            + " → " + op.getTargetSize() + "x" + op.getTargetSize()
+            + "\n  Bounds: (" + op.getOldMinX() + "," + op.getOldMinZ() + ") → ("
+            + op.getTargetMinX() + "," + op.getTargetMinZ() + ")"
+            + "\n  Estado: " + op.getState()
+            + "\n  Gems: " + op.getPriceGems()
+            + "\n  ReservationId: " + op.getGemsReservationId()
+            + "\n  RetryCount: " + op.getRetryCount()
+            + "\n  Falha: " + (op.getFailureCode() != null ? op.getFailureCode() + " - " + op.getFailureDetail() : "nenhuma")), false);
+        return 1;
+    }
+
+    private static int adminExpansionRetry(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.expansion")) {
+            source.sendFailure(Component.literal("Sem permissao."));
+            return 0;
+        }
+        String operationId = StringArgumentType.getString(context, "operationId");
+        try {
+            expansionCoordinator().adminScheduleRetry(operationId);
+            source.sendSuccess(() -> Component.literal("§aRetry agendado para operacao " + operationId + "."), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int adminExpansionReconcile(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.expansion")) {
+            source.sendFailure(Component.literal("Sem permissao."));
+            return 0;
+        }
+        if (BigBangRegions.getExpansionRecoveryService() != null) {
+            BigBangRegions.getExpansionRecoveryService().recover();
+            source.sendSuccess(() -> Component.literal("§aReconciliacao de expansoes concluida."), false);
+        } else {
+            source.sendFailure(Component.literal("Servico de recovery indisponivel."));
+        }
+        return 1;
+    }
+
+    private static int adminExpansionBlock(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.expansion")) {
+            source.sendFailure(Component.literal("Sem permissao."));
+            return 0;
+        }
+        String operationId = StringArgumentType.getString(context, "operationId");
+        try {
+            expansionCoordinator().adminBlockOperation(operationId);
+            source.sendSuccess(() -> Component.literal("§aOperacao " + operationId + " bloqueada para revisao administrativa."), false);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));
