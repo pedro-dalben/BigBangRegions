@@ -23,15 +23,15 @@ public class ExplorationZoneServiceTest {
     @Test
     public void testInsideExplorationZone() {
         assertTrue(service.isInsideExplorationZone("minecraft:overworld", 0, 0));
-        assertTrue(service.isInsideExplorationZone("minecraft:overworld", -20000, 20000));
-        assertTrue(service.isInsideExplorationZone("minecraft:overworld", 20000, -20000));
+        assertTrue(service.isInsideExplorationZone("minecraft:overworld", -10000, 10000));
+        assertTrue(service.isInsideExplorationZone("minecraft:overworld", 10000, -10000));
     }
 
     @Test
     public void testOutsideExplorationZone() {
-        assertFalse(service.isInsideExplorationZone("minecraft:overworld", 30000, 0));
-        assertFalse(service.isInsideExplorationZone("minecraft:overworld", 0, 30000));
-        assertFalse(service.isInsideExplorationZone("minecraft:overworld", -30000, -30000));
+        assertFalse(service.isInsideExplorationZone("minecraft:overworld", 15000, 0));
+        assertFalse(service.isInsideExplorationZone("minecraft:overworld", 0, 15000));
+        assertFalse(service.isInsideExplorationZone("minecraft:overworld", -15000, -15000));
     }
 
     @Test

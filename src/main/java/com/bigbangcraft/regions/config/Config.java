@@ -164,7 +164,7 @@ public class Config {
         private boolean enabled = true;
         private String targetDimension = "minecraft:overworld";
         private int initialClaimSize = 50;
-        private int slotSize = 256;
+        private int slotSize = 384;
         private int futureMaximumClaimSize = 240;
         private int slotInternalMargin = 8;
         private int maxRegionsPerOwner = 1;
@@ -234,10 +234,10 @@ public class Config {
     }
 
     public static class ExplorationExclusionConfig {
-        private int minX = -20000;
-        private int maxX = 20000;
-        private int minZ = -20000;
-        private int maxZ = 20000;
+        private int minX = -10000;
+        private int maxX = 10000;
+        private int minZ = -10000;
+        private int maxZ = 10000;
         private int safetyBuffer = 1000;
 
         public int getMinX() { return minX; }

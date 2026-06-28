@@ -32,12 +32,12 @@ public class PlotSlotEligibilityTest {
 
     @Test
     public void testExclusionZoneIntersects() {
-        // Exclusion: -20000 to 20000, safety buffer: 1000 => effective exclusion: -21000 to 21000
-        // A slot at 20000 to 20256 intersects [ -21000, 21000 ] => should be ineligible
-        assertFalse(service.isSlotEligible(20000, 20000, 256));
+        // Exclusion: -10000 to 10000, safety buffer: 1000 => effective exclusion: -11000 to 11000
+        // A slot at 10000 to 10384 intersects [ -11000, 11000 ] => should be ineligible
+        assertFalse(service.isSlotEligible(10000, 10000, 384));
 
-        // A slot at 21500 to 21756 does not intersect => should be eligible
-        assertTrue(service.isSlotEligible(21500, 21500, 256));
+        // A slot at 11500 to 11884 does not intersect => should be eligible
+        assertTrue(service.isSlotEligible(11500, 11500, 384));
     }
 
     @Test
@@ -50,10 +50,10 @@ public class PlotSlotEligibilityTest {
         );
         regionCache.add(region);
 
-        // Slot at [ 21900, 22156 ] intersects existing region => ineligible
-        assertFalse(service.isSlotEligible(21900, 21900, 256));
+        // Slot at [ 21900, 22284 ] intersects existing region => ineligible
+        assertFalse(service.isSlotEligible(21900, 21900, 384));
 
-        // Slot at [ 22500, 22756 ] does not intersect => eligible
-        assertTrue(service.isSlotEligible(22500, 22500, 256));
+        // Slot at [ 22500, 22884 ] does not intersect => eligible
+        assertTrue(service.isSlotEligible(22500, 22500, 384));
     }
 }
