@@ -43,10 +43,10 @@ public class MigrationTest {
             assertTrue(tables.contains("plot_slots"));
             assertTrue(tables.contains("player_region_homes"));
 
-            // 2. Verify schema version is marked as 4
+            // 2. Verify schema version is marked as 5
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(4, rs.getInt(1));
+                assertEquals(5, rs.getInt(1));
             }
 
             // Verify columns added in V2

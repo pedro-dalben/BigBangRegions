@@ -8,6 +8,8 @@ public enum AllocationRequestState {
     PAYMENT_RESERVE_PENDING,
     PAYMENT_RESERVED,
     
+    PAYMENT_RENEW_PENDING,
+    
     PREPARING,
     REGION_CREATING,
     REGION_CREATED_PAYMENT_CAPTURE_PENDING,
@@ -37,7 +39,9 @@ public enum AllocationRequestState {
             case PAYMENT_RESERVE_PENDING:
                 return next == PAYMENT_RESERVED || next == RELEASE_PENDING || next == FAILED_ECONOMY_UNAVAILABLE || next == BLOCKED_FOR_MANUAL_RECONCILIATION || next == CANCELLED_BEFORE_REGION_CREATION;
             case PAYMENT_RESERVED:
-                return next == PREPARING || next == RELEASE_PENDING || next == CANCELLED_BEFORE_REGION_CREATION;
+                return next == PAYMENT_RENEW_PENDING || next == PREPARING || next == RELEASE_PENDING || next == CANCELLED_BEFORE_REGION_CREATION;
+            case PAYMENT_RENEW_PENDING:
+                return next == PAYMENT_RESERVED || next == RELEASE_PENDING || next == BLOCKED_FOR_MANUAL_RECONCILIATION || next == CANCELLED_BEFORE_REGION_CREATION;
             
             case PREPARING:
                 return next == REGION_CREATING || next == RELEASE_PENDING || next == FAILED_NO_TERRAIN || next == CANCELLED_BEFORE_REGION_CREATION;
@@ -64,6 +68,7 @@ public enum AllocationRequestState {
     public boolean isPreRegionCreation() {
         return this == PENDING || this == SEARCHING || this == SLOT_RESERVED ||
                this == PAYMENT_RESERVE_PENDING || this == PAYMENT_RESERVED ||
+               this == PAYMENT_RENEW_PENDING ||
                this == PREPARING || this == REGION_CREATING;
     }
     
@@ -75,6 +80,7 @@ public enum AllocationRequestState {
     
     public boolean canReleasePayment() {
         return this == PAYMENT_RESERVE_PENDING || this == PAYMENT_RESERVED || 
+               this == PAYMENT_RENEW_PENDING ||
                this == PREPARING || this == RELEASE_PENDING;
     }
 }

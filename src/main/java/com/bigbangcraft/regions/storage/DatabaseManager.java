@@ -96,6 +96,14 @@ public class DatabaseManager {
             executeMigrationResource("/storage/migrations/V004__audit_log_index.sql");
             setSchemaVersion(4);
             LOGGER.info("Migration V4 applied successfully.");
+            currentVersion = 4;
+        }
+
+        if (currentVersion < 5) {
+            LOGGER.info("Applying migration V5...");
+            executeMigrationResource("/storage/migrations/V005__allocation_plot_slot_id.sql");
+            setSchemaVersion(5);
+            LOGGER.info("Migration V5 applied successfully.");
         }
     }
 

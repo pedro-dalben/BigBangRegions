@@ -11,6 +11,7 @@ public class AllocationRequest {
     private final String source;
     private final UUID requestedByUuid;
     private String regionId;
+    private String plotSlotId;
     private String failureReason;
     private int attempts;
     private final long createdAt;
@@ -34,7 +35,7 @@ public class AllocationRequest {
 
     public AllocationRequest(String id, UUID ownerUuid, String requestedBiomeOption, String targetDimension,
                              AllocationRequestState state, String source, UUID requestedByUuid, String regionId,
-                             String failureReason, int attempts, long createdAt, long updatedAt,
+                             String plotSlotId, String failureReason, int attempts, long createdAt, long updatedAt,
                              Long completedAt, Long cancelledAt) {
         this.id = id;
         this.ownerUuid = ownerUuid;
@@ -44,6 +45,7 @@ public class AllocationRequest {
         this.source = source;
         this.requestedByUuid = requestedByUuid;
         this.regionId = regionId;
+        this.plotSlotId = plotSlotId;
         this.failureReason = failureReason;
         this.attempts = attempts;
         this.createdAt = createdAt;
@@ -60,6 +62,7 @@ public class AllocationRequest {
     public String getSource() { return source; }
     public UUID getRequestedByUuid() { return requestedByUuid; }
     public String getRegionId() { return regionId; }
+    public String getPlotSlotId() { return plotSlotId; }
     public String getFailureReason() { return failureReason; }
     public int getAttempts() { return attempts; }
     public long getCreatedAt() { return createdAt; }
@@ -110,6 +113,11 @@ public class AllocationRequest {
 
     public void setRegionId(String regionId) {
         this.regionId = regionId;
+        this.updatedAt = System.currentTimeMillis();
+    }
+
+    public void setPlotSlotId(String plotSlotId) {
+        this.plotSlotId = plotSlotId;
         this.updatedAt = System.currentTimeMillis();
     }
 

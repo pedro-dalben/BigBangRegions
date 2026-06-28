@@ -15,6 +15,7 @@ import com.bigbangcraft.regions.region.*;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.payment.NoPaymentGateway;
 import com.bigbangcraft.regions.payment.api.LandPaymentGateway;
+import com.bigbangcraft.regions.recovery.LandOperationRecoveryService;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import com.bigbangcraft.regions.repository.AllocationRequestRepository;
 import com.bigbangcraft.regions.repository.AuditRepository;
@@ -78,6 +79,7 @@ public class BigBangRegions implements ModInitializer {
     private static RegionEntryExitService entryExitService;
     private static RegionBoundaryRenderer boundaryRenderer;
     private static LandPaymentGateway paymentGateway;
+    private static LandOperationRecoveryService recoveryService;
 
     public static RegionMembershipCache getMembershipCache() {
         return membershipCache;
@@ -174,6 +176,12 @@ public class BigBangRegions implements ModInitializer {
             regionCache, membershipCache, paymentGateway
         );
         allocationScheduler = new AllocationScheduler(allocationCoordinator, configManager);
+        
+        // 7b. Recovery service
+        recoveryService = new LandOperationRecoveryService(
+            allocationRequestRepository, plotSlotRepository, regionCache,
+            paymentGateway, configManager
+        );
 
         // 7. Services and Managers
         selectionManager = new SelectionManager();
@@ -208,6 +216,10 @@ public class BigBangRegions implements ModInitializer {
 
         // 11. Server tick scheduler for allocation processing + entry/exit tracking
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            LOGGER.info("Server started. Running land operation recovery...");
+            if (recoveryService != null) {
+                recoveryService.recover();
+            }
             LOGGER.info("Allocation scheduler started.");
             LOGGER.info("Payment gateway status: {}", paymentGateway.getProviderStatus());
         });

@@ -26,9 +26,15 @@ public class AllocationRequestStateTest {
         assertTrue(AllocationRequestState.PAYMENT_RESERVE_PENDING.canTransitionTo(AllocationRequestState.BLOCKED_FOR_MANUAL_RECONCILIATION));
         assertTrue(AllocationRequestState.PAYMENT_RESERVE_PENDING.canTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION));
 
+        assertTrue(AllocationRequestState.PAYMENT_RESERVED.canTransitionTo(AllocationRequestState.PAYMENT_RENEW_PENDING));
         assertTrue(AllocationRequestState.PAYMENT_RESERVED.canTransitionTo(AllocationRequestState.PREPARING));
         assertTrue(AllocationRequestState.PAYMENT_RESERVED.canTransitionTo(AllocationRequestState.RELEASE_PENDING));
         assertTrue(AllocationRequestState.PAYMENT_RESERVED.canTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION));
+
+        assertTrue(AllocationRequestState.PAYMENT_RENEW_PENDING.canTransitionTo(AllocationRequestState.PAYMENT_RESERVED));
+        assertTrue(AllocationRequestState.PAYMENT_RENEW_PENDING.canTransitionTo(AllocationRequestState.RELEASE_PENDING));
+        assertTrue(AllocationRequestState.PAYMENT_RENEW_PENDING.canTransitionTo(AllocationRequestState.BLOCKED_FOR_MANUAL_RECONCILIATION));
+        assertTrue(AllocationRequestState.PAYMENT_RENEW_PENDING.canTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION));
 
         assertTrue(AllocationRequestState.PREPARING.canTransitionTo(AllocationRequestState.REGION_CREATING));
         assertTrue(AllocationRequestState.PREPARING.canTransitionTo(AllocationRequestState.RELEASE_PENDING));
@@ -57,6 +63,7 @@ public class AllocationRequestStateTest {
         assertTrue(AllocationRequestState.SLOT_RESERVED.isPreRegionCreation());
         assertTrue(AllocationRequestState.PAYMENT_RESERVE_PENDING.isPreRegionCreation());
         assertTrue(AllocationRequestState.PAYMENT_RESERVED.isPreRegionCreation());
+        assertTrue(AllocationRequestState.PAYMENT_RENEW_PENDING.isPreRegionCreation());
         assertTrue(AllocationRequestState.PREPARING.isPreRegionCreation());
         assertTrue(AllocationRequestState.REGION_CREATING.isPreRegionCreation());
         
@@ -78,6 +85,7 @@ public class AllocationRequestStateTest {
         assertFalse(AllocationRequestState.SLOT_RESERVED.isTerminal());
         assertFalse(AllocationRequestState.PAYMENT_RESERVE_PENDING.isTerminal());
         assertFalse(AllocationRequestState.PAYMENT_RESERVED.isTerminal());
+        assertFalse(AllocationRequestState.PAYMENT_RENEW_PENDING.isTerminal());
         assertFalse(AllocationRequestState.PREPARING.isTerminal());
         assertFalse(AllocationRequestState.REGION_CREATING.isTerminal());
         assertFalse(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING.isTerminal());
@@ -87,6 +95,7 @@ public class AllocationRequestStateTest {
     public void testCanReleasePayment() {
         assertTrue(AllocationRequestState.PAYMENT_RESERVE_PENDING.canReleasePayment());
         assertTrue(AllocationRequestState.PAYMENT_RESERVED.canReleasePayment());
+        assertTrue(AllocationRequestState.PAYMENT_RENEW_PENDING.canReleasePayment());
         assertTrue(AllocationRequestState.PREPARING.canReleasePayment());
         assertTrue(AllocationRequestState.RELEASE_PENDING.canReleasePayment());
         

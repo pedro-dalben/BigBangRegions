@@ -23,12 +23,12 @@ public class AllocationRequestRepository {
         synchronized (dbManager) {
             String sql = "INSERT OR REPLACE INTO player_region_allocation_requests (" +
                     "id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
-                    "requested_by_uuid, region_id, failure_reason, attempts, created_at, updated_at, " +
+                    "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, created_at, updated_at, " +
                     "completed_at, cancelled_at, " +
                     "price_gems, payment_required, gems_reservation_id, reserve_idempotency_key, " +
                     "renew_idempotency_key, renew_sequence, capture_idempotency_key, release_idempotency_key, " +
                     "reservation_lease_expires_at, payment_captured_at, retry_count, next_retry_at" +
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
                 pstmt.setString(1, request.getId());
@@ -39,24 +39,25 @@ public class AllocationRequestRepository {
                 pstmt.setString(6, request.getSource());
                 pstmt.setString(7, request.getRequestedByUuid() != null ? request.getRequestedByUuid().toString() : null);
                 pstmt.setString(8, request.getRegionId());
-                pstmt.setString(9, request.getFailureReason());
-                pstmt.setInt(10, request.getAttempts());
-                pstmt.setLong(11, request.getCreatedAt());
-                pstmt.setLong(12, request.getUpdatedAt());
-                pstmt.setObject(13, request.getCompletedAt());
-                pstmt.setObject(14, request.getCancelledAt());
-                pstmt.setLong(15, request.getPriceGems());
-                pstmt.setInt(16, request.isPaymentRequired() ? 1 : 0);
-                pstmt.setString(17, request.getGemsReservationId());
-                pstmt.setString(18, request.getReserveIdempotencyKey());
-                pstmt.setString(19, request.getRenewIdempotencyKey());
-                pstmt.setLong(20, request.getRenewSequence());
-                pstmt.setString(21, request.getCaptureIdempotencyKey());
-                pstmt.setString(22, request.getReleaseIdempotencyKey());
-                pstmt.setObject(23, request.getReservationLeaseExpiresAt());
-                pstmt.setObject(24, request.getPaymentCapturedAt());
-                pstmt.setInt(25, request.getRetryCount());
-                pstmt.setObject(26, request.getNextRetryAt());
+                pstmt.setString(9, request.getPlotSlotId());
+                pstmt.setString(10, request.getFailureReason());
+                pstmt.setInt(11, request.getAttempts());
+                pstmt.setLong(12, request.getCreatedAt());
+                pstmt.setLong(13, request.getUpdatedAt());
+                pstmt.setObject(14, request.getCompletedAt());
+                pstmt.setObject(15, request.getCancelledAt());
+                pstmt.setLong(16, request.getPriceGems());
+                pstmt.setInt(17, request.isPaymentRequired() ? 1 : 0);
+                pstmt.setString(18, request.getGemsReservationId());
+                pstmt.setString(19, request.getReserveIdempotencyKey());
+                pstmt.setString(20, request.getRenewIdempotencyKey());
+                pstmt.setLong(21, request.getRenewSequence());
+                pstmt.setString(22, request.getCaptureIdempotencyKey());
+                pstmt.setString(23, request.getReleaseIdempotencyKey());
+                pstmt.setObject(24, request.getReservationLeaseExpiresAt());
+                pstmt.setObject(25, request.getPaymentCapturedAt());
+                pstmt.setInt(26, request.getRetryCount());
+                pstmt.setObject(27, request.getNextRetryAt());
                 pstmt.executeUpdate();
             } catch (SQLException e) {
                 LOGGER.error("Failed to save allocation request: ", e);
@@ -86,7 +87,8 @@ public class AllocationRequestRepository {
         synchronized (dbManager) {
             String sql = "SELECT * FROM player_region_allocation_requests WHERE owner_uuid = ? AND state IN (" +
                     "'PENDING', 'SEARCHING', 'SLOT_RESERVED', 'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', " +
-                    "'PREPARING', 'REGION_CREATING', 'REGION_CREATED_PAYMENT_CAPTURE_PENDING');";
+                    "'PAYMENT_RENEW_PENDING', 'PREPARING', 'REGION_CREATING', " +
+                    "'REGION_CREATED_PAYMENT_CAPTURE_PENDING', 'RELEASE_PENDING');";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
                 pstmt.setString(1, ownerUuid.toString());
@@ -107,7 +109,8 @@ public class AllocationRequestRepository {
             List<AllocationRequest> list = new ArrayList<>();
             String sql = "SELECT * FROM player_region_allocation_requests WHERE state IN (" +
                     "'PENDING', 'SEARCHING', 'SLOT_RESERVED', 'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', " +
-                    "'PREPARING', 'REGION_CREATING', 'REGION_CREATED_PAYMENT_CAPTURE_PENDING');";
+                    "'PAYMENT_RENEW_PENDING', 'PREPARING', 'REGION_CREATING', " +
+                    "'REGION_CREATED_PAYMENT_CAPTURE_PENDING', 'RELEASE_PENDING');";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql);
                  ResultSet rs = pstmt.executeQuery()) {
@@ -123,6 +126,7 @@ public class AllocationRequestRepository {
 
     private AllocationRequest mapResultSet(ResultSet rs) throws SQLException {
         String regionId = rs.getString("region_id");
+        String plotSlotId = rs.getString("plot_slot_id");
         String failureReason = rs.getString("failure_reason");
 
         Long completedAt = rs.getObject("completed_at") != null ? rs.getLong("completed_at") : null;
@@ -140,6 +144,7 @@ public class AllocationRequestRepository {
                 rs.getString("source"),
                 requestedByUuid,
                 regionId,
+                plotSlotId,
                 failureReason,
                 rs.getInt("attempts"),
                 rs.getLong("created_at"),
