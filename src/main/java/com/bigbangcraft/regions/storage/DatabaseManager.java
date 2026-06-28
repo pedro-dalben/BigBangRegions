@@ -105,6 +105,13 @@ public class DatabaseManager {
             setSchemaVersion(5);
             LOGGER.info("Migration V5 applied successfully.");
         }
+
+        if (currentVersion < 6) {
+            LOGGER.info("Applying migration V6...");
+            executeMigrationResource("/storage/migrations/V006__region_expansion_operations.sql");
+            setSchemaVersion(6);
+            LOGGER.info("Migration V6 applied successfully.");
+        }
     }
 
     private int getCurrentSchemaVersion() {
