@@ -167,21 +167,21 @@ public class BigBangRegions implements ModInitializer {
         BiomeSearchService biomeSearchService = new BiomeSearchService(configManager);
         PlotSlotService plotSlotService = new PlotSlotService(configManager, plotSlotRepository, regionCache);
         
-        // 7. Payment Gateway initialization
+        // 7. Payment Gateway initialization (only used for region expansion, not initial allocation)
         paymentGateway = initializePaymentGateway();
         
         allocationCoordinator = new TerrainAllocationCoordinator(
             configManager, databaseManager,
             allocationRequestRepository, plotSlotRepository, plotSlotService,
             playerRegionHomeRepository, regionRepository, biomeSearchService, biomeOptionRegistry,
-            regionCache, membershipCache, paymentGateway
+            regionCache, membershipCache
         );
         allocationScheduler = new AllocationScheduler(allocationCoordinator, configManager);
         
         // 7b. Recovery service
         recoveryService = new LandOperationRecoveryService(
             allocationRequestRepository, plotSlotRepository, regionRepository,
-            regionCache, membershipCache, paymentGateway, configManager
+            regionCache, membershipCache
         );
 
         // 7. Services and Managers
@@ -242,7 +242,6 @@ public class BigBangRegions implements ModInitializer {
                 MessageHelper.cleanCache();
                 if (allocationCoordinator != null) {
                     allocationCoordinator.cleanCooldowns();
-                    allocationCoordinator.reconcileExpiredPayments();
                 }
             }
         });

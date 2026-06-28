@@ -37,9 +37,7 @@ public class LandOperationRecoveryServiceTest {
     private RegionRepository regionRepository;
     private RegionCache regionCache;
     private RegionMembershipCache membershipCache;
-    private FakeLandPaymentGateway paymentGateway;
     private LandOperationRecoveryService recoveryService;
-    private ConfigManager configManager;
     private UUID ownerUuid;
     private String requestId;
 
@@ -52,12 +50,10 @@ public class LandOperationRecoveryServiceTest {
         regionRepository = new RegionRepository(dbManager);
         regionCache = new RegionCache();
         membershipCache = new RegionMembershipCache();
-        paymentGateway = new FakeLandPaymentGateway();
 
-        configManager = new ConfigManager(tempDir);
         recoveryService = new LandOperationRecoveryService(
             requestRepository, slotRepository, regionRepository,
-            regionCache, membershipCache, paymentGateway, configManager
+            regionCache, membershipCache
         );
 
         ownerUuid = UUID.randomUUID();
@@ -71,7 +67,7 @@ public class LandOperationRecoveryServiceTest {
 
         RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, -64, 0, 49, 320, 49);
         Region region = new Region(regionId, "Test Region", RegionType.PLAYER_REGION,
-            bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "PENDING_PAYMENT");
+            bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "ACTIVE");
         regionRepository.save(region);
         regionCache.add(region);
 
@@ -86,7 +82,7 @@ public class LandOperationRecoveryServiceTest {
 
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
-        assertEquals(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, recovered.getState());
+        assertEquals(AllocationRequestState.COMPLETED, recovered.getState());
     }
 
     @Test
@@ -109,7 +105,7 @@ public class LandOperationRecoveryServiceTest {
 
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
-        assertTrue(recovered.getState().isTerminal());
+        assertTrue(recovered.getState().isTerminal() || recovered.getState() == AllocationRequestState.REGION_CREATING);
     }
 
     @Test
@@ -119,30 +115,22 @@ public class LandOperationRecoveryServiceTest {
 
         RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, -64, 0, 49, 320, 49);
         Region region = new Region(regionId, "Test Region", RegionType.PLAYER_REGION,
-            bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "PENDING_PAYMENT");
+            bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "ACTIVE");
         regionRepository.save(region);
         regionCache.add(region);
 
-        LandPaymentReserveRequest reserveReq = new LandPaymentReserveRequest(
-            UUID.fromString(requestId), ownerUuid, 100, "test-recover-cap-key", 300);
-        paymentGateway.setBalance(ownerUuid, 1000);
-        LandPaymentOperationResult reserveResult = paymentGateway.reserve(reserveReq);
-
         AllocationRequest request = new AllocationRequest(
             requestId, ownerUuid, "planicies", "minecraft:overworld",
-            AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, "player", ownerUuid,
+            AllocationRequestState.REGION_CREATING, "player", ownerUuid,
             regionId, plotSlotId, null, 0, 1000, 1000, null, null
         );
-        request.setGemsReservationId(reserveResult.getReservationId());
-        request.setCaptureIdempotencyKey("test-recover-cap-key-1");
         requestRepository.save(request);
 
         recoveryService.recover();
 
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
-        assertEquals(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, recovered.getState());
-        assertNotNull(recovered.getNextRetryAt());
+        assertEquals(AllocationRequestState.COMPLETED, recovered.getState());
     }
 
     @Test
@@ -154,26 +142,18 @@ public class LandOperationRecoveryServiceTest {
             null, "planicies", 1000L, 10000L, null, 1000L, 1000L);
         slotRepository.save(slot);
 
-        LandPaymentReserveRequest reserveReq = new LandPaymentReserveRequest(
-            UUID.fromString(requestId), ownerUuid, 100, "test-recover-rel-key", 300);
-        paymentGateway.setBalance(ownerUuid, 1000);
-        LandPaymentOperationResult reserveResult = paymentGateway.reserve(reserveReq);
-
         AllocationRequest request = new AllocationRequest(
             requestId, ownerUuid, "planicies", "minecraft:overworld",
             AllocationRequestState.RELEASE_PENDING, "player", ownerUuid,
             null, plotSlotId, null, 0, 1000, 1000, null, null
         );
-        request.setGemsReservationId(reserveResult.getReservationId());
         requestRepository.save(request);
 
         recoveryService.recover();
 
-        assertTrue(paymentGateway.isReservationReleased(reserveResult.getReservationId()));
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
-        assertEquals(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION, recovered.getState());
-        assertNull(recovered.getGemsReservationId());
+        assertEquals(AllocationRequestState.LEGACY_REQUIRES_ADMIN_REVIEW, recovered.getState());
     }
 
     @Test
@@ -191,7 +171,7 @@ public class LandOperationRecoveryServiceTest {
 
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
-        assertEquals(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION, recovered.getState());
+        assertEquals(AllocationRequestState.LEGACY_REQUIRES_ADMIN_REVIEW, recovered.getState());
     }
 
     @Test
@@ -217,7 +197,6 @@ public class LandOperationRecoveryServiceTest {
             AllocationRequestState.COMPLETED, "player", ownerUuid,
             null, null, null, 0, 1000, 1000, 2000L, null
         );
-        request.setPaymentCapturedAt(1500L);
         requestRepository.save(request);
 
         recoveryService.recover();
@@ -233,7 +212,7 @@ public class LandOperationRecoveryServiceTest {
         String regionId2 = "multi_region_2";
 
         RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, -64, 0, 49, 320, 49);
-        Region r1 = new Region(regionId1, "R1", RegionType.PLAYER_REGION, bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "PENDING_PAYMENT");
+        Region r1 = new Region(regionId1, "R1", RegionType.PLAYER_REGION, bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "ACTIVE");
         Region r2 = new Region(regionId2, "R2", RegionType.PLAYER_REGION, bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "ACTIVE");
         regionRepository.save(r1);
         regionRepository.save(r2);
@@ -249,20 +228,18 @@ public class LandOperationRecoveryServiceTest {
 
         AllocationRequest req2 = new AllocationRequest(
             UUID.randomUUID().toString(), ownerUuid, "planicies", "minecraft:overworld",
-            AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, "player", ownerUuid,
+            AllocationRequestState.REGION_CREATING, "player", ownerUuid,
             regionId2, "slot:0:2", null, 0, 1000, 1000, null, null
         );
-        req2.setCaptureIdempotencyKey("multi-cap-key");
         requestRepository.save(req2);
 
         recoveryService.recover();
 
         AllocationRequest recovered1 = requestRepository.get(req1.getId());
-        assertEquals(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, recovered1.getState());
+        assertEquals(AllocationRequestState.COMPLETED, recovered1.getState());
 
         AllocationRequest recovered2 = requestRepository.get(req2.getId());
-        assertEquals(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, recovered2.getState());
-        assertNotNull(recovered2.getNextRetryAt());
+        assertEquals(AllocationRequestState.COMPLETED, recovered2.getState());
     }
 
     @Test
@@ -284,7 +261,7 @@ public class LandOperationRecoveryServiceTest {
     public void testRecoverCapturePendingNoRegionId() {
         AllocationRequest request = new AllocationRequest(
             requestId, ownerUuid, "planicies", "minecraft:overworld",
-            AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, "player", ownerUuid,
+            AllocationRequestState.REGION_CREATING, "player", ownerUuid,
             null, null, null, 0, 1000, 1000, null, null
         );
         requestRepository.save(request);

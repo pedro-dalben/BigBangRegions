@@ -5,7 +5,6 @@ import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.*;
-import com.bigbangcraft.regions.payment.api.*;
 import com.bigbangcraft.regions.repository.AllocationRequestRepository;
 import com.bigbangcraft.regions.repository.PlayerRegionHomeRepository;
 import com.bigbangcraft.regions.repository.PlotSlotRepository;
@@ -40,7 +39,6 @@ public class TerrainAllocationCoordinator {
     private final BiomeOptionRegistry biomeOptionRegistry;
     private final RegionCache regionCache;
     private final RegionMembershipCache membershipCache;
-    private final LandPaymentGateway paymentGateway;
 
     private final Map<UUID, Long> creationCooldowns = new ConcurrentHashMap<>();
     private final Map<UUID, Long> homeTeleportCooldowns = new ConcurrentHashMap<>();
@@ -55,8 +53,7 @@ public class TerrainAllocationCoordinator {
                                          BiomeSearchService biomeSearchService,
                                          BiomeOptionRegistry biomeOptionRegistry,
                                          RegionCache regionCache,
-                                         RegionMembershipCache membershipCache,
-                                         LandPaymentGateway paymentGateway) {
+                                         RegionMembershipCache membershipCache) {
         this.configManager = configManager;
         this.databaseManager = databaseManager;
         this.requestRepository = requestRepository;
@@ -68,7 +65,6 @@ public class TerrainAllocationCoordinator {
         this.biomeOptionRegistry = biomeOptionRegistry;
         this.regionCache = regionCache;
         this.membershipCache = membershipCache;
-        this.paymentGateway = paymentGateway;
     }
 
     public String createRequest(ServerPlayer player, String biomeQuery, String source) {
@@ -102,26 +98,17 @@ public class TerrainAllocationCoordinator {
                 throw new IllegalStateException("Voce ja atingiu o limite maximo de " + lac.getMaxRegionsPerOwner() + " regioes");
             }
         }
-        
-        Config.PaymentConfig paymentConfig = lac.getPayment();
-        if (paymentConfig.isPaymentRequired() && !paymentGateway.isAvailable()) {
-            throw new IllegalStateException("Sistema de pagamento indisponivel. Tente novamente mais tarde.");
-        }
-        
+
         String id = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
         AllocationRequest request = new AllocationRequest(
             id, ownerUuid, opt.get().getKey(), lac.getTargetDimension(),
             AllocationRequestState.PENDING, source, ownerUuid, null, null, null, 0, now, now, null, null
         );
-        
-        request.setPriceGems(paymentConfig.getInitialAllocationCostGems());
-        request.setPaymentRequired(paymentConfig.isPaymentRequired());
-        
+
         requestRepository.save(request);
         creationCooldowns.put(ownerUuid, now);
-        LOGGER.info("Allocation request created: id={}, owner={}, biome={}, paymentRequired={}, priceGems={}", 
-            id, ownerUuid, opt.get().getKey(), request.isPaymentRequired(), request.getPriceGems());
+        LOGGER.info("Allocation request created: id={}, owner={}, biome={}", id, ownerUuid, opt.get().getKey());
         return id;
     }
 
@@ -148,46 +135,24 @@ public class TerrainAllocationCoordinator {
         if (request == null) {
             throw new IllegalStateException("Voce nao possui um pedido de alocacao ativo");
         }
-        
+
         if (!request.getState().isPreRegionCreation()) {
-            throw new IllegalStateException("Esta operacao ja criou a regiao e nao pode ser cancelada automaticamente. Um administrador precisa verificar a operacao.");
+            throw new IllegalStateException("Esta operacao ja criou a regiao e nao pode ser cancelada. Um administrador precisa verificar a operacao.");
         }
-        
-        if (request.getGemsReservationId() != null && request.getState().canReleasePayment()) {
-            releasePaymentReservation(request);
-        }
-        
+
         request.forceTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION);
         requestRepository.save(request);
-        
-        if (request.getPlotSlotId() != null) {
-            tryReleaseSlot(request);
-        }
+
+        tryReleaseSlot(request);
         LOGGER.info("Allocation request cancelled: id={}, owner={}", request.getId(), ownerUuid);
     }
 
     public int processNextRequest(ServerLevel level) {
-        Config config = configManager.getConfig();
-        Config.SchedulerConfig sc = config.getPlayerLandAllocation().getScheduler();
-        Config.PlayerLandAllocationConfig lac = config.getPlayerLandAllocation();
-        Config.PaymentConfig paymentConfig = lac.getPayment();
-
         List<AllocationRequest> active = requestRepository.getActiveRequests();
         if (active.isEmpty()) return 0;
 
         long now = System.currentTimeMillis();
-        
-        for (AllocationRequest request : active) {
-            if (request.getNextRetryAt() != null && request.getNextRetryAt() > now) {
-                continue;
-            }
-            if (request.getState() == AllocationRequestState.PAYMENT_RESERVE_PENDING ||
-                request.getState() == AllocationRequestState.PAYMENT_RENEW_PENDING ||
-                request.getState() == AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING) {
-                return processRequest(request, level);
-            }
-        }
-        
+
         for (AllocationRequest request : active) {
             if (request.getNextRetryAt() != null && request.getNextRetryAt() > now) {
                 continue;
@@ -196,17 +161,23 @@ public class TerrainAllocationCoordinator {
         }
         return 0;
     }
-    
+
     private int processRequest(AllocationRequest request, ServerLevel level) {
         Config config = configManager.getConfig();
         Config.SchedulerConfig sc = config.getPlayerLandAllocation().getScheduler();
         Config.PlayerLandAllocationConfig lac = config.getPlayerLandAllocation();
-        Config.PaymentConfig paymentConfig = lac.getPayment();
-        long now = System.currentTimeMillis();
+
+        if (request.getState().isLegacyPaymentState()) {
+            request.forceTransitionTo(AllocationRequestState.LEGACY_REQUIRES_ADMIN_REVIEW);
+            request.setFailureReason("Operacao legada com pagamento detectada. Revisao administrativa necessaria.");
+            requestRepository.save(request);
+            LOGGER.warn("Legacy payment request {} moved to LEGACY_REQUIRES_ADMIN_REVIEW", request.getId());
+            return 1;
+        }
 
         if (request.getState() == AllocationRequestState.PENDING) {
             if (isTimedOut(request, sc)) {
-                failRequest(request, "Tempo limite excedido");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido");
                 return 1;
             }
             request.transitionTo(AllocationRequestState.SEARCHING);
@@ -216,12 +187,12 @@ public class TerrainAllocationCoordinator {
 
         if (request.getState() == AllocationRequestState.SEARCHING) {
             if (isTimedOut(request, sc)) {
-                failRequest(request, "Tempo limite excedido durante busca");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante busca");
                 return 1;
             }
             Optional<BiomeOption> biomeOpt = biomeOptionRegistry.lookup(request.getRequestedBiomeOption());
             if (biomeOpt.isEmpty()) {
-                failRequest(request, "Opcao de bioma nao encontrada: " + request.getRequestedBiomeOption());
+                failRequest(request, AllocationRequestState.FAILED_VALIDATION, "Opcao de bioma nao encontrada: " + request.getRequestedBiomeOption());
                 return 1;
             }
             int maxCandidates = sc.getMaxCandidateEvaluationsPerTick();
@@ -262,245 +233,57 @@ public class TerrainAllocationCoordinator {
         if (request.getState() == AllocationRequestState.SLOT_RESERVED) {
             if (isTimedOut(request, sc)) {
                 tryReleaseSlot(request);
-                failRequest(request, "Tempo limite excedido durante reserva");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante reserva");
                 return 1;
             }
-            
-            if (request.isPaymentRequired()) {
-                String idempotencyKey = generateIdempotencyKey(request.getId(), "reserve");
-                request.setReserveIdempotencyKey(idempotencyKey);
-                request.transitionTo(AllocationRequestState.PAYMENT_RESERVE_PENDING);
-                requestRepository.save(request);
-                return 1;
-            } else {
-                request.transitionTo(AllocationRequestState.PREPARING);
-                requestRepository.save(request);
-                return 1;
-            }
-        }
-        
-        if (request.getState() == AllocationRequestState.PAYMENT_RESERVE_PENDING) {
-            if (isTimedOut(request, sc)) {
-                tryReleaseSlot(request);
-                failRequest(request, "Tempo limite excedido durante reserva de pagamento");
-                return 1;
-            }
-            
-            LandPaymentReserveRequest reserveRequest = new LandPaymentReserveRequest(
-                UUID.fromString(request.getId()),
-                request.getOwnerUuid(),
-                request.getPriceGems(),
-                request.getReserveIdempotencyKey(),
-                paymentConfig.getReservationLeaseSeconds()
-            );
-            
-            LandPaymentOperationResult result = paymentGateway.reserve(reserveRequest);
-            
-            if (result.isSuccess()) {
-                request.setGemsReservationId(result.getReservationId());
-                request.setReservationLeaseExpiresAt(System.currentTimeMillis() + paymentConfig.getReservationLeaseSeconds() * 1000L);
-                request.transitionTo(AllocationRequestState.PAYMENT_RESERVED);
-                requestRepository.save(request);
-                LOGGER.info("Payment reserved: request={}, reservationId={}", request.getId(), result.getReservationId());
-                return 1;
-            } else if (result.isInsufficientBalance()) {
-                tryReleaseSlot(request);
-                request.forceTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION);
-                request.setFailureReason("Saldo insuficiente. Voce precisa de " + request.getPriceGems() + " gems.");
-                requestRepository.save(request);
-                LOGGER.info("Insufficient balance for request={}, owner={}", request.getId(), request.getOwnerUuid());
-                return 1;
-            } else if (result.isTransient()) {
-                request.incrementRetryCount();
-                long retryAt = System.currentTimeMillis() + paymentConfig.getRetryBackoffSeconds() * 1000L;
-                request.setNextRetryAt(retryAt);
-                requestRepository.save(request);
-                LOGGER.warn("Transient error reserving payment for request={}, retryAt={}", request.getId(), retryAt);
-                return 1;
-            } else {
-                request.incrementRetryCount();
-                if (request.getRetryCount() >= paymentConfig.getMaxCaptureRetriesBeforeManualBlock()) {
-                    tryReleaseSlot(request);
-                    request.forceTransitionTo(AllocationRequestState.FAILED_ECONOMY_UNAVAILABLE);
-                    request.setFailureReason("Sistema de pagamento indisponivel. Contate um administrador.");
-                    requestRepository.save(request);
-                } else {
-                    long retryAt = System.currentTimeMillis() + paymentConfig.getRetryBackoffSeconds() * 1000L;
-                    request.setNextRetryAt(retryAt);
-                    requestRepository.save(request);
-                }
-                return 1;
-            }
-        }
-
-        if (request.getState() == AllocationRequestState.PAYMENT_RESERVED) {
-            if (isTimedOut(request, sc)) {
-                releasePaymentReservation(request);
-                tryReleaseSlot(request);
-                failRequest(request, "Tempo limite excedido durante preparacao");
-                return 1;
-            }
-            
-            if (request.isPaymentRequired() && request.getReservationLeaseExpiresAt() != null) {
-                long renewThreshold = paymentConfig.getRenewBeforeExpirySeconds() * 1000L;
-                if (System.currentTimeMillis() + renewThreshold > request.getReservationLeaseExpiresAt()) {
-                    String renewIdempotencyKey = generateIdempotencyKey(request.getId(), "renew_" + request.getRenewSequence());
-                    request.setRenewIdempotencyKey(renewIdempotencyKey);
-                    request.transitionTo(AllocationRequestState.PAYMENT_RENEW_PENDING);
-                    requestRepository.save(request);
-                    return 1;
-                }
-            }
-            
             request.transitionTo(AllocationRequestState.PREPARING);
             requestRepository.save(request);
             return 1;
         }
 
-        if (request.getState() == AllocationRequestState.PAYMENT_RENEW_PENDING) {
-            LandPaymentRenewRequest renewRequest = new LandPaymentRenewRequest(
-                UUID.fromString(request.getId()),
-                request.getGemsReservationId(),
-                request.getRenewIdempotencyKey(),
-                request.getRenewSequence(),
-                paymentConfig.getReservationLeaseSeconds()
-            );
-            
-            LandPaymentOperationResult result = paymentGateway.renew(renewRequest);
-            
-            if (result.isSuccess()) {
-                request.incrementRenewSequence();
-                request.setReservationLeaseExpiresAt(System.currentTimeMillis() + paymentConfig.getReservationLeaseSeconds() * 1000L);
-                request.transitionTo(AllocationRequestState.PAYMENT_RESERVED);
-                requestRepository.save(request);
-                LOGGER.info("Payment reservation renewed: request={}, seq={}", request.getId(), request.getRenewSequence());
-                return 1;
-            } else if (result.isTransient()) {
-                request.incrementRetryCount();
-                long retryAt = System.currentTimeMillis() + paymentConfig.getRetryBackoffSeconds() * 1000L;
-                request.setNextRetryAt(retryAt);
-                requestRepository.save(request);
-                LOGGER.warn("Transient error renewing payment for request={}, retryAt={}", request.getId(), retryAt);
-                return 1;
-            } else {
-                request.incrementRetryCount();
-                if (request.getRetryCount() >= paymentConfig.getMaxCaptureRetriesBeforeManualBlock()) {
-                    releasePaymentReservation(request);
-                    tryReleaseSlot(request);
-                    request.forceTransitionTo(AllocationRequestState.BLOCKED_FOR_MANUAL_RECONCILIATION);
-                    request.setFailureReason("Falha ao renovar reserva de pagamento. Contate um administrador.");
-                    requestRepository.save(request);
-                    LOGGER.error("Payment renewal failed, blocked for manual reconciliation: request={}", request.getId());
-                } else {
-                    long retryAt = System.currentTimeMillis() + paymentConfig.getRetryBackoffSeconds() * 1000L;
-                    request.setNextRetryAt(retryAt);
-                    requestRepository.save(request);
-                }
-                return 1;
-            }
-        }
-
         if (request.getState() == AllocationRequestState.PREPARING) {
             if (isTimedOut(request, sc)) {
-                releasePaymentReservation(request);
                 tryReleaseSlot(request);
-                failRequest(request, "Tempo limite excedido durante preparacao");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante preparacao");
                 return 1;
             }
             String slotId = request.getPlotSlotId();
             if (slotId == null) {
-                releasePaymentReservation(request);
-                failRequest(request, "Slot ID nao definido");
+                failRequest(request, AllocationRequestState.FAILED_VALIDATION, "Slot ID nao definido");
                 return 1;
             }
             PlotSlot slot = slotRepository.get(slotId);
             if (slot == null) {
-                releasePaymentReservation(request);
                 tryReleaseSlot(request);
-                failRequest(request, "Slot nao encontrado");
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Slot nao encontrado");
                 return 1;
             }
-            
+
             String regionId = "player_" + request.getOwnerUuid().toString().substring(0, 8) + "_" + System.currentTimeMillis();
-            
-            // Persist REGION_CREATING intent BEFORE world operations (irreversible boundary)
+
             request.setRegionId(regionId);
             request.transitionTo(AllocationRequestState.REGION_CREATING);
-            if (request.isPaymentRequired()) {
-                String captureIdempotencyKey = generateIdempotencyKey(request.getId(), "capture");
-                request.setCaptureIdempotencyKey(captureIdempotencyKey);
-            }
             requestRepository.save(request);
-            
-            // Now perform world operations + persistence in a single SQLite transaction
-            // Only update caches after commit
+
             try {
-                createRegionInSingleTransaction(request, slot, lac, request.isPaymentRequired(), level);
+                createRegionInSingleTransaction(request, slot, lac, level);
             } catch (Exception e) {
                 LOGGER.error("Failed to create region in transaction for request={}: {}", request.getId(), e.getMessage());
-                // Region was already marked REGION_CREATING before world ops.
-                // Recovery will attempt to complete on next tick.
                 return 1;
             }
             return 1;
         }
-        
+
         if (request.getState() == AllocationRequestState.REGION_CREATING) {
             return recoverCreatingFromSqlite(request, level, lac);
-        }
-        
-        if (request.getState() == AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING) {
-            if (!request.isPaymentRequired()) {
-                completeRequest(request);
-                return 1;
-            }
-            
-            LandPaymentCaptureRequest captureRequest = new LandPaymentCaptureRequest(
-                UUID.fromString(request.getId()),
-                request.getGemsReservationId(),
-                request.getCaptureIdempotencyKey()
-            );
-            
-            LandPaymentOperationResult result = paymentGateway.capture(captureRequest);
-            
-            if (result.isSuccess()) {
-                completeRequest(request);
-                return 1;
-            } else if (result.isTransient()) {
-                request.incrementRetryCount();
-                Config.PaymentConfig pc = configManager.getConfig().getPlayerLandAllocation().getPayment();
-                long retryAt = System.currentTimeMillis() + pc.getRetryBackoffSeconds() * 1000L;
-                request.setNextRetryAt(retryAt);
-                requestRepository.save(request);
-                LOGGER.warn("Transient error capturing payment for request={}, retryAt={}", request.getId(), retryAt);
-                return 1;
-            } else {
-                request.incrementRetryCount();
-                Config.PaymentConfig pc = configManager.getConfig().getPlayerLandAllocation().getPayment();
-                if (request.getRetryCount() >= pc.getMaxCaptureRetriesBeforeManualBlock()) {
-                    request.forceTransitionTo(AllocationRequestState.BLOCKED_FOR_MANUAL_RECONCILIATION);
-                    request.setFailureReason("Falha ao capturar pagamento. Contate um administrador.");
-                    requestRepository.save(request);
-                    LOGGER.error("Payment capture blocked for manual reconciliation: request={}", request.getId());
-                } else {
-                    long retryAt = System.currentTimeMillis() + pc.getRetryBackoffSeconds() * 1000L;
-                    request.setNextRetryAt(retryAt);
-                    requestRepository.save(request);
-                }
-                return 1;
-            }
         }
 
         return 0;
     }
-    
-    /**
-     * Creates region + members + home + slot allocation + request update in a single SQLite transaction.
-     * Caches are only updated after commit. If commit fails, everything rolls back.
-     */
+
     private void createRegionInSingleTransaction(AllocationRequest request, PlotSlot slot,
                                                   Config.PlayerLandAllocationConfig lac,
-                                                  boolean paymentRequired, ServerLevel level) throws SQLException {
+                                                  ServerLevel level) throws SQLException {
         synchronized (databaseManager) {
             Connection conn = databaseManager.getConnection();
             boolean wasAutoCommit = conn.getAutoCommit();
@@ -517,62 +300,56 @@ public class TerrainAllocationCoordinator {
                 long now = System.currentTimeMillis();
                 RegionBounds bounds = new RegionBounds(dimension, claimMinX, -64, claimMinZ, claimMaxX, 320, claimMaxZ);
                 Region region = new Region(regionId, "Player Region", RegionType.PLAYER_REGION,
-                    bounds, 100, request.getOwnerUuid(), request.getOwnerUuid(), now, now, "PENDING_PAYMENT");
+                    bounds, 100, request.getOwnerUuid(), request.getOwnerUuid(), now, now, "ACTIVE");
                 regionRepository.saveOnConnection(conn, region);
                 regionRepository.saveMembersOnConnection(conn, regionId, Collections.emptyMap());
 
                 slot.allocate(regionId);
+                slot.occupy();
                 slotRepository.saveOnConnection(conn, slot);
-                reportSlotDependencies(slot);
 
                 Optional<BlockPos> spawnPos = SafeSpawnFinder.findSafeSpawn(level, claimMinX, claimMaxX,
                     claimMinZ, claimMaxZ);
-                BlockPos homePos = spawnPos.orElse(new BlockPos(
-                    claimMinX + lac.getInitialClaimSize() / 2, 64, claimMinZ + lac.getInitialClaimSize() / 2));
+                if (spawnPos.isEmpty()) {
+                    conn.rollback();
+                    tryReleaseSlotOnly(conn, slot);
+                    request.forceTransitionTo(AllocationRequestState.FAILED_NO_TERRAIN);
+                    request.setFailureReason("Nenhum safe spawn encontrado dentro do claim");
+                    requestRepository.saveOnConnection(conn, request);
+                    conn.commit();
+                    LOGGER.warn("No safe spawn found for request={}, region={}", request.getId(), regionId);
+                    return;
+                }
+                BlockPos homePos = spawnPos.get();
                 long homeNow = System.currentTimeMillis();
                 PlayerRegionHome home = new PlayerRegionHome(regionId, dimension,
                     homePos.getX() + 0.5, homePos.getY(), homePos.getZ() + 0.5, 0.0f, 0.0f, homeNow, homeNow);
                 homeRepository.saveOnConnection(conn, home);
 
-                if (!paymentRequired) {
-                    region.setStatus("ACTIVE");
-                    regionRepository.saveOnConnection(conn, region);
-                    slot.occupy();
-                    slotRepository.saveOnConnection(conn, slot);
-                    request.setPaymentCapturedAt(System.currentTimeMillis());
-                    request.transitionTo(AllocationRequestState.COMPLETED);
-                    request.incrementAttempts();
-                    requestRepository.saveOnConnection(conn, request);
-                } else {
-                    request.transitionTo(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING);
-                    request.incrementAttempts();
-                    requestRepository.saveOnConnection(conn, request);
-                }
+                request.transitionTo(AllocationRequestState.COMPLETED);
+                requestRepository.saveOnConnection(conn, request);
 
                 conn.commit();
 
-                // Only update caches AFTER successful commit
                 regionCache.add(region);
                 membershipCache.loadFromRegion(region);
 
-                LOGGER.info("Region created in single transaction: request={}, regionId={}, claimOffset={}, home=({},{},{})",
+                LOGGER.info("Region created (free): request={}, regionId={}, claimOffset={}, home=({},{},{})",
                     request.getId(), regionId, claimOffset, homePos.getX(), homePos.getY(), homePos.getZ());
             } catch (Exception e) {
                 conn.rollback();
-                LOGGER.error("Failed to create region in transaction for request={}: {}", request.getId(), e.getMessage());
-                // Region was marked REGION_CREATING. On next tick, recovery will try again
-                // since slot is still RESERVED.
                 throw (e instanceof SQLException) ? (SQLException) e : new SQLException(e);
             } finally {
                 conn.setAutoCommit(wasAutoCommit);
             }
         }
     }
-    
-    /**
-     * Recovery path for REGION_CREATING: queries SQLite directly (not cache).
-     * If region exists in DB, proceed to capture. If not, try to rebuild.
-     */
+
+    private void tryReleaseSlotOnly(Connection conn, PlotSlot slot) throws SQLException {
+        slot.release();
+        slotRepository.saveOnConnection(conn, slot);
+    }
+
     private int recoverCreatingFromSqlite(AllocationRequest request, ServerLevel level,
                                            Config.PlayerLandAllocationConfig lac) {
         String regionId = request.getRegionId();
@@ -582,88 +359,54 @@ public class TerrainAllocationCoordinator {
             requestRepository.save(request);
             return 1;
         }
-        
-        // Query SQLite directly, not cache
+
         boolean existsInDb = regionExistsInDb(regionId);
-        
+
         if (existsInDb) {
-            // Region was persisted, proceed to capture (region may or may not be in cache)
-            // Ensure cache is populated
+            reloadCachesFromDb();
             Region cached = regionCache.get(regionId);
-            if (cached == null) {
-                try {
-                    List<Region> allRegions = regionRepository.loadAll();
-                    for (Region r : allRegions) {
-                        regionCache.add(r);
-                        membershipCache.loadFromRegion(r);
-                    }
-                } catch (Exception e) {
-                    LOGGER.error("Failed to reload regions for cache in recovery: {}", e.getMessage());
-                }
+            if (cached != null) {
+                request.transitionTo(AllocationRequestState.COMPLETED);
+                requestRepository.save(request);
+                LOGGER.info("Recovery: region {} found in DB, marking request {} complete", regionId, request.getId());
+                return 1;
             }
-            request.transitionTo(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING);
-            requestRepository.save(request);
-            return 1;
         }
-        
-        // Region not in DB. Try to rebuild from slot (deterministic retry).
+
         String slotId = request.getPlotSlotId();
         if (slotId != null) {
             PlotSlot slot = slotRepository.get(slotId);
             if (slot != null && slot.getState() == PlotSlotState.RESERVED) {
                 try {
-                    createRegionInSingleTransaction(request, slot, lac, request.isPaymentRequired(), level);
+                    createRegionInSingleTransaction(request, slot, lac, level);
                     return 1;
                 } catch (Exception e) {
                     LOGGER.error("Recovery: Failed to rebuild region for request={}: {}", request.getId(), e.getMessage());
                 }
             }
         }
-        
-        // Cannot recover, block for manual reconciliation
+
         request.forceTransitionTo(AllocationRequestState.BLOCKED_FOR_MANUAL_RECONCILIATION);
         request.setFailureReason("Falha na criacao da regiao. Contate um administrador.");
         requestRepository.save(request);
         return 1;
     }
-    
+
     private boolean regionExistsInDb(String regionId) {
         List<Region> allRegions = regionRepository.loadAll();
         return allRegions.stream().anyMatch(r -> r.getId().equals(regionId));
     }
-    
-    private void completeRequest(AllocationRequest request) {
-        // Activate region - query cache, fallback to reloading if missing
-        Region region = regionCache.get(request.getRegionId());
-        if (region == null) {
-            // Reload from DB
-            List<Region> allRegions = regionRepository.loadAll();
-            for (Region r : allRegions) {
-                if (r.getId().equals(request.getRegionId())) {
-                    region = r;
-                    regionCache.add(r);
-                    membershipCache.loadFromRegion(r);
-                    break;
-                }
+
+    private void reloadCachesFromDb() {
+        try {
+            List<Region> regions = regionRepository.loadAll();
+            for (Region r : regions) {
+                regionCache.add(r);
+                membershipCache.loadFromRegion(r);
             }
+        } catch (Exception e) {
+            LOGGER.error("Failed to reload caches from DB", e);
         }
-        
-        if (region != null) {
-            region.setStatus("ACTIVE");
-            regionRepository.save(region);
-            regionCache.add(region);
-        }
-        
-        PlotSlot slot = slotRepository.getByRegionId(request.getRegionId());
-        if (slot != null) {
-            slot.occupy();
-            slotRepository.save(slot);
-        }
-        
-        request.setPaymentCapturedAt(System.currentTimeMillis());
-        request.transitionTo(AllocationRequestState.COMPLETED);
-        requestRepository.save(request);
-        LOGGER.info("Allocation completed: request={}, regionId={}", request.getId(), request.getRegionId());
     }
 
     public boolean teleportToHome(ServerPlayer player) {
@@ -747,26 +490,6 @@ public class TerrainAllocationCoordinator {
             slot.release();
             slotRepository.save(slot);
             LOGGER.info("Expired reservation released: slotId={}", slot.getId());
-        }
-    }
-    
-    public void reconcileExpiredPayments() {
-        List<AllocationRequest> active = requestRepository.getActiveRequests();
-        for (AllocationRequest request : active) {
-            if (request.getState() == AllocationRequestState.PAYMENT_RESERVE_PENDING ||
-                request.getState() == AllocationRequestState.PAYMENT_RESERVED ||
-                request.getState() == AllocationRequestState.PAYMENT_RENEW_PENDING) {
-                if (request.isReservationExpired()) {
-                    LOGGER.warn("Payment reservation expired for request={}, state={}", request.getId(), request.getState());
-                    if (request.getGemsReservationId() != null) {
-                        releasePaymentReservation(request);
-                    }
-                    tryReleaseSlot(request);
-                    request.forceTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION);
-                    request.setFailureReason("Reserva de pagamento expirada");
-                    requestRepository.save(request);
-                }
-            }
         }
     }
 
@@ -864,61 +587,17 @@ public class TerrainAllocationCoordinator {
     public Collection<BiomeOption> getBiomeOptions() {
         return biomeOptionRegistry.getAll();
     }
-    
-    /**
-     * Transitions to RELEASE_PENDING before calling external release.
-     * On failure: preserves reservationId, slot, and RELEASE_PENDING state for retry.
-     * On success: clears reservationId, transitions to CANCELLED_BEFORE_REGION_CREATION.
-     */
-    private void releasePaymentReservation(AllocationRequest request) {
-        String reservationId = request.getGemsReservationId();
-        if (reservationId == null) return;
-        
-        String releaseIdempotencyKey = generateIdempotencyKey(request.getId(), "release");
-        request.setReleaseIdempotencyKey(releaseIdempotencyKey);
-        
-        // Transition to RELEASE_PENDING before calling external release
-        request.forceTransitionTo(AllocationRequestState.RELEASE_PENDING);
-        requestRepository.save(request);
-        
-        LandPaymentReleaseRequest releaseRequest = new LandPaymentReleaseRequest(
-            UUID.fromString(request.getId()),
-            reservationId,
-            releaseIdempotencyKey
-        );
-        
-        LandPaymentOperationResult result = paymentGateway.release(releaseRequest);
-        if (result.isSuccess()) {
-            request.setGemsReservationId(null);
-            LOGGER.info("Payment reservation released: request={}, reservationId={}", request.getId(), reservationId);
-        } else {
-            // Do NOT clear reservationId - stay in RELEASE_PENDING, recovery will retry
-            LOGGER.warn("Failed to release payment reservation: request={}, failure={}. Staying in RELEASE_PENDING.",
-                request.getId(), result.getFailure());
-            return; // Don't save here, already saved when transitioning to RELEASE_PENDING
-        }
-        requestRepository.save(request);
-    }
-    
-    private String generateIdempotencyKey(String operationId, String operation) {
-        String compactId = operationId.replace("-", "");
-        return "regions_" + compactId + "_" + operation;
-    }
 
     private boolean isTimedOut(AllocationRequest request, Config.SchedulerConfig sc) {
         return System.currentTimeMillis() - request.getUpdatedAt() > sc.getRequestTimeoutSeconds() * 1000L;
     }
 
-    private void failRequest(AllocationRequest request, String reason) {
-        request.forceTransitionTo(AllocationRequestState.FAILED);
+    private void failRequest(AllocationRequest request, AllocationRequestState target, String reason) {
+        request.forceTransitionTo(target);
         request.setFailureReason(reason);
         requestRepository.save(request);
     }
 
-    /**
-     * Releases the slot associated with the request if it's in RESERVED state.
-     * Safe to call even if slot doesn't exist or has wrong state.
-     */
     private void tryReleaseSlot(AllocationRequest request) {
         String slotId = request.getPlotSlotId();
         if (slotId != null) {
@@ -928,9 +607,5 @@ public class TerrainAllocationCoordinator {
                 slotRepository.save(slot);
             }
         }
-    }
-
-    private void reportSlotDependencies(PlotSlot slot) {
-        LOGGER.debug("Slot {} allocated for region {}.", slot.getId(), slot.getRegionId());
     }
 }

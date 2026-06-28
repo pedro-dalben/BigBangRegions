@@ -33,11 +33,8 @@ public class AllocationRequestRepository {
         String sql = "INSERT OR REPLACE INTO player_region_allocation_requests (" +
                 "id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
                 "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, created_at, updated_at, " +
-                "completed_at, cancelled_at, " +
-                "price_gems, payment_required, gems_reservation_id, reserve_idempotency_key, " +
-                "renew_idempotency_key, renew_sequence, capture_idempotency_key, release_idempotency_key, " +
-                "reservation_lease_expires_at, payment_captured_at, retry_count, next_retry_at" +
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                "completed_at, cancelled_at, retry_count, next_retry_at" +
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, request.getId());
             pstmt.setString(2, request.getOwnerUuid().toString());
@@ -54,25 +51,18 @@ public class AllocationRequestRepository {
             pstmt.setLong(13, request.getUpdatedAt());
             pstmt.setObject(14, request.getCompletedAt());
             pstmt.setObject(15, request.getCancelledAt());
-            pstmt.setLong(16, request.getPriceGems());
-            pstmt.setInt(17, request.isPaymentRequired() ? 1 : 0);
-            pstmt.setString(18, request.getGemsReservationId());
-            pstmt.setString(19, request.getReserveIdempotencyKey());
-            pstmt.setString(20, request.getRenewIdempotencyKey());
-            pstmt.setLong(21, request.getRenewSequence());
-            pstmt.setString(22, request.getCaptureIdempotencyKey());
-            pstmt.setString(23, request.getReleaseIdempotencyKey());
-            pstmt.setObject(24, request.getReservationLeaseExpiresAt());
-            pstmt.setObject(25, request.getPaymentCapturedAt());
-            pstmt.setInt(26, request.getRetryCount());
-            pstmt.setObject(27, request.getNextRetryAt());
+            pstmt.setInt(16, request.getRetryCount());
+            pstmt.setObject(17, request.getNextRetryAt());
             pstmt.executeUpdate();
         }
     }
 
     public AllocationRequest get(String id) {
         synchronized (dbManager) {
-            String sql = "SELECT * FROM player_region_allocation_requests WHERE id = ?;";
+            String sql = "SELECT id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
+                    "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, " +
+                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at " +
+                    "FROM player_region_allocation_requests WHERE id = ?;";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
                 pstmt.setString(1, id);
@@ -90,10 +80,12 @@ public class AllocationRequestRepository {
 
     public AllocationRequest getActiveRequestByOwner(UUID ownerUuid) {
         synchronized (dbManager) {
-            String sql = "SELECT * FROM player_region_allocation_requests WHERE owner_uuid = ? AND state IN (" +
-                    "'PENDING', 'SEARCHING', 'SLOT_RESERVED', 'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', " +
-                    "'PAYMENT_RENEW_PENDING', 'PREPARING', 'REGION_CREATING', " +
-                    "'REGION_CREATED_PAYMENT_CAPTURE_PENDING', 'RELEASE_PENDING');";
+            String sql = "SELECT id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
+                    "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, " +
+                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at " +
+                    "FROM player_region_allocation_requests WHERE owner_uuid = ? AND state IN (" +
+                    "'PENDING', 'SEARCHING', 'SLOT_RESERVED', " +
+                    "'PREPARING', 'REGION_CREATING');";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
                 pstmt.setString(1, ownerUuid.toString());
@@ -112,10 +104,38 @@ public class AllocationRequestRepository {
     public List<AllocationRequest> getActiveRequests() {
         synchronized (dbManager) {
             List<AllocationRequest> list = new ArrayList<>();
-            String sql = "SELECT * FROM player_region_allocation_requests WHERE state IN (" +
-                    "'PENDING', 'SEARCHING', 'SLOT_RESERVED', 'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', " +
-                    "'PAYMENT_RENEW_PENDING', 'PREPARING', 'REGION_CREATING', " +
-                    "'REGION_CREATED_PAYMENT_CAPTURE_PENDING', 'RELEASE_PENDING');";
+            String sql = "SELECT id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
+                    "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, " +
+                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at " +
+                    "FROM player_region_allocation_requests WHERE state IN (" +
+                    "'PENDING', 'SEARCHING', 'SLOT_RESERVED', " +
+                    "'PREPARING', 'REGION_CREATING');";
+            try (Connection conn = dbManager.getConnection();
+                 PreparedStatement pstmt = conn.prepareStatement(sql);
+                 ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    AllocationRequest request = mapResultSet(rs);
+                    if (!request.getState().isLegacyPaymentState() || request.getState() != AllocationRequestState.LEGACY_REQUIRES_ADMIN_REVIEW) {
+                        list.add(request);
+                    }
+                }
+            } catch (SQLException e) {
+                LOGGER.error("Failed to list active allocation requests: ", e);
+            }
+            return list;
+        }
+    }
+
+    public List<AllocationRequest> getLegacyRequests() {
+        synchronized (dbManager) {
+            List<AllocationRequest> list = new ArrayList<>();
+            String sql = "SELECT id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
+                    "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, " +
+                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at " +
+                    "FROM player_region_allocation_requests WHERE state IN (" +
+                    "'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', 'PAYMENT_RENEW_PENDING', " +
+                    "'REGION_CREATED_PAYMENT_CAPTURE_PENDING', 'RELEASE_PENDING', " +
+                    "'FAILED_ECONOMY_UNAVAILABLE', 'LEGACY_REQUIRES_ADMIN_REVIEW');";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql);
                  ResultSet rs = pstmt.executeQuery()) {
@@ -123,7 +143,7 @@ public class AllocationRequestRepository {
                     list.add(mapResultSet(rs));
                 }
             } catch (SQLException e) {
-                LOGGER.error("Failed to list active allocation requests: ", e);
+                LOGGER.error("Failed to list legacy allocation requests: ", e);
             }
             return list;
         }
@@ -140,12 +160,20 @@ public class AllocationRequestRepository {
         String reqByStr = rs.getString("requested_by_uuid");
         UUID requestedByUuid = reqByStr != null ? UUID.fromString(reqByStr) : null;
 
+        AllocationRequestState state;
+        try {
+            state = AllocationRequestState.valueOf(rs.getString("state"));
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("Unknown state '{}' in DB, mapping to LEGACY_REQUIRES_ADMIN_REVIEW", rs.getString("state"));
+            state = AllocationRequestState.LEGACY_REQUIRES_ADMIN_REVIEW;
+        }
+
         AllocationRequest request = new AllocationRequest(
                 rs.getString("id"),
                 UUID.fromString(rs.getString("owner_uuid")),
                 rs.getString("requested_biome_option"),
                 rs.getString("target_dimension"),
-                AllocationRequestState.valueOf(rs.getString("state")),
+                state,
                 rs.getString("source"),
                 requestedByUuid,
                 regionId,
@@ -157,28 +185,12 @@ public class AllocationRequestRepository {
                 completedAt,
                 cancelledAt
         );
-        
-        // Map payment fields
-        request.setPriceGems(rs.getLong("price_gems"));
-        request.setPaymentRequired(rs.getInt("payment_required") == 1);
-        request.setGemsReservationId(rs.getString("gems_reservation_id"));
-        request.setReserveIdempotencyKey(rs.getString("reserve_idempotency_key"));
-        request.setRenewIdempotencyKey(rs.getString("renew_idempotency_key"));
-        request.setRenewSequence(rs.getLong("renew_sequence"));
-        request.setCaptureIdempotencyKey(rs.getString("capture_idempotency_key"));
-        request.setReleaseIdempotencyKey(rs.getString("release_idempotency_key"));
-        
-        Long reservationLeaseExpiresAt = rs.getObject("reservation_lease_expires_at") != null ? rs.getLong("reservation_lease_expires_at") : null;
-        request.setReservationLeaseExpiresAt(reservationLeaseExpiresAt);
-        
-        Long paymentCapturedAt = rs.getObject("payment_captured_at") != null ? rs.getLong("payment_captured_at") : null;
-        request.setPaymentCapturedAt(paymentCapturedAt);
-        
+
         request.setRetryCount(rs.getInt("retry_count"));
-        
+
         Long nextRetryAt = rs.getObject("next_retry_at") != null ? rs.getLong("next_retry_at") : null;
         request.setNextRetryAt(nextRetryAt);
-        
+
         return request;
     }
 }

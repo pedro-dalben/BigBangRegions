@@ -16,6 +16,7 @@ public class Config {
     private Defaults defaults = new Defaults();
     private PlayerRegionsConfig playerRegions = new PlayerRegionsConfig();
     private PlayerLandAllocationConfig playerLandAllocation = new PlayerLandAllocationConfig();
+    private RegionExpansionConfig regionExpansion = new RegionExpansionConfig();
     private Map<String, BiomeOptionConfig> biomeOptions = new HashMap<>();
     private Set<String> disabledCommands = new HashSet<>();
 
@@ -202,28 +203,25 @@ public class Config {
 
     public static class PaymentConfig {
         private String provider = "none";
-        private long initialAllocationCostGems = 0;
         private long reservationLeaseSeconds = 900;
         private long renewBeforeExpirySeconds = 300;
         private int maxCaptureRetriesBeforeManualBlock = 10;
         private long retryBackoffSeconds = 30;
         
         public String getProvider() { return provider; }
-        public long getInitialAllocationCostGems() { return initialAllocationCostGems; }
         public long getReservationLeaseSeconds() { return reservationLeaseSeconds; }
         public long getRenewBeforeExpirySeconds() { return renewBeforeExpirySeconds; }
         public int getMaxCaptureRetriesBeforeManualBlock() { return maxCaptureRetriesBeforeManualBlock; }
         public long getRetryBackoffSeconds() { return retryBackoffSeconds; }
         
         public void setProvider(String provider) { this.provider = provider; }
-        public void setInitialAllocationCostGems(long initialAllocationCostGems) { this.initialAllocationCostGems = initialAllocationCostGems; }
         public void setReservationLeaseSeconds(long reservationLeaseSeconds) { this.reservationLeaseSeconds = reservationLeaseSeconds; }
         public void setRenewBeforeExpirySeconds(long renewBeforeExpirySeconds) { this.renewBeforeExpirySeconds = renewBeforeExpirySeconds; }
         public void setMaxCaptureRetriesBeforeManualBlock(int maxCaptureRetriesBeforeManualBlock) { this.maxCaptureRetriesBeforeManualBlock = maxCaptureRetriesBeforeManualBlock; }
         public void setRetryBackoffSeconds(long retryBackoffSeconds) { this.retryBackoffSeconds = retryBackoffSeconds; }
         
         public boolean isPaymentRequired() {
-            return initialAllocationCostGems > 0;
+            return false;
         }
     }
 
@@ -312,11 +310,45 @@ public class Config {
         public void setAcceptedBiomeIds(List<String> acceptedBiomeIds) { this.acceptedBiomeIds = acceptedBiomeIds; }
     }
 
+    public static class RegionExpansionConfig {
+        private boolean enabled = false;
+        private List<Integer> allowedSizes = java.util.List.of(75, 100, 125, 150, 175, 200, 225, 240);
+        private long pricePerAddedBlock = 0;
+        private String paymentProvider = "bigbangessentials";
+        private long reservationLeaseSeconds = 900;
+        private long renewBeforeExpirySeconds = 300;
+        private long retryBackoffSeconds = 30;
+        private int maxPaymentRetriesBeforeManualBlock = 10;
+
+        public boolean isEnabled() { return enabled; }
+        public List<Integer> getAllowedSizes() { return allowedSizes; }
+        public long getPricePerAddedBlock() { return pricePerAddedBlock; }
+        public String getPaymentProvider() { return paymentProvider; }
+        public long getReservationLeaseSeconds() { return reservationLeaseSeconds; }
+        public long getRenewBeforeExpirySeconds() { return renewBeforeExpirySeconds; }
+        public long getRetryBackoffSeconds() { return retryBackoffSeconds; }
+        public int getMaxPaymentRetriesBeforeManualBlock() { return maxPaymentRetriesBeforeManualBlock; }
+
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public void setAllowedSizes(List<Integer> allowedSizes) { this.allowedSizes = allowedSizes; }
+        public void setPricePerAddedBlock(long pricePerAddedBlock) { this.pricePerAddedBlock = pricePerAddedBlock; }
+        public void setPaymentProvider(String paymentProvider) { this.paymentProvider = paymentProvider; }
+        public void setReservationLeaseSeconds(long reservationLeaseSeconds) { this.reservationLeaseSeconds = reservationLeaseSeconds; }
+        public void setRenewBeforeExpirySeconds(long renewBeforeExpirySeconds) { this.renewBeforeExpirySeconds = renewBeforeExpirySeconds; }
+        public void setRetryBackoffSeconds(long retryBackoffSeconds) { this.retryBackoffSeconds = retryBackoffSeconds; }
+        public void setMaxPaymentRetriesBeforeManualBlock(int maxPaymentRetriesBeforeManualBlock) { this.maxPaymentRetriesBeforeManualBlock = maxPaymentRetriesBeforeManualBlock; }
+
+        public boolean isPaymentRequired() {
+            return pricePerAddedBlock > 0;
+        }
+    }
+
     public int getSchemaVersion() { return schemaVersion; }
     public DefaultPriorities getDefaultPriorities() { return defaultPriorities; }
     public Permissions getPermissions() { return permissions; }
     public Defaults getDefaults() { return defaults; }
     public PlayerRegionsConfig getPlayerRegions() { return playerRegions; }
     public PlayerLandAllocationConfig getPlayerLandAllocation() { return playerLandAllocation; }
+    public RegionExpansionConfig getRegionExpansion() { return regionExpansion; }
     public Map<String, BiomeOptionConfig> getBiomeOptions() { return biomeOptions; }
 }
