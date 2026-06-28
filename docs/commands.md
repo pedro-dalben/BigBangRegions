@@ -23,9 +23,10 @@ These commands require administrative permissions or OP status.
   - Permission: `bigbangregions.admin.player.create`
   - Example: `/regions create player pedro_claim PedropsRei`
 - **Delete Region**
-  `/regions delete <regionId>`
+  `/regions delete <regionId|playerName>`
   - Permission: `bigbangregions.admin.delete`
   - Example: `/regions delete spawn`
+  - Example: `/regions delete PedropsRei`
 
 ### 2. Admin Member Management
 - **View Owner**

@@ -10,6 +10,7 @@ import com.bigbangcraft.regions.repository.PlayerRegionHomeRepository;
 import com.bigbangcraft.regions.repository.PlotSlotRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -22,6 +23,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -360,6 +362,7 @@ public class TerrainAllocationCoordinator {
                 LOGGER.info("Region created (free): request={}, regionId={}, claimOffset={}, home=({},{},{})",
                     request.getId(), regionId, claimOffset, homePos.getX(), homePos.getY(), homePos.getZ());
 
+                snapshotCreatedTerrain(regionId, bounds, level, homePos, configManager.getConfig().getPlayerLandAllocation().getBorder().isRestoreOnDelete());
                 postRegionCreationSetup(request, bounds, level, homePos);
             } catch (Exception e) {
                 conn.rollback();
@@ -370,9 +373,51 @@ public class TerrainAllocationCoordinator {
         }
     }
 
+    public boolean restorePlayerRegionTerrain(Region region, ServerLevel level) {
+        if (region == null || level == null) {
+            return false;
+        }
+
+        if (region.getType() != RegionType.PLAYER_REGION) {
+            return false;
+        }
+
+        if (!configManager.getConfig().getPlayerLandAllocation().getBorder().isRestoreOnDelete()) {
+            return false;
+        }
+
+        try {
+            Path restoreDir = getRestoreDirectory();
+            boolean restored = RegionTerrainSnapshot.restore(level, region, restoreDir);
+            if (restored) {
+                LOGGER.info("Restored terrain snapshot for region {}", region.getId());
+            }
+            return restored;
+        } catch (Exception e) {
+            LOGGER.warn("Failed to restore terrain snapshot for region {}: {}", region.getId(), e.getMessage());
+            return false;
+        }
+    }
+
     private void tryReleaseSlotOnly(Connection conn, PlotSlot slot) throws SQLException {
         slot.release();
         slotRepository.saveOnConnection(conn, slot);
+    }
+
+    private void snapshotCreatedTerrain(String regionId, RegionBounds bounds, ServerLevel level, BlockPos homePos, boolean enabled) {
+        if (!enabled) {
+            return;
+        }
+
+        try {
+            RegionTerrainSnapshot.capture(level, bounds, homePos, regionId, getRestoreDirectory());
+        } catch (Exception e) {
+            LOGGER.warn("Failed to snapshot terrain for region {}: {}", regionId, e.getMessage());
+        }
+    }
+
+    private Path getRestoreDirectory() {
+        return FabricLoader.getInstance().getConfigDir().resolve("bigbangregions").resolve("terrain-restores");
     }
 
     private void postRegionCreationSetup(AllocationRequest request, RegionBounds bounds, ServerLevel level, BlockPos homePos) {
@@ -401,6 +446,7 @@ public class TerrainAllocationCoordinator {
         try {
             var cobblestone = net.minecraft.world.level.block.Blocks.COBBLESTONE.defaultBlockState();
             var air = net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+            var glowstone = net.minecraft.world.level.block.Blocks.GLOWSTONE.defaultBlockState();
 
             // 4x4 platform centered around homePos at yFloor = homePos.getY() - 1
             int minX = homePos.getX() - 1;
@@ -418,6 +464,9 @@ public class TerrainAllocationCoordinator {
                     level.setBlock(new BlockPos(x, yFloor + 2, z), air, 2);
                 }
             }
+
+            // Highlight the exact home center on the floor.
+            level.setBlock(new BlockPos(homePos.getX(), yFloor, homePos.getZ()), glowstone, 2);
         } catch (Exception e) {
             LOGGER.error("Failed to generate spawn platform", e);
         }
@@ -487,41 +536,11 @@ public class TerrainAllocationCoordinator {
             List<String> acceptedBiomes = opt.get().getAcceptedBiomeIds();
             if (acceptedBiomes.isEmpty()) return;
 
-            String targetBiomeId = acceptedBiomes.get(0);
-            net.minecraft.resources.ResourceLocation loc = net.minecraft.resources.ResourceLocation.parse(targetBiomeId);
-            var registry = level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.BIOME);
-            var holderOpt = registry.getHolder(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.BIOME, loc));
-            if (holderOpt.isEmpty()) return;
-            var holder = holderOpt.get();
-
-            int minX = bounds.getMinX();
-            int maxX = bounds.getMaxX();
-            int minZ = bounds.getMinZ();
-            int maxZ = bounds.getMaxZ();
-            int minY = bounds.getMinY();
-            int maxY = bounds.getMaxY();
-
-            for (int x = minX; x <= maxX; x += 4) {
-                for (int z = minZ; z <= maxZ; z += 4) {
-                    for (int y = minY; y < maxY; y += 4) {
-                        BlockPos pos = new BlockPos(x, y, z);
-                        var chunk = level.getChunk(pos);
-                        int sectionIndex = chunk.getSectionIndex(y);
-                        if (sectionIndex >= 0 && sectionIndex < chunk.getSections().length) {
-                            var section = chunk.getSections()[sectionIndex];
-                            if (section != null) {
-                                var biomes = section.getBiomes();
-                                if (biomes instanceof net.minecraft.world.level.chunk.PalettedContainer<net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome>> container) {
-                                    int bx = (x & 15) >> 2;
-                                    int by = (y & 15) >> 2;
-                                    int bz = (z & 15) >> 2;
-                                    container.set(bx, by, bz, holder);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // 1.21+ does not expose a safe public API to mutate chunk biome palettes
+            // after generation. Direct PalettedContainer writes can recurse during
+            // palette resize and crash the server. Keep the biome option as a
+            // search/validation input, but do not rewrite chunk biomes here.
+            LOGGER.warn("Skipping direct biome palette mutation for region {} (biome option {})", bounds, biomeOptionKey);
         } catch (Exception e) {
             LOGGER.error("Failed to apply biome to region", e);
         }
@@ -689,6 +708,15 @@ public class TerrainAllocationCoordinator {
             slot.retire();
             slotRepository.save(slot);
             LOGGER.info("Slot {} retired for region {}", slot.getId(), regionId);
+        }
+    }
+
+    public void releaseSlotForRegion(String regionId) {
+        PlotSlot slot = slotRepository.getByRegionId(regionId);
+        if (slot != null) {
+            slot.forceRelease();
+            slotRepository.save(slot);
+            LOGGER.info("Slot {} released for deleted region {}", slot.getId(), regionId);
         }
     }
 

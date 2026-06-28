@@ -6,7 +6,7 @@
 |---------|-----------|-----------|
 | `/regions create admin <id> [priority]` | Cria região administrativa (seleção) | `bigbangregions.admin.create` |
 | `/regions create player <id> <owner> [priority]` | Cria região de jogador (seleção) | `bigbangregions.admin.player.create` |
-| `/regions delete <id>` | Deleta região + retira slot (PLAYER_REGION) | `bigbangregions.admin.delete` |
+| `/regions delete <id|nick>` | Deleta região por ID ou todas as regiões do dono | `bigbangregions.admin.delete` |
 | `/regions list [page]` | Lista todas as regiões | `bigbangregions.admin.list` |
 | `/regions reload` | Recarrega config + regiões do banco | `bigbangregions.admin.reload` |
 

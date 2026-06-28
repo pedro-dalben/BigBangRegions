@@ -132,4 +132,18 @@ public class PlotSlot {
         this.allocatedAt = null;
         this.updatedAt = System.currentTimeMillis();
     }
+
+    public void forceRelease() {
+        if (state == PlotSlotState.RELEASED) {
+            return;
+        }
+        this.state = PlotSlotState.RELEASED;
+        this.reservedForUuid = null;
+        this.regionId = null;
+        this.biomeOptionKey = null;
+        this.reservedAt = null;
+        this.leaseExpiresAt = null;
+        this.allocatedAt = null;
+        this.updatedAt = System.currentTimeMillis();
+    }
 }

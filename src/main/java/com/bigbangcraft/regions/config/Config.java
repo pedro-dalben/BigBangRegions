@@ -332,16 +332,19 @@ public class Config {
         private int thickness = 1;
         private boolean protect = true;
         private boolean createCeiling = false;
+        private boolean restoreOnDelete = true;
 
         public String getMaterial() { return material; }
         public int getThickness() { return thickness; }
         public boolean isProtect() { return protect; }
         public boolean isCreateCeiling() { return createCeiling; }
+        public boolean isRestoreOnDelete() { return restoreOnDelete; }
 
         public void setMaterial(String material) { this.material = material; }
         public void setThickness(int thickness) { this.thickness = thickness; }
         public void setProtect(boolean protect) { this.protect = protect; }
         public void setCreateCeiling(boolean createCeiling) { this.createCeiling = createCeiling; }
+        public void setRestoreOnDelete(boolean restoreOnDelete) { this.restoreOnDelete = restoreOnDelete; }
     }
 
 

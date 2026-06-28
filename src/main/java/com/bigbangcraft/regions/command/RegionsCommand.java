@@ -29,7 +29,10 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.*;
@@ -139,7 +142,7 @@ public class RegionsCommand {
                 )
             )
             .then(Commands.literal("delete")
-                .then(Commands.argument("id", StringArgumentType.word())
+                .then(Commands.argument("target", StringArgumentType.word())
                     .executes(RegionsCommand::deleteRegion)
                 )
             )
@@ -435,30 +438,67 @@ public class RegionsCommand {
             return 0;
         }
 
-        String id = StringArgumentType.getString(context, "id");
-        Region region = regionCache.get(id);
-        if (region == null) {
-            source.sendFailure(Component.literal("Região '" + id + "' não encontrada."));
+        String target = StringArgumentType.getString(context, "target");
+        List<Region> targets = resolveDeleteTargets(source, target);
+        if (targets.isEmpty()) {
+            source.sendFailure(Component.literal("Nenhuma região encontrada para '" + target + "'."));
             return 0;
         }
 
-        regionRepository.delete(id);
-        regionCache.remove(id);
-        BigBangRegions.getMembershipCache().removeRegion(id);
+        int deleted = 0;
+        for (Region region : targets) {
+            if (region.getType() == RegionType.PLAYER_REGION) {
+                ResourceKey<net.minecraft.world.level.Level> dimensionKey = ResourceKey.create(
+                    Registries.DIMENSION,
+                    ResourceLocation.parse(region.getBounds().getDimension())
+                );
+                net.minecraft.server.level.ServerLevel level = source.getServer().getLevel(dimensionKey);
+                if (level != null) {
+                    BigBangRegions.getAllocationCoordinator().restorePlayerRegionTerrain(region, level);
+                }
+            }
 
-        if (region.getType() == RegionType.PLAYER_REGION) {
-            retireSlotForRegion(id);
+            regionRepository.delete(region.getId());
+            regionCache.remove(region.getId());
+            BigBangRegions.getMembershipCache().removeRegion(region.getId());
+
+            if (region.getType() == RegionType.PLAYER_REGION) {
+                releaseSlotForRegion(region.getId());
+            }
+
+            UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
+            auditService.log(region.getId(), actorUuid, "DELETE_REGION", region.getType().name(), null, null);
+            deleted++;
         }
 
-        UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
-        auditService.log(id, actorUuid, "DELETE_REGION", region.getType().name(), null, null);
-
-        source.sendSuccess(() -> Component.literal("Região '" + id + "' deletada com sucesso.").withStyle(ChatFormatting.GREEN), false);
+        if (deleted == 1) {
+            source.sendSuccess(() -> Component.literal("Região deletada com sucesso.").withStyle(ChatFormatting.GREEN), false);
+        } else {
+            int deletedCount = deleted;
+            source.sendSuccess(() -> Component.literal(deletedCount + " regiões deletadas com sucesso.").withStyle(ChatFormatting.GREEN), false);
+        }
         return 1;
     }
 
-    private static void retireSlotForRegion(String regionId) {
-        BigBangRegions.getAllocationCoordinator().retireSlot(regionId);
+    private static List<Region> resolveDeleteTargets(CommandSourceStack source, String target) {
+        Region exact = regionCache.get(target);
+        if (exact != null) {
+            return List.of(exact);
+        }
+
+        GameProfile profile = source.getServer().getProfileCache().get(target).orElse(null);
+        if (profile == null) {
+            return List.of();
+        }
+
+        UUID ownerUuid = profile.getId();
+        return regionCache.getAll().stream()
+            .filter(r -> r.getType() == RegionType.PLAYER_REGION && ownerUuid.equals(r.getOwnerUuid()))
+            .toList();
+    }
+
+    private static void releaseSlotForRegion(String regionId) {
+        BigBangRegions.getAllocationCoordinator().releaseSlotForRegion(regionId);
     }
 
     private static int showInfo(CommandContext<CommandSourceStack> context) {

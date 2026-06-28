@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.Optional;
 
@@ -40,23 +41,17 @@ public class SafeSpawnFinder {
     }
 
     private static Optional<BlockPos> checkColumn(Level level, int x, int z) {
-        int minY = level.getMinBuildHeight();
-        int maxY = level.getMaxBuildHeight();
+        int surfaceY = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+        if (surfaceY <= level.getMinBuildHeight()) {
+            return Optional.empty();
+        }
 
-        // Start checking from the highest block down to minY
-        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, maxY - 1, z);
-        while (pos.getY() > minY) {
-            BlockState state = level.getBlockState(pos);
-            if (!state.isAir()) {
-                BlockPos floor = pos.immutable();
-                BlockPos stand = floor.above();
-                BlockPos head = stand.above();
+        BlockPos floor = new BlockPos(x, surfaceY - 1, z);
+        BlockPos stand = floor.above();
+        BlockPos head = stand.above();
 
-                if (isSafeFloor(level, floor) && isSafeToStand(level, stand) && isSafeToStand(level, head)) {
-                    return Optional.of(stand);
-                }
-            }
-            pos.setY(pos.getY() - 1);
+        if (level.canSeeSky(stand) && isSafeFloor(level, floor) && isSafeToStand(level, stand) && isSafeToStand(level, head)) {
+            return Optional.of(stand);
         }
         return Optional.empty();
     }
