@@ -8,6 +8,7 @@ import com.bigbangcraft.regions.cache.RegionCache;
 import com.bigbangcraft.regions.command.RegionsCommand;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
+import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.flag.FlagResolver;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.protection.*;
@@ -337,6 +338,23 @@ public class BigBangRegions implements ModInitializer {
     }
 
     public static boolean handlePlayerAction(ServerPlayer player, BlockPos pos, RegionAction action) {
+        String dimension = player.level().dimension().location().toString();
+        if (isBoundaryBlock(dimension, pos)) {
+            boolean hasBypass = false;
+            try {
+                hasBypass = me.lucko.fabric.api.permissions.v0.Permissions.check(player, "bigbangregions.bypass.boundary", false);
+                if (!hasBypass) {
+                    hasBypass = me.lucko.fabric.api.permissions.v0.Permissions.check(player, "bigbangregions.bypass", false);
+                }
+            } catch (Throwable t) {
+                hasBypass = player.hasPermissions(2);
+            }
+            if (!hasBypass) {
+                player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cVocê não pode modificar as fronteiras do terreno."));
+                return false;
+            }
+        }
+
         ProtectionContext context = new ProtectionContext.Builder(action, player.level(), pos)
                 .player(player)
                 .build();
@@ -452,5 +470,65 @@ public class BigBangRegions implements ModInitializer {
                entity instanceof ItemFrame ||
                entity instanceof Boat ||
                entity instanceof AbstractMinecart;
+    }
+
+    public static boolean isBoundaryBlock(String dimension, BlockPos pos) {
+        if (configManager == null) return false;
+        Config config = configManager.getConfig();
+        if (config == null || !config.getPlayerLandAllocation().getBorder().isProtect()) {
+            return false;
+        }
+
+        RegionCache cache = getRegionCache();
+        if (cache == null) return false;
+
+        for (Region r : cache.getRegionsAt(dimension, pos.getX(), pos.getY(), pos.getZ())) {
+            RegionBounds bounds = r.getBounds();
+            if (pos.getX() == bounds.getMinX() || pos.getX() == bounds.getMaxX() ||
+                pos.getZ() == bounds.getMinZ() || pos.getZ() == bounds.getMaxZ()) {
+                return true;
+            }
+            if (config.getPlayerLandAllocation().getBorder().isCreateCeiling() && pos.getY() == bounds.getMaxY()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isPistonAllowed(Level level, BlockPos pos, net.minecraft.core.Direction direction) {
+        String dimension = level.dimension().location().toString();
+        BlockPos dest = pos.relative(direction);
+
+        if (isBoundaryBlock(dimension, pos) || isBoundaryBlock(dimension, dest)) {
+            return false;
+        }
+
+        RegionCache cache = getRegionCache();
+        if (cache == null) return true;
+
+        var regionsSource = cache.getRegionsAt(dimension, pos.getX(), pos.getY(), pos.getZ());
+        var regionsDest = cache.getRegionsAt(dimension, dest.getX(), dest.getY(), dest.getZ());
+
+        if (regionsSource.isEmpty() && !regionsDest.isEmpty()) {
+            return false;
+        }
+        if (!regionsSource.isEmpty() && regionsDest.isEmpty()) {
+            return false;
+        }
+        if (!regionsSource.isEmpty() && !regionsDest.isEmpty()) {
+            boolean matches = false;
+            for (Region rSource : regionsSource) {
+                for (Region rDest : regionsDest) {
+                    if (rSource.getId().equals(rDest.getId())) {
+                        matches = true;
+                        break;
+                    }
+                }
+            }
+            if (!matches) {
+                return false;
+            }
+        }
+        return true;
     }
 }

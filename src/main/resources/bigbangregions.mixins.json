@@ -5,7 +5,9 @@
 	"mixins": [
 		"BasePressurePlateBlockMixin",
 		"ItemEntityMixin",
-		"PlayerMixin"
+		"PlayerMixin",
+		"PistonStructureResolverMixin",
+		"ExplosionMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
