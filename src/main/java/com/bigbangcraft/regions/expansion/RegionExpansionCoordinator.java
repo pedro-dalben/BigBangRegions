@@ -66,6 +66,10 @@ public class RegionExpansionCoordinator {
             throw new IllegalStateException("Sistema de pagamento indisponivel. Tente novamente mais tarde.");
         }
 
+        if (ec.getPricePerAddedBlock() == 0) {
+            throw new IllegalStateException("A politica de precos para expansao ainda nao foi configurada. Contate um administrador.");
+        }
+
         Optional<Region> playerRegion = regionCache.getAll().stream()
             .filter(r -> r.getType() == RegionType.PLAYER_REGION
                 && ownerUuid.equals(r.getOwnerUuid())
@@ -207,13 +211,6 @@ public class RegionExpansionCoordinator {
         String reserveKey = generateIdempotencyKey(op.getOperationId(), "expand_reserve");
         op.setReserveIdempotencyKey(reserveKey);
         expansionRepository.save(op);
-
-        if (!ec.isPaymentRequired() || op.getPriceGems() == 0) {
-            op.setGemsReservationId(null);
-            op.transitionTo(RegionExpansionState.PAYMENT_RESERVED);
-            expansionRepository.save(op);
-            return 1;
-        }
 
         LandPaymentReserveRequest req = new LandPaymentReserveRequest(
             UUID.fromString(op.getOperationId()),

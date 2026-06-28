@@ -198,9 +198,14 @@ public class TerrainAllocationCoordinator {
             int maxCandidates = sc.getMaxCandidateEvaluationsPerTick();
             List<PlotSlotService.PlotSlotCandidate> candidates = slotService.getCandidates(request.getOwnerUuid(), maxCandidates);
             for (PlotSlotService.PlotSlotCandidate candidate : candidates) {
+                int claimOffset = (lac.getSlotSize() - lac.getInitialClaimSize()) / 2;
+                int claimMinX = candidate.minX + claimOffset;
+                int claimMaxX = claimMinX + lac.getInitialClaimSize() - 1;
+                int claimMinZ = candidate.minZ + claimOffset;
+                int claimMaxZ = claimMinZ + lac.getInitialClaimSize() - 1;
                 boolean biomeMatch = biomeSearchService.isBiomeOptionMatching(
-                    level, candidate.minX, candidate.minX + lac.getSlotSize() - 1,
-                    candidate.minZ, candidate.minZ + lac.getSlotSize() - 1,
+                    level, claimMinX, claimMaxX,
+                    claimMinZ, claimMaxZ,
                     biomeOpt.get()
                 );
                 if (!biomeMatch) continue;
@@ -504,62 +509,6 @@ public class TerrainAllocationCoordinator {
         if (homeCooldownMs > 0) {
             homeTeleportCooldowns.entrySet().removeIf(e -> now - e.getValue() >= homeCooldownMs);
         }
-    }
-
-    public int resizeClaim(ServerPlayer player, int newSize) {
-        UUID ownerUuid = player.getUUID();
-        Optional<Region> playerRegion = regionCache.getAll().stream()
-            .filter(r -> r.getType() == RegionType.PLAYER_REGION && ownerUuid.equals(r.getOwnerUuid()) && "ACTIVE".equals(r.getStatus()))
-            .findFirst();
-        if (playerRegion.isEmpty()) {
-            throw new IllegalStateException("Voce nao possui uma regiao de jogador ativa");
-        }
-        Region region = playerRegion.get();
-        Config.PlayerLandAllocationConfig lac = configManager.getConfig().getPlayerLandAllocation();
-        int maxSize = lac.getFutureMaximumClaimSize();
-        int minSize = lac.getSlotInternalMargin();
-        if (newSize < minSize) {
-            throw new IllegalStateException("Tamanho minimo: " + minSize);
-        }
-        if (newSize > maxSize) {
-            throw new IllegalStateException("Tamanho maximo: " + maxSize);
-        }
-        RegionBounds oldBounds = region.getBounds();
-        int oldSize = oldBounds.getMaxX() - oldBounds.getMinX() + 1;
-        if (newSize == oldSize) {
-            throw new IllegalStateException("Sua regiao ja possui " + newSize + " blocos");
-        }
-
-        int newMaxX = oldBounds.getMinX() + newSize - 1;
-        int newMaxZ = oldBounds.getMinZ() + newSize - 1;
-
-        PlotSlot slot = slotRepository.getByRegionId(region.getId());
-        if (slot != null) {
-            int slotMaxX = slot.getMinX() + lac.getSlotSize() - 1;
-            int slotMaxZ = slot.getMinZ() + lac.getSlotSize() - 1;
-            if (newMaxX > slotMaxX || newMaxZ > slotMaxZ) {
-                throw new IllegalStateException("Nao e possivel expandir alem do slot (max " + lac.getSlotSize() + ")");
-            }
-        }
-
-        RegionBounds newBounds = new RegionBounds(
-            oldBounds.getDimension(),
-            oldBounds.getMinX(), oldBounds.getMinY(), oldBounds.getMinZ(),
-            newMaxX, oldBounds.getMaxY(), newMaxZ
-        );
-
-        for (Region other : regionCache.getAll()) {
-            if (other.getId().equals(region.getId())) continue;
-            if (other.getBounds().intersects(newBounds)) {
-                throw new IllegalStateException("Nova area se sobrepoe a regiao '" + other.getId() + "'");
-            }
-        }
-
-        region.setBounds(newBounds);
-        regionRepository.save(region);
-        regionCache.add(region);
-        LOGGER.info("Region {} resized from {} to {}", region.getId(), oldSize, newSize);
-        return newSize;
     }
 
     public void retireSlot(String regionId) {
