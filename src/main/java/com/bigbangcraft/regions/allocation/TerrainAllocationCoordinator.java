@@ -228,8 +228,8 @@ public class TerrainAllocationCoordinator {
                     long slotNow = System.currentTimeMillis();
                     slot = new PlotSlot(slotId, lac.getTargetDimension(), candidate.gridX, candidate.gridZ,
                         candidate.minX, candidate.minZ, lac.getSlotSize(),
-                        PlotSlotState.RESERVED, request.getOwnerUuid(), null, request.getRequestedBiomeOption(),
-                        slotNow, slotNow + sc.getReservationLeaseSeconds() * 1000L, null, slotNow, slotNow);
+                        PlotSlotState.RELEASED, null, null, null,
+                        null, null, null, slotNow, slotNow);
                 }
                 slot.reserve(request.getOwnerUuid(), request.getRequestedBiomeOption(), sc.getReservationLeaseSeconds() * 1000L);
                 slotRepository.save(slot);
