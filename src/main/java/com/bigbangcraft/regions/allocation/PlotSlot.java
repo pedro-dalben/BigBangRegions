@@ -65,8 +65,8 @@ public class PlotSlot {
         if (state == PlotSlotState.RESERVED) {
             throw new IllegalStateException("Slot " + id + " is already reserved");
         }
-        if (state == PlotSlotState.ALLOCATED) {
-            throw new IllegalStateException("Slot " + id + " is already allocated");
+        if (state == PlotSlotState.ALLOCATED || state == PlotSlotState.OCCUPIED) {
+            throw new IllegalStateException("Slot " + id + " is already allocated/occupied");
         }
         if (state == PlotSlotState.RETIRED) {
             throw new IllegalStateException("Slot " + id + " is retired and cannot be reserved");
@@ -88,10 +88,18 @@ public class PlotSlot {
         this.allocatedAt = System.currentTimeMillis();
         this.updatedAt = this.allocatedAt;
     }
+    
+    public void occupy() {
+        if (state != PlotSlotState.ALLOCATED && state != PlotSlotState.RESERVED) {
+            throw new IllegalStateException("Slot " + id + " must be ALLOCATED or RESERVED before occupation, current state: " + state);
+        }
+        this.state = PlotSlotState.OCCUPIED;
+        this.updatedAt = System.currentTimeMillis();
+    }
 
     public void release() {
-        if (state != PlotSlotState.RESERVED) {
-            throw new IllegalStateException("Slot " + id + " must be RESERVED to release, current state: " + state);
+        if (state != PlotSlotState.RESERVED && state != PlotSlotState.ALLOCATED) {
+            throw new IllegalStateException("Slot " + id + " must be RESERVED or ALLOCATED to release, current state: " + state);
         }
         this.state = PlotSlotState.RELEASED;
         this.reservedForUuid = null;
@@ -104,8 +112,8 @@ public class PlotSlot {
     }
 
     public void retire() {
-        if (state != PlotSlotState.ALLOCATED) {
-            throw new IllegalStateException("Slot " + id + " must be ALLOCATED to retire, current state: " + state);
+        if (state != PlotSlotState.ALLOCATED && state != PlotSlotState.OCCUPIED) {
+            throw new IllegalStateException("Slot " + id + " must be ALLOCATED or OCCUPIED to retire, current state: " + state);
         }
         this.state = PlotSlotState.RETIRED;
         this.updatedAt = System.currentTimeMillis();

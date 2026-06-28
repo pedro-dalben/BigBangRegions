@@ -165,6 +165,7 @@ public class Config {
         private BiomeSearchConfig biomeSearch = new BiomeSearchConfig();
         private SchedulerConfig scheduler = new SchedulerConfig();
         private NotificationsConfig notifications = new NotificationsConfig();
+        private PaymentConfig payment = new PaymentConfig();
 
         public boolean isEnabled() { return enabled; }
         public String getTargetDimension() { return targetDimension; }
@@ -177,6 +178,7 @@ public class Config {
         public BiomeSearchConfig getBiomeSearch() { return biomeSearch; }
         public SchedulerConfig getScheduler() { return scheduler; }
         public NotificationsConfig getNotifications() { return notifications; }
+        public PaymentConfig getPayment() { return payment; }
 
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public void setTargetDimension(String targetDimension) { this.targetDimension = targetDimension; }
@@ -196,6 +198,33 @@ public class Config {
 
         public void setEntryExitEnabled(boolean val) { this.entryExitEnabled = val; }
         public void setOtherPlayerEntryEnabled(boolean val) { this.otherPlayerEntryEnabled = val; }
+    }
+
+    public static class PaymentConfig {
+        private String provider = "none";
+        private long initialAllocationCostGems = 0;
+        private long reservationLeaseSeconds = 900;
+        private long renewBeforeExpirySeconds = 300;
+        private int maxCaptureRetriesBeforeManualBlock = 10;
+        private long retryBackoffSeconds = 30;
+        
+        public String getProvider() { return provider; }
+        public long getInitialAllocationCostGems() { return initialAllocationCostGems; }
+        public long getReservationLeaseSeconds() { return reservationLeaseSeconds; }
+        public long getRenewBeforeExpirySeconds() { return renewBeforeExpirySeconds; }
+        public int getMaxCaptureRetriesBeforeManualBlock() { return maxCaptureRetriesBeforeManualBlock; }
+        public long getRetryBackoffSeconds() { return retryBackoffSeconds; }
+        
+        public void setProvider(String provider) { this.provider = provider; }
+        public void setInitialAllocationCostGems(long initialAllocationCostGems) { this.initialAllocationCostGems = initialAllocationCostGems; }
+        public void setReservationLeaseSeconds(long reservationLeaseSeconds) { this.reservationLeaseSeconds = reservationLeaseSeconds; }
+        public void setRenewBeforeExpirySeconds(long renewBeforeExpirySeconds) { this.renewBeforeExpirySeconds = renewBeforeExpirySeconds; }
+        public void setMaxCaptureRetriesBeforeManualBlock(int maxCaptureRetriesBeforeManualBlock) { this.maxCaptureRetriesBeforeManualBlock = maxCaptureRetriesBeforeManualBlock; }
+        public void setRetryBackoffSeconds(long retryBackoffSeconds) { this.retryBackoffSeconds = retryBackoffSeconds; }
+        
+        public boolean isPaymentRequired() {
+            return initialAllocationCostGems > 0;
+        }
     }
 
     public static class ExplorationExclusionConfig {

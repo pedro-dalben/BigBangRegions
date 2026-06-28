@@ -17,6 +17,20 @@ public class AllocationRequest {
     private long updatedAt;
     private Long completedAt;
     private Long cancelledAt;
+    
+    // Payment fields
+    private long priceGems;
+    private boolean paymentRequired;
+    private String gemsReservationId;
+    private String reserveIdempotencyKey;
+    private String renewIdempotencyKey;
+    private long renewSequence;
+    private String captureIdempotencyKey;
+    private String releaseIdempotencyKey;
+    private Long reservationLeaseExpiresAt;
+    private Long paymentCapturedAt;
+    private int retryCount;
+    private Long nextRetryAt;
 
     public AllocationRequest(String id, UUID ownerUuid, String requestedBiomeOption, String targetDimension,
                              AllocationRequestState state, String source, UUID requestedByUuid, String regionId,
@@ -52,6 +66,20 @@ public class AllocationRequest {
     public long getUpdatedAt() { return updatedAt; }
     public Long getCompletedAt() { return completedAt; }
     public Long getCancelledAt() { return cancelledAt; }
+    
+    // Payment getters
+    public long getPriceGems() { return priceGems; }
+    public boolean isPaymentRequired() { return paymentRequired; }
+    public String getGemsReservationId() { return gemsReservationId; }
+    public String getReserveIdempotencyKey() { return reserveIdempotencyKey; }
+    public String getRenewIdempotencyKey() { return renewIdempotencyKey; }
+    public long getRenewSequence() { return renewSequence; }
+    public String getCaptureIdempotencyKey() { return captureIdempotencyKey; }
+    public String getReleaseIdempotencyKey() { return releaseIdempotencyKey; }
+    public Long getReservationLeaseExpiresAt() { return reservationLeaseExpiresAt; }
+    public Long getPaymentCapturedAt() { return paymentCapturedAt; }
+    public int getRetryCount() { return retryCount; }
+    public Long getNextRetryAt() { return nextRetryAt; }
 
     public void transitionTo(AllocationRequestState nextState) {
         if (!state.canTransitionTo(nextState)) {
@@ -61,6 +89,8 @@ public class AllocationRequest {
         this.updatedAt = System.currentTimeMillis();
         if (nextState == AllocationRequestState.COMPLETED) {
             this.completedAt = this.updatedAt;
+        } else if (nextState == AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION) {
+            this.cancelledAt = this.updatedAt;
         } else if (nextState == AllocationRequestState.CANCELLED) {
             this.cancelledAt = this.updatedAt;
         }
@@ -71,6 +101,8 @@ public class AllocationRequest {
         this.updatedAt = System.currentTimeMillis();
         if (nextState == AllocationRequestState.COMPLETED) {
             this.completedAt = this.updatedAt;
+        } else if (nextState == AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION) {
+            this.cancelledAt = this.updatedAt;
         } else if (nextState == AllocationRequestState.CANCELLED) {
             this.cancelledAt = this.updatedAt;
         }
@@ -94,5 +126,84 @@ public class AllocationRequest {
     public void setAttempts(int attempts) {
         this.attempts = attempts;
         this.updatedAt = System.currentTimeMillis();
+    }
+    
+    // Payment setters
+    public void setPriceGems(long priceGems) {
+        this.priceGems = priceGems;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setPaymentRequired(boolean paymentRequired) {
+        this.paymentRequired = paymentRequired;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setGemsReservationId(String gemsReservationId) {
+        this.gemsReservationId = gemsReservationId;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setReserveIdempotencyKey(String reserveIdempotencyKey) {
+        this.reserveIdempotencyKey = reserveIdempotencyKey;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setRenewIdempotencyKey(String renewIdempotencyKey) {
+        this.renewIdempotencyKey = renewIdempotencyKey;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setRenewSequence(long renewSequence) {
+        this.renewSequence = renewSequence;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void incrementRenewSequence() {
+        this.renewSequence++;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setCaptureIdempotencyKey(String captureIdempotencyKey) {
+        this.captureIdempotencyKey = captureIdempotencyKey;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setReleaseIdempotencyKey(String releaseIdempotencyKey) {
+        this.releaseIdempotencyKey = releaseIdempotencyKey;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setReservationLeaseExpiresAt(Long reservationLeaseExpiresAt) {
+        this.reservationLeaseExpiresAt = reservationLeaseExpiresAt;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setPaymentCapturedAt(Long paymentCapturedAt) {
+        this.paymentCapturedAt = paymentCapturedAt;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setRetryCount(int retryCount) {
+        this.retryCount = retryCount;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void incrementRetryCount() {
+        this.retryCount++;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public void setNextRetryAt(Long nextRetryAt) {
+        this.nextRetryAt = nextRetryAt;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    
+    public boolean isReservationExpired() {
+        return reservationLeaseExpiresAt != null && System.currentTimeMillis() > reservationLeaseExpiresAt;
+    }
+    
+    public boolean shouldRetryNow() {
+        return nextRetryAt != null && System.currentTimeMillis() >= nextRetryAt;
     }
 }

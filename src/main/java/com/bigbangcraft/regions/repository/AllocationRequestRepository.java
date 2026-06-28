@@ -24,8 +24,11 @@ public class AllocationRequestRepository {
             String sql = "INSERT OR REPLACE INTO player_region_allocation_requests (" +
                     "id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
                     "requested_by_uuid, region_id, failure_reason, attempts, created_at, updated_at, " +
-                    "completed_at, cancelled_at" +
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                    "completed_at, cancelled_at, " +
+                    "price_gems, payment_required, gems_reservation_id, reserve_idempotency_key, " +
+                    "renew_idempotency_key, renew_sequence, capture_idempotency_key, release_idempotency_key, " +
+                    "reservation_lease_expires_at, payment_captured_at, retry_count, next_retry_at" +
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
                 pstmt.setString(1, request.getId());
@@ -42,6 +45,18 @@ public class AllocationRequestRepository {
                 pstmt.setLong(12, request.getUpdatedAt());
                 pstmt.setObject(13, request.getCompletedAt());
                 pstmt.setObject(14, request.getCancelledAt());
+                pstmt.setLong(15, request.getPriceGems());
+                pstmt.setInt(16, request.isPaymentRequired() ? 1 : 0);
+                pstmt.setString(17, request.getGemsReservationId());
+                pstmt.setString(18, request.getReserveIdempotencyKey());
+                pstmt.setString(19, request.getRenewIdempotencyKey());
+                pstmt.setLong(20, request.getRenewSequence());
+                pstmt.setString(21, request.getCaptureIdempotencyKey());
+                pstmt.setString(22, request.getReleaseIdempotencyKey());
+                pstmt.setObject(23, request.getReservationLeaseExpiresAt());
+                pstmt.setObject(24, request.getPaymentCapturedAt());
+                pstmt.setInt(25, request.getRetryCount());
+                pstmt.setObject(26, request.getNextRetryAt());
                 pstmt.executeUpdate();
             } catch (SQLException e) {
                 LOGGER.error("Failed to save allocation request: ", e);
@@ -69,7 +84,9 @@ public class AllocationRequestRepository {
 
     public AllocationRequest getActiveRequestByOwner(UUID ownerUuid) {
         synchronized (dbManager) {
-            String sql = "SELECT * FROM player_region_allocation_requests WHERE owner_uuid = ? AND state IN ('PENDING', 'SEARCHING', 'SLOT_RESERVED', 'PREPARING');";
+            String sql = "SELECT * FROM player_region_allocation_requests WHERE owner_uuid = ? AND state IN (" +
+                    "'PENDING', 'SEARCHING', 'SLOT_RESERVED', 'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', " +
+                    "'PREPARING', 'REGION_CREATING', 'REGION_CREATED_PAYMENT_CAPTURE_PENDING');";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
                 pstmt.setString(1, ownerUuid.toString());
@@ -88,7 +105,9 @@ public class AllocationRequestRepository {
     public List<AllocationRequest> getActiveRequests() {
         synchronized (dbManager) {
             List<AllocationRequest> list = new ArrayList<>();
-            String sql = "SELECT * FROM player_region_allocation_requests WHERE state IN ('PENDING', 'SEARCHING', 'SLOT_RESERVED', 'PREPARING');";
+            String sql = "SELECT * FROM player_region_allocation_requests WHERE state IN (" +
+                    "'PENDING', 'SEARCHING', 'SLOT_RESERVED', 'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', " +
+                    "'PREPARING', 'REGION_CREATING', 'REGION_CREATED_PAYMENT_CAPTURE_PENDING');";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql);
                  ResultSet rs = pstmt.executeQuery()) {
@@ -112,7 +131,7 @@ public class AllocationRequestRepository {
         String reqByStr = rs.getString("requested_by_uuid");
         UUID requestedByUuid = reqByStr != null ? UUID.fromString(reqByStr) : null;
 
-        return new AllocationRequest(
+        AllocationRequest request = new AllocationRequest(
                 rs.getString("id"),
                 UUID.fromString(rs.getString("owner_uuid")),
                 rs.getString("requested_biome_option"),
@@ -128,5 +147,28 @@ public class AllocationRequestRepository {
                 completedAt,
                 cancelledAt
         );
+        
+        // Map payment fields
+        request.setPriceGems(rs.getLong("price_gems"));
+        request.setPaymentRequired(rs.getInt("payment_required") == 1);
+        request.setGemsReservationId(rs.getString("gems_reservation_id"));
+        request.setReserveIdempotencyKey(rs.getString("reserve_idempotency_key"));
+        request.setRenewIdempotencyKey(rs.getString("renew_idempotency_key"));
+        request.setRenewSequence(rs.getLong("renew_sequence"));
+        request.setCaptureIdempotencyKey(rs.getString("capture_idempotency_key"));
+        request.setReleaseIdempotencyKey(rs.getString("release_idempotency_key"));
+        
+        Long reservationLeaseExpiresAt = rs.getObject("reservation_lease_expires_at") != null ? rs.getLong("reservation_lease_expires_at") : null;
+        request.setReservationLeaseExpiresAt(reservationLeaseExpiresAt);
+        
+        Long paymentCapturedAt = rs.getObject("payment_captured_at") != null ? rs.getLong("payment_captured_at") : null;
+        request.setPaymentCapturedAt(paymentCapturedAt);
+        
+        request.setRetryCount(rs.getInt("retry_count"));
+        
+        Long nextRetryAt = rs.getObject("next_retry_at") != null ? rs.getLong("next_retry_at") : null;
+        request.setNextRetryAt(nextRetryAt);
+        
+        return request;
     }
 }

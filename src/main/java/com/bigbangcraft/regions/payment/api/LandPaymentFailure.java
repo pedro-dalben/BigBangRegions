@@ -1,0 +1,15 @@
+package com.bigbangcraft.regions.payment.api;
+
+public enum LandPaymentFailure {
+    INSUFFICIENT_BALANCE,
+    TRANSIENT_ERROR,
+    TIMEOUT,
+    INVALID_REQUEST,
+    PLAYER_NOT_FOUND,
+    PROVIDER_UNAVAILABLE,
+    RESERVATION_EXPIRED,
+    RESERVATION_NOT_FOUND,
+    ALREADY_CAPTURED,
+    ALREADY_RELEASED,
+    UNKNOWN_ERROR
+}

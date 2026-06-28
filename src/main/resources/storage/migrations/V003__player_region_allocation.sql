@@ -15,7 +15,20 @@ CREATE TABLE IF NOT EXISTS player_region_allocation_requests (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     completed_at INTEGER,
-    cancelled_at INTEGER
+    cancelled_at INTEGER,
+    -- Payment fields
+    price_gems INTEGER NOT NULL DEFAULT 0,
+    payment_required INTEGER NOT NULL DEFAULT 0,
+    gems_reservation_id TEXT,
+    reserve_idempotency_key TEXT,
+    renew_idempotency_key TEXT,
+    renew_sequence INTEGER NOT NULL DEFAULT 0,
+    capture_idempotency_key TEXT,
+    release_idempotency_key TEXT,
+    reservation_lease_expires_at INTEGER,
+    payment_captured_at INTEGER,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS plot_slots (
@@ -54,6 +67,7 @@ CREATE TABLE IF NOT EXISTS player_region_homes (
 
 CREATE INDEX IF NOT EXISTS idx_allocation_requests_owner ON player_region_allocation_requests(owner_uuid, state);
 CREATE INDEX IF NOT EXISTS idx_allocation_requests_state ON player_region_allocation_requests(state, created_at);
+CREATE INDEX IF NOT EXISTS idx_allocation_requests_payment_state ON player_region_allocation_requests(state, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_plot_slots_grid ON plot_slots(dimension_key, grid_x, grid_z);
 CREATE INDEX IF NOT EXISTS idx_plot_slots_state_lease ON plot_slots(state, lease_expires_at);
 CREATE INDEX IF NOT EXISTS idx_plot_slots_region ON plot_slots(region_id);
