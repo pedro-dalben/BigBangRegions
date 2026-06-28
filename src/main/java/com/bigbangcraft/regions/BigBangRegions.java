@@ -16,6 +16,9 @@ import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.payment.NoPaymentGateway;
 import com.bigbangcraft.regions.payment.api.LandPaymentGateway;
 import com.bigbangcraft.regions.recovery.LandOperationRecoveryService;
+import com.bigbangcraft.regions.expansion.RegionExpansionCoordinator;
+import com.bigbangcraft.regions.expansion.RegionExpansionOperationRepository;
+import com.bigbangcraft.regions.expansion.RegionExpansionRecoveryService;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import com.bigbangcraft.regions.repository.AllocationRequestRepository;
 import com.bigbangcraft.regions.repository.AuditRepository;
@@ -80,6 +83,9 @@ public class BigBangRegions implements ModInitializer {
     private static RegionBoundaryRenderer boundaryRenderer;
     private static LandPaymentGateway paymentGateway;
     private static LandOperationRecoveryService recoveryService;
+    private static RegionExpansionOperationRepository expansionOperationRepository;
+    private static RegionExpansionCoordinator expansionCoordinator;
+    private static RegionExpansionRecoveryService expansionRecoveryService;
 
     public static RegionMembershipCache getMembershipCache() {
         return membershipCache;
@@ -115,6 +121,14 @@ public class BigBangRegions implements ModInitializer {
     
     public static LandPaymentGateway getPaymentGateway() {
         return paymentGateway;
+    }
+
+    public static RegionExpansionCoordinator getExpansionCoordinator() {
+        return expansionCoordinator;
+    }
+
+    public static RegionExpansionRecoveryService getExpansionRecoveryService() {
+        return expansionRecoveryService;
     }
 
     @Override
@@ -184,6 +198,18 @@ public class BigBangRegions implements ModInitializer {
             regionCache, membershipCache
         );
 
+        // 7c. Expansion services
+        expansionOperationRepository = new RegionExpansionOperationRepository(databaseManager);
+        expansionCoordinator = new RegionExpansionCoordinator(
+            configManager, databaseManager,
+            expansionOperationRepository, regionRepository, plotSlotRepository,
+            regionCache, membershipCache, paymentGateway
+        );
+        expansionRecoveryService = new RegionExpansionRecoveryService(
+            expansionOperationRepository, regionRepository, plotSlotRepository,
+            regionCache, membershipCache, paymentGateway, configManager, databaseManager
+        );
+
         // 7. Services and Managers
         selectionManager = new SelectionManager();
         int operatorFallback = configManager.getConfig().getPermissions().getOperatorFallbackLevel();
@@ -221,12 +247,18 @@ public class BigBangRegions implements ModInitializer {
             if (recoveryService != null) {
                 recoveryService.recover();
             }
+            if (expansionRecoveryService != null) {
+                expansionRecoveryService.recover();
+            }
             LOGGER.info("Allocation scheduler started.");
             LOGGER.info("Payment gateway status: {}", paymentGateway.getProviderStatus());
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             if (allocationScheduler != null) {
                 allocationScheduler.tick(server);
+            }
+            if (expansionCoordinator != null) {
+                expansionCoordinator.processNextExpansion();
             }
             if (entryExitService != null) {
                 for (ServerPlayer p : server.getPlayerList().getPlayers()) {
