@@ -163,8 +163,8 @@ public class Config {
     public static class PlayerLandAllocationConfig {
         private boolean enabled = true;
         private String targetDimension = "minecraft:overworld";
-        private int initialClaimSize = 50;
-        private int slotSize = 384;
+        private int initialClaimSize = 128;
+        private int slotSize = 512;
         private int futureMaximumClaimSize = 240;
         private int slotInternalMargin = 8;
         private int maxRegionsPerOwner = 1;

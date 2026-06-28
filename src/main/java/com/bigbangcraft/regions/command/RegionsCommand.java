@@ -63,6 +63,7 @@ public class RegionsCommand {
             .then(Commands.literal("pos1").executes(context -> setPos(context, true)))
             .then(Commands.literal("pos2").executes(context -> setPos(context, false)))
             .then(Commands.literal("create")
+                .requires(source -> checkPermission(source, "bigbangregions.admin.create"))
                 .then(Commands.literal("admin")
                     .then(Commands.argument("id", StringArgumentType.word())
                         .executes(context -> createAdmin(context, 1000))
@@ -234,6 +235,7 @@ public class RegionsCommand {
         }
         if (isCommandEnabled("criar")) {
             builder.then(Commands.literal("criar")
+                .requires(source -> checkPermission(source, "bigbangregions.admin.create"))
                 .then(Commands.argument("bioma", StringArgumentType.greedyString())
                     .executes(RegionsCommand::createPlayerAllocation)
                 )

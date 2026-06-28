@@ -382,12 +382,41 @@ public class TerrainAllocationCoordinator {
         // 2. Set biome
         applyRegionBiome(level, bounds, request.getRequestedBiomeOption());
 
+        // 2.5 Generate cobblestone spawn platform
+        generateSpawnPlatform(level, homePos);
+
         // 3. Teleport and notify
         ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
         if (player != null) {
             player.teleportTo(level, homePos.getX() + 0.5, homePos.getY(), homePos.getZ() + 0.5, player.getYRot(), player.getXRot());
             player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§aSeu terreno foi criado com sucesso!"));
             player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§7Você foi teleportado para sua nova região."));
+        }
+    }
+
+    private void generateSpawnPlatform(ServerLevel level, BlockPos homePos) {
+        try {
+            var cobblestone = net.minecraft.world.level.block.Blocks.COBBLESTONE.defaultBlockState();
+            var air = net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+
+            // 4x4 platform centered around homePos at yFloor = homePos.getY() - 1
+            int minX = homePos.getX() - 1;
+            int maxX = homePos.getX() + 2;
+            int minZ = homePos.getZ() - 1;
+            int maxZ = homePos.getZ() + 2;
+            int yFloor = homePos.getY() - 1;
+
+            for (int x = minX; x <= maxX; x++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    // Set floor to Cobblestone
+                    level.setBlock(new BlockPos(x, yFloor, z), cobblestone, 2);
+                    // Clear 2 blocks of air above
+                    level.setBlock(new BlockPos(x, yFloor + 1, z), air, 2);
+                    level.setBlock(new BlockPos(x, yFloor + 2, z), air, 2);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to generate spawn platform", e);
         }
     }
 
