@@ -127,54 +127,50 @@ public class RegionRepository {
             try {
                 conn = dbManager.getConnection();
                 conn.setAutoCommit(false);
-
-                String sql = "INSERT OR REPLACE INTO regions (" +
-                        "id, name, type, dimensionKey, minX, minY, minZ, maxX, maxY, maxZ, " +
-                        "priority, ownerUuid, createdByUuid, createdAt, updatedAt, status" +
-                        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
-
-                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                    pstmt.setString(1, region.getId());
-                    pstmt.setString(2, region.getName());
-                    pstmt.setString(3, region.getType().name());
-                    pstmt.setString(4, region.getBounds().getDimension());
-                    pstmt.setInt(5, region.getBounds().getMinX());
-                    pstmt.setInt(6, region.getBounds().getMinY());
-                    pstmt.setInt(7, region.getBounds().getMinZ());
-                    pstmt.setInt(8, region.getBounds().getMaxX());
-                    pstmt.setInt(9, region.getBounds().getMaxY());
-                    pstmt.setInt(10, region.getBounds().getMaxZ());
-                    pstmt.setInt(11, region.getPriority());
-                    pstmt.setString(12, region.getOwnerUuid() != null ? region.getOwnerUuid().toString() : null);
-                    pstmt.setString(13, region.getCreatedByUuid().toString());
-                    pstmt.setLong(14, region.getCreatedAt());
-                    pstmt.setLong(15, region.getUpdatedAt());
-                    pstmt.setString(16, region.getStatus());
-                    pstmt.executeUpdate();
-                }
-
-                saveFlags(conn, region.getId(), region.getFlags());
-
+                saveOnConnection(conn, region);
                 conn.commit();
             } catch (SQLException e) {
                 LOGGER.error("Failed to save region " + region.getId() + " to database: ", e);
                 if (conn != null) {
-                    try {
-                        conn.rollback();
-                    } catch (SQLException ex) {
+                    try { conn.rollback(); } catch (SQLException ex) {
                         LOGGER.error("Error rolling back transaction: ", ex);
                     }
                 }
             } finally {
                 if (conn != null) {
-                    try {
-                        conn.setAutoCommit(true);
-                    } catch (SQLException e) {
+                    try { conn.setAutoCommit(true); } catch (SQLException e) {
                         LOGGER.error("Failed to reset auto-commit: ", e);
                     }
                 }
             }
         }
+    }
+
+    public void saveOnConnection(Connection conn, Region region) throws SQLException {
+        String sql = "INSERT OR REPLACE INTO regions (" +
+                "id, name, type, dimensionKey, minX, minY, minZ, maxX, maxY, maxZ, " +
+                "priority, ownerUuid, createdByUuid, createdAt, updatedAt, status" +
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, region.getId());
+            pstmt.setString(2, region.getName());
+            pstmt.setString(3, region.getType().name());
+            pstmt.setString(4, region.getBounds().getDimension());
+            pstmt.setInt(5, region.getBounds().getMinX());
+            pstmt.setInt(6, region.getBounds().getMinY());
+            pstmt.setInt(7, region.getBounds().getMinZ());
+            pstmt.setInt(8, region.getBounds().getMaxX());
+            pstmt.setInt(9, region.getBounds().getMaxY());
+            pstmt.setInt(10, region.getBounds().getMaxZ());
+            pstmt.setInt(11, region.getPriority());
+            pstmt.setString(12, region.getOwnerUuid() != null ? region.getOwnerUuid().toString() : null);
+            pstmt.setString(13, region.getCreatedByUuid().toString());
+            pstmt.setLong(14, region.getCreatedAt());
+            pstmt.setLong(15, region.getUpdatedAt());
+            pstmt.setString(16, region.getStatus());
+            pstmt.executeUpdate();
+        }
+        saveFlags(conn, region.getId(), region.getFlags());
     }
 
     public void saveMembers(String regionId, Map<UUID, RegionMember> members) {
@@ -183,46 +179,43 @@ public class RegionRepository {
             try {
                 conn = dbManager.getConnection();
                 conn.setAutoCommit(false);
-
-                String deleteSql = "DELETE FROM region_members WHERE regionId = ?;";
-                try (PreparedStatement pstmt = conn.prepareStatement(deleteSql)) {
-                    pstmt.setString(1, regionId);
-                    pstmt.executeUpdate();
-                }
-
-                String insertSql = "INSERT INTO region_members (regionId, uuid, role, addedByUuid, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?);";
-                try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
-                    for (RegionMember member : members.values()) {
-                        pstmt.setString(1, regionId);
-                        pstmt.setString(2, member.getUuid().toString());
-                        pstmt.setString(3, member.getRole().name());
-                        pstmt.setString(4, member.getAddedByUuid() != null ? member.getAddedByUuid().toString() : null);
-                        pstmt.setLong(5, member.getCreatedAt());
-                        pstmt.setLong(6, member.getUpdatedAt());
-                        pstmt.addBatch();
-                    }
-                    pstmt.executeBatch();
-                }
-
+                saveMembersOnConnection(conn, regionId, members);
                 conn.commit();
             } catch (SQLException e) {
                 LOGGER.error("Failed to save members for region " + regionId + ": ", e);
                 if (conn != null) {
-                    try {
-                        conn.rollback();
-                    } catch (SQLException ex) {
+                    try { conn.rollback(); } catch (SQLException ex) {
                         LOGGER.error("Error rolling back transaction: ", ex);
                     }
                 }
             } finally {
                 if (conn != null) {
-                    try {
-                        conn.setAutoCommit(true);
-                    } catch (SQLException e) {
+                    try { conn.setAutoCommit(true); } catch (SQLException e) {
                         LOGGER.error("Failed to reset auto-commit: ", e);
                     }
                 }
             }
+        }
+    }
+
+    public void saveMembersOnConnection(Connection conn, String regionId, Map<UUID, RegionMember> members) throws SQLException {
+        String deleteSql = "DELETE FROM region_members WHERE regionId = ?;";
+        try (PreparedStatement pstmt = conn.prepareStatement(deleteSql)) {
+            pstmt.setString(1, regionId);
+            pstmt.executeUpdate();
+        }
+        String insertSql = "INSERT INTO region_members (regionId, uuid, role, addedByUuid, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?);";
+        try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+            for (RegionMember member : members.values()) {
+                pstmt.setString(1, regionId);
+                pstmt.setString(2, member.getUuid().toString());
+                pstmt.setString(3, member.getRole().name());
+                pstmt.setString(4, member.getAddedByUuid() != null ? member.getAddedByUuid().toString() : null);
+                pstmt.setLong(5, member.getCreatedAt());
+                pstmt.setLong(6, member.getUpdatedAt());
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
         }
     }
 

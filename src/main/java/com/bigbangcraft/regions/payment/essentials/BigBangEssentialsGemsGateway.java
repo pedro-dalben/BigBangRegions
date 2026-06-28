@@ -2,55 +2,45 @@ package com.bigbangcraft.regions.payment.essentials;
 
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.payment.api.*;
+import com.pedrodalben.bigbangessentials.api.BigBangEssentialsApi;
+import com.pedrodalben.bigbangessentials.economy.gems.api.*;
+import com.pedrodalben.bigbangessentials.economy.gems.domain.GemReservation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Method;
+import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 public class BigBangEssentialsGemsGateway implements LandPaymentGateway {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-BigBangEssentialsGemsGateway");
 
-    private static final String ESSENTIALS_API_CLASS = "com.pedrodalben.bigbangessentials.api.BigBangEssentialsAPI";
-    private static final String GEMS_SERVICE_CLASS = "com.pedrodalben.bigbangessentials.gems.GemsService";
-    private static final String GEMS_RESERVATION_CLASS = "com.pedrodalben.bigbangessentials.gems.GemsReservation";
-    private static final String GEMS_RESULT_CLASS = "com.pedrodalben.bigbangessentials.gems.GemsOperationResult";
+    private static final String SOURCE = "bigbangregions";
+    private static final String PURPOSE = "terrain_allocation";
 
-    private final ConfigManager configManager;
-    private Object gemsService;
+    private GemsService gemsService;
     private boolean available;
     private LandPaymentProviderStatus status;
 
     public BigBangEssentialsGemsGateway(ConfigManager configManager) {
-        this.configManager = configManager;
-        this.available = false;
-        this.status = LandPaymentProviderStatus.BOOTSTRAP_FAILED;
         initialize();
     }
 
     private void initialize() {
         try {
-            Class<?> apiClass = Class.forName(ESSENTIALS_API_CLASS);
-            Method getInstance = apiClass.getMethod("getInstance");
-            Object apiInstance = getInstance.invoke(null);
-            Method getGemsService = apiClass.getMethod("getGemsService");
-            this.gemsService = getGemsService.invoke(apiInstance);
-
-            if (this.gemsService == null) {
-                LOGGER.warn("BigBang Essentials GemsService is null");
+            if (!BigBangEssentialsApi.isGemsEnabled()) {
+                LOGGER.warn("BigBang Essentials gems system is disabled");
                 this.status = LandPaymentProviderStatus.UNAVAILABLE;
                 return;
             }
-
+            this.gemsService = BigBangEssentialsApi.requireGems();
             this.available = true;
             this.status = LandPaymentProviderStatus.AVAILABLE;
-            LOGGER.info("BigBang Essentials GemsGateway initialized successfully");
-        } catch (ClassNotFoundException e) {
-            LOGGER.error("BigBang Essentials API not found: {}", e.getMessage());
-            this.status = LandPaymentProviderStatus.UNAVAILABLE;
+            LOGGER.info("BigBang Essentials GemsGateway initialized successfully (API v{})",
+                BigBangEssentialsApi.gemsApiVersion());
         } catch (Exception e) {
-            LOGGER.error("Failed to initialize BigBang Essentials GemsGateway: {}", e.getMessage());
+            LOGGER.error("Failed to initialize BigBang Essentials GemsGateway", e);
             this.status = LandPaymentProviderStatus.BOOTSTRAP_FAILED;
         }
     }
@@ -61,17 +51,20 @@ public class BigBangEssentialsGemsGateway implements LandPaymentGateway {
             return LandPaymentOperationResult.failure(LandPaymentFailure.PROVIDER_UNAVAILABLE);
         }
         try {
-            Class<?> gsClass = Class.forName(GEMS_SERVICE_CLASS);
-            Method reserveMethod = gsClass.getMethod("reserveGems", UUID.class, long.class, String.class, long.class);
-            Object resultObj = reserveMethod.invoke(gemsService,
-                    request.getOwnerUuid(),
-                    request.getPriceGems(),
-                    request.getIdempotencyKey(),
-                    request.getLeaseDurationSeconds());
-
-            return mapGemsResult(resultObj);
+            GemReservationRequest gemReq = new GemReservationRequest(
+                request.getOwnerUuid(),
+                request.getPriceGems(),
+                SOURCE,
+                PURPOSE,
+                request.getIdempotencyKey(),
+                request.getOperationId().toString(),
+                Duration.ofSeconds(request.getLeaseDurationSeconds()),
+                Map.of("operation_id", request.getOperationId().toString())
+            );
+            GemReservationResult result = gemsService.reserve(gemReq);
+            return mapReservationResult(result);
         } catch (Exception e) {
-            LOGGER.error("Failed to reserve gems for request={}: {}", request.getOperationId(), e.getMessage());
+            LOGGER.error("Failed to reserve gems for request={}", request.getOperationId(), e);
             return LandPaymentOperationResult.failure(LandPaymentFailure.TRANSIENT_ERROR);
         }
     }
@@ -82,17 +75,20 @@ public class BigBangEssentialsGemsGateway implements LandPaymentGateway {
             return LandPaymentOperationResult.failure(LandPaymentFailure.PROVIDER_UNAVAILABLE);
         }
         try {
-            Class<?> gsClass = Class.forName(GEMS_SERVICE_CLASS);
-            Method renewMethod = gsClass.getMethod("renewReservation", String.class, String.class, long.class, long.class);
-            Object resultObj = renewMethod.invoke(gemsService,
-                    request.getReservationId(),
-                    request.getIdempotencyKey(),
-                    request.getRenewSequence(),
-                    request.getLeaseDurationSeconds());
-
-            return mapGemsResult(resultObj);
+            GemRenewRequest gemReq = new GemRenewRequest(
+                UUID.fromString(request.getReservationId()),
+                Duration.ofSeconds(request.getLeaseDurationSeconds()),
+                SOURCE,
+                PURPOSE,
+                request.getOperationId(),
+                request.getIdempotencyKey(),
+                request.getOperationId().toString(),
+                Map.of()
+            );
+            GemOperationResult result = gemsService.renew(gemReq);
+            return mapOperationResult(result);
         } catch (Exception e) {
-            LOGGER.error("Failed to renew gems reservation for request={}: {}", request.getOperationId(), e.getMessage());
+            LOGGER.error("Failed to renew gems reservation for request={}", request.getOperationId(), e);
             return LandPaymentOperationResult.failure(LandPaymentFailure.TRANSIENT_ERROR);
         }
     }
@@ -103,15 +99,19 @@ public class BigBangEssentialsGemsGateway implements LandPaymentGateway {
             return LandPaymentOperationResult.failure(LandPaymentFailure.PROVIDER_UNAVAILABLE);
         }
         try {
-            Class<?> gsClass = Class.forName(GEMS_SERVICE_CLASS);
-            Method captureMethod = gsClass.getMethod("captureReservation", String.class, String.class);
-            Object resultObj = captureMethod.invoke(gemsService,
-                    request.getReservationId(),
-                    request.getIdempotencyKey());
-
-            return mapGemsResult(resultObj);
+            GemCaptureRequest gemReq = new GemCaptureRequest(
+                UUID.fromString(request.getReservationId()),
+                SOURCE,
+                PURPOSE,
+                request.getOperationId(),
+                request.getIdempotencyKey(),
+                request.getOperationId().toString(),
+                Map.of()
+            );
+            GemOperationResult result = gemsService.capture(gemReq);
+            return mapOperationResult(result);
         } catch (Exception e) {
-            LOGGER.error("Failed to capture gems for request={}: {}", request.getOperationId(), e.getMessage());
+            LOGGER.error("Failed to capture gems for request={}", request.getOperationId(), e);
             return LandPaymentOperationResult.failure(LandPaymentFailure.TRANSIENT_ERROR);
         }
     }
@@ -122,15 +122,20 @@ public class BigBangEssentialsGemsGateway implements LandPaymentGateway {
             return LandPaymentOperationResult.failure(LandPaymentFailure.PROVIDER_UNAVAILABLE);
         }
         try {
-            Class<?> gsClass = Class.forName(GEMS_SERVICE_CLASS);
-            Method releaseMethod = gsClass.getMethod("releaseReservation", String.class, String.class);
-            Object resultObj = releaseMethod.invoke(gemsService,
-                    request.getReservationId(),
-                    request.getIdempotencyKey());
-
-            return mapGemsResult(resultObj);
+            GemReleaseRequest gemReq = new GemReleaseRequest(
+                UUID.fromString(request.getReservationId()),
+                SOURCE,
+                PURPOSE,
+                request.getOperationId(),
+                "allocation_cancelled",
+                request.getIdempotencyKey(),
+                request.getOperationId().toString(),
+                Map.of()
+            );
+            GemOperationResult result = gemsService.release(gemReq);
+            return mapOperationResult(result);
         } catch (Exception e) {
-            LOGGER.error("Failed to release gems for request={}: {}", request.getOperationId(), e.getMessage());
+            LOGGER.error("Failed to release gems for request={}", request.getOperationId(), e);
             return LandPaymentOperationResult.failure(LandPaymentFailure.TRANSIENT_ERROR);
         }
     }
@@ -151,65 +156,52 @@ public class BigBangEssentialsGemsGateway implements LandPaymentGateway {
             return Optional.empty();
         }
         try {
-            Class<?> gsClass = Class.forName(GEMS_SERVICE_CLASS);
-            Method getReservationMethod = gsClass.getMethod("getReservation", String.class);
-            Object reservationObj = getReservationMethod.invoke(gemsService, idempotencyKey);
-
-            if (reservationObj == null) {
-                return Optional.empty();
-            }
-
-            Class<?> grClass = Class.forName(GEMS_RESERVATION_CLASS);
-            Method getId = grClass.getMethod("getId");
-            Method getPriceGems = grClass.getMethod("getPriceGems");
-            Method getExpiresAt = grClass.getMethod("getExpiresAt");
-
-            String resId = (String) getId.invoke(reservationObj);
-            long priceGems = (long) getPriceGems.invoke(reservationObj);
-            long expiresAt = (long) getExpiresAt.invoke(reservationObj);
-
-            return Optional.of(new LandPaymentReservation(resId, idempotencyKey, expiresAt, priceGems));
+            Optional<GemReservation> gemRes = gemsService.findReservationByIdempotencyKey(idempotencyKey);
+            return gemRes.map(r -> new LandPaymentReservation(
+                r.getReservationId().toString(),
+                r.getIdempotencyKey(),
+                r.getExpiresAt(),
+                r.getAmount()
+            ));
         } catch (Exception e) {
-            LOGGER.error("Failed to get reservation by idempotency key: {}", e.getMessage());
+            LOGGER.error("Failed to get reservation by idempotency key {}", idempotencyKey, e);
             return Optional.empty();
         }
     }
 
-    private LandPaymentOperationResult mapGemsResult(Object resultObj) {
-        try {
-            Class<?> grClass = Class.forName(GEMS_RESULT_CLASS);
-            Method isSuccess = grClass.getMethod("isSuccess");
-            Method getReservationId = grClass.getMethod("getReservationId");
-            Method getTransactionId = grClass.getMethod("getTransactionId");
-            Method getFailureCode = grClass.getMethod("getFailureCode");
-
-            boolean success = (boolean) isSuccess.invoke(resultObj);
-            if (success) {
-                String reservationId = (String) getReservationId.invoke(resultObj);
-                String transactionId = (String) getTransactionId.invoke(resultObj);
-                return LandPaymentOperationResult.success(reservationId, transactionId);
-            }
-
-            String failureCode = (String) getFailureCode.invoke(resultObj);
-            return LandPaymentOperationResult.failure(mapFailure(failureCode));
-        } catch (Exception e) {
-            LOGGER.error("Failed to map Gems operation result: {}", e.getMessage());
-            return LandPaymentOperationResult.failure(LandPaymentFailure.UNKNOWN_ERROR);
+    private LandPaymentOperationResult mapReservationResult(GemReservationResult result) {
+        if (result.success()) {
+            String reservationId = result.reservationId() != null ? result.reservationId().toString() : null;
+            return LandPaymentOperationResult.success(reservationId, null);
         }
+        return LandPaymentOperationResult.failure(mapFailure(result.failure()));
     }
 
-    private LandPaymentFailure mapFailure(String failureCode) {
-        if (failureCode == null) return LandPaymentFailure.UNKNOWN_ERROR;
-        return switch (failureCode.toUpperCase()) {
-            case "INSUFFICIENT_BALANCE" -> LandPaymentFailure.INSUFFICIENT_BALANCE;
-            case "TIMEOUT" -> LandPaymentFailure.TIMEOUT;
-            case "INVALID_REQUEST" -> LandPaymentFailure.INVALID_REQUEST;
-            case "PLAYER_NOT_FOUND" -> LandPaymentFailure.PLAYER_NOT_FOUND;
-            case "RESERVATION_EXPIRED" -> LandPaymentFailure.RESERVATION_EXPIRED;
-            case "RESERVATION_NOT_FOUND" -> LandPaymentFailure.RESERVATION_NOT_FOUND;
-            case "ALREADY_CAPTURED" -> LandPaymentFailure.ALREADY_CAPTURED;
-            case "ALREADY_RELEASED" -> LandPaymentFailure.ALREADY_RELEASED;
-            default -> LandPaymentFailure.TRANSIENT_ERROR;
+    private LandPaymentOperationResult mapOperationResult(GemOperationResult result) {
+        if (result.success()) {
+            String reservationId = result.reservationId() != null ? result.reservationId().toString() : null;
+            String transactionId = result.transactionId() != null ? result.transactionId().toString() : null;
+            return LandPaymentOperationResult.success(reservationId, transactionId);
+        }
+        return LandPaymentOperationResult.failure(mapFailure(result.failure()));
+    }
+
+    private LandPaymentFailure mapFailure(GemOperationFailure failure) {
+        if (failure == null) return LandPaymentFailure.UNKNOWN_ERROR;
+        return switch (failure) {
+            case INSUFFICIENT_AVAILABLE_BALANCE -> LandPaymentFailure.INSUFFICIENT_BALANCE;
+            case RESERVATION_EXPIRED -> LandPaymentFailure.RESERVATION_EXPIRED;
+            case RESERVATION_NOT_FOUND -> LandPaymentFailure.RESERVATION_NOT_FOUND;
+            case RESERVATION_ALREADY_CAPTURED -> LandPaymentFailure.ALREADY_CAPTURED;
+            case RESERVATION_ALREADY_RELEASED -> LandPaymentFailure.ALREADY_RELEASED;
+            case RESERVATION_NOT_ACTIVE -> LandPaymentFailure.RESERVATION_NOT_FOUND;
+            case IDEMPOTENCY_CONFLICT -> LandPaymentFailure.TRANSIENT_ERROR;
+            case PERSISTENCE_FAILURE, DATA_INTEGRITY_FAILURE, SHUTTING_DOWN, UNKNOWN ->
+                LandPaymentFailure.TRANSIENT_ERROR;
+            case INVALID_AMOUNT, NEGATIVE_AMOUNT, FRACTIONAL_AMOUNT, OVERFLOW, INVALID_LEASE,
+                 MAX_BALANCE_EXCEEDED, UNAUTHORIZED_SOURCE ->
+                LandPaymentFailure.INVALID_REQUEST;
+            case DISABLED -> LandPaymentFailure.PROVIDER_UNAVAILABLE;
         };
     }
 }

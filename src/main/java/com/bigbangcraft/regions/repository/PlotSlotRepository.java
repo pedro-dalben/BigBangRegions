@@ -21,33 +21,38 @@ public class PlotSlotRepository {
 
     public void save(PlotSlot slot) {
         synchronized (dbManager) {
-            String sql = "INSERT OR REPLACE INTO plot_slots (" +
-                    "id, dimension_key, grid_x, grid_z, min_x, min_z, slot_size, state, " +
-                    "reserved_for_uuid, region_id, biome_option_key, reserved_at, lease_expires_at, " +
-                    "allocated_at, created_at, updated_at" +
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
-            try (Connection conn = dbManager.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, slot.getId());
-                pstmt.setString(2, slot.getDimensionKey());
-                pstmt.setInt(3, slot.getGridX());
-                pstmt.setInt(4, slot.getGridZ());
-                pstmt.setInt(5, slot.getMinX());
-                pstmt.setInt(6, slot.getMinZ());
-                pstmt.setInt(7, slot.getSlotSize());
-                pstmt.setString(8, slot.getState().name());
-                pstmt.setString(9, slot.getReservedForUuid() != null ? slot.getReservedForUuid().toString() : null);
-                pstmt.setString(10, slot.getRegionId());
-                pstmt.setString(11, slot.getBiomeOptionKey());
-                pstmt.setObject(12, slot.getReservedAt());
-                pstmt.setObject(13, slot.getLeaseExpiresAt());
-                pstmt.setObject(14, slot.getAllocatedAt());
-                pstmt.setLong(15, slot.getCreatedAt());
-                pstmt.setLong(16, slot.getUpdatedAt());
-                pstmt.executeUpdate();
+            try (Connection conn = dbManager.getConnection()) {
+                saveOnConnection(conn, slot);
             } catch (SQLException e) {
                 LOGGER.error("Failed to save plot slot: ", e);
             }
+        }
+    }
+
+    public void saveOnConnection(Connection conn, PlotSlot slot) throws SQLException {
+        String sql = "INSERT OR REPLACE INTO plot_slots (" +
+                "id, dimension_key, grid_x, grid_z, min_x, min_z, slot_size, state, " +
+                "reserved_for_uuid, region_id, biome_option_key, reserved_at, lease_expires_at, " +
+                "allocated_at, created_at, updated_at" +
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, slot.getId());
+            pstmt.setString(2, slot.getDimensionKey());
+            pstmt.setInt(3, slot.getGridX());
+            pstmt.setInt(4, slot.getGridZ());
+            pstmt.setInt(5, slot.getMinX());
+            pstmt.setInt(6, slot.getMinZ());
+            pstmt.setInt(7, slot.getSlotSize());
+            pstmt.setString(8, slot.getState().name());
+            pstmt.setString(9, slot.getReservedForUuid() != null ? slot.getReservedForUuid().toString() : null);
+            pstmt.setString(10, slot.getRegionId());
+            pstmt.setString(11, slot.getBiomeOptionKey());
+            pstmt.setObject(12, slot.getReservedAt());
+            pstmt.setObject(13, slot.getLeaseExpiresAt());
+            pstmt.setObject(14, slot.getAllocatedAt());
+            pstmt.setLong(15, slot.getCreatedAt());
+            pstmt.setLong(16, slot.getUpdatedAt());
+            pstmt.executeUpdate();
         }
     }
 

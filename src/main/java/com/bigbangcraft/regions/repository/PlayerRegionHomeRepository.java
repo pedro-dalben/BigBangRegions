@@ -17,24 +17,29 @@ public class PlayerRegionHomeRepository {
 
     public void save(PlayerRegionHome home) {
         synchronized (dbManager) {
-            String sql = "INSERT OR REPLACE INTO player_region_homes (" +
-                    "region_id, dimension_key, x, y, z, yaw, pitch, created_at, updated_at" +
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
-            try (Connection conn = dbManager.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, home.getRegionId());
-                pstmt.setString(2, home.getDimensionKey());
-                pstmt.setDouble(3, home.getX());
-                pstmt.setDouble(4, home.getY());
-                pstmt.setDouble(5, home.getZ());
-                pstmt.setFloat(6, home.getYaw());
-                pstmt.setFloat(7, home.getPitch());
-                pstmt.setLong(8, home.getCreatedAt());
-                pstmt.setLong(9, home.getUpdatedAt());
-                pstmt.executeUpdate();
+            try (Connection conn = dbManager.getConnection()) {
+                saveOnConnection(conn, home);
             } catch (SQLException e) {
                 LOGGER.error("Failed to save player region home: ", e);
             }
+        }
+    }
+
+    public void saveOnConnection(Connection conn, PlayerRegionHome home) throws SQLException {
+        String sql = "INSERT OR REPLACE INTO player_region_homes (" +
+                "region_id, dimension_key, x, y, z, yaw, pitch, created_at, updated_at" +
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, home.getRegionId());
+            pstmt.setString(2, home.getDimensionKey());
+            pstmt.setDouble(3, home.getX());
+            pstmt.setDouble(4, home.getY());
+            pstmt.setDouble(5, home.getZ());
+            pstmt.setFloat(6, home.getYaw());
+            pstmt.setFloat(7, home.getPitch());
+            pstmt.setLong(8, home.getCreatedAt());
+            pstmt.setLong(9, home.getUpdatedAt());
+            pstmt.executeUpdate();
         }
     }
 

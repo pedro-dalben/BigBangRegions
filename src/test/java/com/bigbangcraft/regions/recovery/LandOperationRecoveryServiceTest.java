@@ -5,6 +5,7 @@ import com.bigbangcraft.regions.allocation.AllocationRequestState;
 import com.bigbangcraft.regions.allocation.PlotSlot;
 import com.bigbangcraft.regions.allocation.PlotSlotState;
 import com.bigbangcraft.regions.cache.RegionCache;
+import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
@@ -13,12 +14,14 @@ import com.bigbangcraft.regions.payment.FakeLandPaymentGateway;
 import com.bigbangcraft.regions.payment.api.*;
 import com.bigbangcraft.regions.repository.AllocationRequestRepository;
 import com.bigbangcraft.regions.repository.PlotSlotRepository;
+import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -31,9 +34,12 @@ public class LandOperationRecoveryServiceTest {
     private DatabaseManager dbManager;
     private AllocationRequestRepository requestRepository;
     private PlotSlotRepository slotRepository;
+    private RegionRepository regionRepository;
     private RegionCache regionCache;
+    private RegionMembershipCache membershipCache;
     private FakeLandPaymentGateway paymentGateway;
     private LandOperationRecoveryService recoveryService;
+    private ConfigManager configManager;
     private UUID ownerUuid;
     private String requestId;
 
@@ -43,12 +49,15 @@ public class LandOperationRecoveryServiceTest {
         dbManager.initialize();
         requestRepository = new AllocationRequestRepository(dbManager);
         slotRepository = new PlotSlotRepository(dbManager);
+        regionRepository = new RegionRepository(dbManager);
         regionCache = new RegionCache();
+        membershipCache = new RegionMembershipCache();
         paymentGateway = new FakeLandPaymentGateway();
 
-        ConfigManager configManager = new ConfigManager(tempDir);
+        configManager = new ConfigManager(tempDir);
         recoveryService = new LandOperationRecoveryService(
-            requestRepository, slotRepository, regionCache, paymentGateway, configManager
+            requestRepository, slotRepository, regionRepository,
+            regionCache, membershipCache, paymentGateway, configManager
         );
 
         ownerUuid = UUID.randomUUID();
@@ -60,13 +69,12 @@ public class LandOperationRecoveryServiceTest {
         String regionId = "test_region_1";
         String plotSlotId = "dim:0:0";
 
-        // Create a region in cache (simulating it was created before crash)
         RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, -64, 0, 49, 320, 49);
         Region region = new Region(regionId, "Test Region", RegionType.PLAYER_REGION,
             bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "PENDING_PAYMENT");
+        regionRepository.save(region);
         regionCache.add(region);
 
-        // Create request stuck in REGION_CREATING
         AllocationRequest request = new AllocationRequest(
             requestId, ownerUuid, "planicies", "minecraft:overworld",
             AllocationRequestState.REGION_CREATING, "player", ownerUuid,
@@ -76,7 +84,6 @@ public class LandOperationRecoveryServiceTest {
 
         recoveryService.recover();
 
-        // Should advance to REGION_CREATED_PAYMENT_CAPTURE_PENDING
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
         assertEquals(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, recovered.getState());
@@ -86,17 +93,15 @@ public class LandOperationRecoveryServiceTest {
     public void testRecoverRegionCreatingWithoutRegion() {
         String plotSlotId = "dim:5:5";
 
-        // Create a reserved slot
         PlotSlot slot = new PlotSlot(plotSlotId, "minecraft:overworld", 5, 5,
             1280, 1280, 256, PlotSlotState.RESERVED, ownerUuid,
             null, "planicies", 1000L, 10000L, null, 1000L, 1000L);
         slotRepository.save(slot);
 
-        // Create request stuck in REGION_CREATING without a region (crash before world ops)
         AllocationRequest request = new AllocationRequest(
             requestId, ownerUuid, "planicies", "minecraft:overworld",
             AllocationRequestState.REGION_CREATING, "player", ownerUuid,
-            null, plotSlotId, "Regiao nao criada", 0, 1000, 1000, null, null
+            "nonexistent_region", plotSlotId, "Regiao nao criada", 0, 1000, 1000, null, null
         );
         requestRepository.save(request);
 
@@ -112,19 +117,17 @@ public class LandOperationRecoveryServiceTest {
         String regionId = "test_region_2";
         String plotSlotId = "dim:10:10";
 
-        // Create region in cache
         RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, -64, 0, 49, 320, 49);
         Region region = new Region(regionId, "Test Region", RegionType.PLAYER_REGION,
             bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "PENDING_PAYMENT");
+        regionRepository.save(region);
         regionCache.add(region);
 
-        // Reserve payment
         LandPaymentReserveRequest reserveReq = new LandPaymentReserveRequest(
             UUID.fromString(requestId), ownerUuid, 100, "test-recover-cap-key", 300);
         paymentGateway.setBalance(ownerUuid, 1000);
         LandPaymentOperationResult reserveResult = paymentGateway.reserve(reserveReq);
 
-        // Create request stuck in REGION_CREATED_PAYMENT_CAPTURE_PENDING
         AllocationRequest request = new AllocationRequest(
             requestId, ownerUuid, "planicies", "minecraft:overworld",
             AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, "player", ownerUuid,
@@ -136,7 +139,6 @@ public class LandOperationRecoveryServiceTest {
 
         recoveryService.recover();
 
-        // Should schedule retry (nextRetryAt should be set)
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
         assertEquals(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, recovered.getState());
@@ -147,19 +149,16 @@ public class LandOperationRecoveryServiceTest {
     public void testRecoverReleasePendingWithReservation() {
         String plotSlotId = "dim:15:15";
 
-        // Create a reserved slot
         PlotSlot slot = new PlotSlot(plotSlotId, "minecraft:overworld", 15, 15,
             3840, 3840, 256, PlotSlotState.RESERVED, ownerUuid,
             null, "planicies", 1000L, 10000L, null, 1000L, 1000L);
         slotRepository.save(slot);
 
-        // Reserve payment
         LandPaymentReserveRequest reserveReq = new LandPaymentReserveRequest(
             UUID.fromString(requestId), ownerUuid, 100, "test-recover-rel-key", 300);
         paymentGateway.setBalance(ownerUuid, 1000);
         LandPaymentOperationResult reserveResult = paymentGateway.reserve(reserveReq);
 
-        // Create request stuck in RELEASE_PENDING
         AllocationRequest request = new AllocationRequest(
             requestId, ownerUuid, "planicies", "minecraft:overworld",
             AllocationRequestState.RELEASE_PENDING, "player", ownerUuid,
@@ -170,7 +169,6 @@ public class LandOperationRecoveryServiceTest {
 
         recoveryService.recover();
 
-        // Should release payment and cancel
         assertTrue(paymentGateway.isReservationReleased(reserveResult.getReservationId()));
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
@@ -182,7 +180,6 @@ public class LandOperationRecoveryServiceTest {
     public void testRecoverReleasePendingWithoutReservation() {
         String plotSlotId = "dim:20:20";
 
-        // Create request stuck in RELEASE_PENDING without reservation
         AllocationRequest request = new AllocationRequest(
             requestId, ownerUuid, "planicies", "minecraft:overworld",
             AllocationRequestState.RELEASE_PENDING, "player", ownerUuid,
@@ -192,7 +189,6 @@ public class LandOperationRecoveryServiceTest {
 
         recoveryService.recover();
 
-        // Should move to CANCELLED_BEFORE_REGION_CREATION
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
         assertEquals(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION, recovered.getState());
@@ -236,34 +232,35 @@ public class LandOperationRecoveryServiceTest {
         String regionId1 = "multi_region_1";
         String regionId2 = "multi_region_2";
 
-        // Create cache regions
         RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, -64, 0, 49, 320, 49);
-        regionCache.add(new Region(regionId1, "R1", RegionType.PLAYER_REGION, bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "PENDING_PAYMENT"));
-        regionCache.add(new Region(regionId2, "R2", RegionType.PLAYER_REGION, bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "ACTIVE"));
+        Region r1 = new Region(regionId1, "R1", RegionType.PLAYER_REGION, bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "PENDING_PAYMENT");
+        Region r2 = new Region(regionId2, "R2", RegionType.PLAYER_REGION, bounds, 100, ownerUuid, ownerUuid, 1000, 1000, "ACTIVE");
+        regionRepository.save(r1);
+        regionRepository.save(r2);
+        regionCache.add(r1);
+        regionCache.add(r2);
 
-        // Request 1: REGION_CREATING with region (should advance to capture pending)
-        AllocationRequest r1 = new AllocationRequest(
+        AllocationRequest req1 = new AllocationRequest(
             UUID.randomUUID().toString(), ownerUuid, "planicies", "minecraft:overworld",
             AllocationRequestState.REGION_CREATING, "player", ownerUuid,
             regionId1, "slot:0:1", null, 0, 1000, 1000, null, null
         );
-        requestRepository.save(r1);
+        requestRepository.save(req1);
 
-        // Request 2: REGION_CREATED_PAYMENT_CAPTURE_PENDING (should schedule retry)
-        AllocationRequest r2 = new AllocationRequest(
+        AllocationRequest req2 = new AllocationRequest(
             UUID.randomUUID().toString(), ownerUuid, "planicies", "minecraft:overworld",
             AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, "player", ownerUuid,
             regionId2, "slot:0:2", null, 0, 1000, 1000, null, null
         );
-        r2.setCaptureIdempotencyKey("multi-cap-key");
-        requestRepository.save(r2);
+        req2.setCaptureIdempotencyKey("multi-cap-key");
+        requestRepository.save(req2);
 
         recoveryService.recover();
 
-        AllocationRequest recovered1 = requestRepository.get(r1.getId());
+        AllocationRequest recovered1 = requestRepository.get(req1.getId());
         assertEquals(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, recovered1.getState());
 
-        AllocationRequest recovered2 = requestRepository.get(r2.getId());
+        AllocationRequest recovered2 = requestRepository.get(req2.getId());
         assertEquals(AllocationRequestState.REGION_CREATED_PAYMENT_CAPTURE_PENDING, recovered2.getState());
         assertNotNull(recovered2.getNextRetryAt());
     }

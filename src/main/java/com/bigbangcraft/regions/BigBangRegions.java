@@ -171,7 +171,8 @@ public class BigBangRegions implements ModInitializer {
         paymentGateway = initializePaymentGateway();
         
         allocationCoordinator = new TerrainAllocationCoordinator(
-            configManager, allocationRequestRepository, plotSlotRepository, plotSlotService,
+            configManager, databaseManager,
+            allocationRequestRepository, plotSlotRepository, plotSlotService,
             playerRegionHomeRepository, regionRepository, biomeSearchService, biomeOptionRegistry,
             regionCache, membershipCache, paymentGateway
         );
@@ -179,8 +180,8 @@ public class BigBangRegions implements ModInitializer {
         
         // 7b. Recovery service
         recoveryService = new LandOperationRecoveryService(
-            allocationRequestRepository, plotSlotRepository, regionCache,
-            paymentGateway, configManager
+            allocationRequestRepository, plotSlotRepository, regionRepository,
+            regionCache, membershipCache, paymentGateway, configManager
         );
 
         // 7. Services and Managers
