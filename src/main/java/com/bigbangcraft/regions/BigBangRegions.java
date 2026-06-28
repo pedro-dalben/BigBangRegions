@@ -13,6 +13,8 @@ import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.protection.*;
 import com.bigbangcraft.regions.region.*;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
+import com.bigbangcraft.regions.payment.NoPaymentGateway;
+import com.bigbangcraft.regions.payment.api.LandPaymentGateway;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import com.bigbangcraft.regions.repository.AllocationRequestRepository;
 import com.bigbangcraft.regions.repository.AuditRepository;
@@ -75,6 +77,7 @@ public class BigBangRegions implements ModInitializer {
     private static ExplorationZoneService explorationZoneService;
     private static RegionEntryExitService entryExitService;
     private static RegionBoundaryRenderer boundaryRenderer;
+    private static LandPaymentGateway paymentGateway;
 
     public static RegionMembershipCache getMembershipCache() {
         return membershipCache;
@@ -106,6 +109,10 @@ public class BigBangRegions implements ModInitializer {
 
     public static ExplorationZoneService getExplorationZoneService() {
         return explorationZoneService;
+    }
+    
+    public static LandPaymentGateway getPaymentGateway() {
+        return paymentGateway;
     }
 
     @Override
@@ -157,10 +164,14 @@ public class BigBangRegions implements ModInitializer {
         biomeOptionRegistry.load();
         BiomeSearchService biomeSearchService = new BiomeSearchService(configManager);
         PlotSlotService plotSlotService = new PlotSlotService(configManager, plotSlotRepository, regionCache);
+        
+        // 7. Payment Gateway initialization
+        paymentGateway = initializePaymentGateway();
+        
         allocationCoordinator = new TerrainAllocationCoordinator(
             configManager, allocationRequestRepository, plotSlotRepository, plotSlotService,
             playerRegionHomeRepository, regionRepository, biomeSearchService, biomeOptionRegistry,
-            regionCache, membershipCache
+            regionCache, membershipCache, paymentGateway
         );
         allocationScheduler = new AllocationScheduler(allocationCoordinator, configManager);
 
@@ -198,6 +209,7 @@ public class BigBangRegions implements ModInitializer {
         // 11. Server tick scheduler for allocation processing + entry/exit tracking
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             LOGGER.info("Allocation scheduler started.");
+            LOGGER.info("Payment gateway status: {}", paymentGateway.getProviderStatus());
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             if (allocationScheduler != null) {
@@ -217,6 +229,7 @@ public class BigBangRegions implements ModInitializer {
                 MessageHelper.cleanCache();
                 if (allocationCoordinator != null) {
                     allocationCoordinator.cleanCooldowns();
+                    allocationCoordinator.reconcileExpiredPayments();
                 }
             }
         });
@@ -262,6 +275,39 @@ public class BigBangRegions implements ModInitializer {
             return false;
         }
         return true;
+    }
+    
+    private LandPaymentGateway initializePaymentGateway() {
+        String provider = configManager.getConfig().getPlayerLandAllocation().getPayment().getProvider();
+        
+        if ("none".equals(provider) || provider == null || provider.isEmpty()) {
+            LOGGER.info("Payment provider: none (no payment required)");
+            return new NoPaymentGateway();
+        }
+        
+        // Check if BigBang Essentials is available
+        boolean essentialsLoaded = FabricLoader.getInstance().isModLoaded("bigbangessentials");
+        
+        if (!essentialsLoaded) {
+            LOGGER.warn("Payment provider '{}' configured but BigBang Essentials is not installed.", provider);
+            LOGGER.warn("Payment operations will be unavailable.");
+            return new NoPaymentGateway();
+        }
+        
+        // Try to load the BigBang Essentials adapter
+        try {
+            // Use reflection to load the adapter to avoid classloading issues
+            Class<?> adapterClass = Class.forName("com.bigbangcraft.regions.payment.essentials.BigBangEssentialsGemsGateway");
+            LandPaymentGateway gateway = (LandPaymentGateway) adapterClass.getDeclaredConstructor(ConfigManager.class).newInstance(configManager);
+            LOGGER.info("Payment provider '{}' initialized successfully.", provider);
+            return gateway;
+        } catch (ClassNotFoundException e) {
+            LOGGER.warn("BigBang Essentials adapter not found. Payment operations will be unavailable.", e);
+            return new NoPaymentGateway();
+        } catch (Exception e) {
+            LOGGER.error("Failed to initialize BigBang Essentials adapter: {}", e.getMessage(), e);
+            return new NoPaymentGateway();
+        }
     }
 
     private void registerListeners() {
