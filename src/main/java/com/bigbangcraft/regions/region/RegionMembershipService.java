@@ -5,6 +5,8 @@ import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
+import com.bigbangcraft.regions.event.RegionChangeEvent;
+import com.bigbangcraft.regions.event.RegionEventBus;
 import com.bigbangcraft.regions.repository.RegionRepository;
 
 import java.util.HashMap;
@@ -77,6 +79,8 @@ public class RegionMembershipService {
         repository.saveMembers(region.getId(), updatedMembers);
         cache.updateMember(region.getId(), memberUuid, role);
 
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.MEMBER_JOINED, region, memberUuid));
+
         // Audit log
         String metadata = "{\"addedByUuid\":\"" + (actorUuid != null ? actorUuid.toString() : "admin") + "\",\"role\":\"" + role.name() + "\"}";
         auditService.log(region.getId(), actorUuid, "ADD_MEMBER", null, role.name(), metadata);
@@ -122,6 +126,8 @@ public class RegionMembershipService {
         updatedMembers.remove(memberUuid);
         repository.saveMembers(region.getId(), updatedMembers);
         cache.updateMember(region.getId(), memberUuid, null);
+
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.MEMBER_REMOVED, region, memberUuid));
 
         // Audit log
         String metadata = "{\"removedByUuid\":\"" + (actorUuid != null ? actorUuid.toString() : "admin") + "\"}";
@@ -176,6 +182,8 @@ public class RegionMembershipService {
         repository.saveMembers(region.getId(), updatedMembers);
         cache.updateMember(region.getId(), memberUuid, role);
 
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.ROLE_CHANGED, region, memberUuid));
+
         // Audit log
         String action = role == RegionRole.LEADER ? "PROMOTE_MEMBER" : "DEMOTE_LEADER";
         String metadata = "{\"roleBefore\":\"" + oldRole.name() + "\",\"roleAfter\":\"" + role.name() + "\"}";
@@ -199,6 +207,8 @@ public class RegionMembershipService {
         updatedMembers.remove(memberUuid);
         repository.saveMembers(region.getId(), updatedMembers);
         cache.updateMember(region.getId(), memberUuid, null);
+
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.MEMBER_REMOVED, region, memberUuid));
 
         // Audit log
         String metadata = "{\"source\":\"player-leave\"}";

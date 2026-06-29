@@ -435,6 +435,62 @@ public class Config {
         }
     }
 
+    public static class JourneyMapConfig {
+        private boolean enabled = true;
+
+        private RegionStyle playerRegion = new RegionStyle(0xFF4CAF50, 0xFF4CAF50, 0.16f, 0.85f);
+        private RegionStyle adminRegion = new RegionStyle(0xFFE53935, 0xFFE53935, 0.20f, 0.95f);
+        private RegionStyle blockedRegion = new RegionStyle(0xFF757575, 0xFF757575, 0.12f, 0.70f);
+        private RegionStyle maintenanceRegion = new RegionStyle(0xFFFF9800, 0xFFFF9800, 0.14f, 0.80f);
+
+        private PublicRegionsConfig publicRegions = new PublicRegionsConfig();
+        private AdminRegionVisibility adminRegionVisibility = AdminRegionVisibility.STAFF_ONLY;
+
+        public enum AdminRegionVisibility {
+            PUBLIC, STAFF_ONLY, HIDDEN, PERMISSION
+        }
+
+        public static class RegionStyle {
+            private int fillColor = 0xFF4CAF50;
+            private int strokeColor = 0xFF4CAF50;
+            private float fillOpacity = 0.16f;
+            private float strokeOpacity = 0.85f;
+
+            public RegionStyle() {}
+
+            public RegionStyle(int fillColor, int strokeColor, float fillOpacity, float strokeOpacity) {
+                this.fillColor = fillColor;
+                this.strokeColor = strokeColor;
+                this.fillOpacity = fillOpacity;
+                this.strokeOpacity = strokeOpacity;
+            }
+
+            public int getFillColor() { return fillColor; }
+            public int getStrokeColor() { return strokeColor; }
+            public float getFillOpacity() { return fillOpacity; }
+            public float getStrokeOpacity() { return strokeOpacity; }
+        }
+
+        public static class PublicRegionsConfig {
+            private boolean showOnMap = true;
+
+            public boolean isShowOnMap() { return showOnMap; }
+            public void setShowOnMap(boolean showOnMap) { this.showOnMap = showOnMap; }
+        }
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public RegionStyle getPlayerRegion() { return playerRegion; }
+        public RegionStyle getAdminRegion() { return adminRegion; }
+        public RegionStyle getBlockedRegion() { return blockedRegion; }
+        public RegionStyle getMaintenanceRegion() { return maintenanceRegion; }
+        public PublicRegionsConfig getPublicRegions() { return publicRegions; }
+        public AdminRegionVisibility getAdminRegionVisibility() { return adminRegionVisibility; }
+        public void setAdminRegionVisibility(AdminRegionVisibility v) { this.adminRegionVisibility = v; }
+    }
+
+    private JourneyMapConfig journeyMap = new JourneyMapConfig();
+
     public int getSchemaVersion() { return schemaVersion; }
     public DefaultPriorities getDefaultPriorities() { return defaultPriorities; }
     public Permissions getPermissions() { return permissions; }
@@ -443,4 +499,5 @@ public class Config {
     public PlayerLandAllocationConfig getPlayerLandAllocation() { return playerLandAllocation; }
     public RegionExpansionConfig getRegionExpansion() { return regionExpansion; }
     public Map<String, BiomeOptionConfig> getBiomeOptions() { return biomeOptions; }
+    public JourneyMapConfig getJourneyMap() { return journeyMap; }
 }

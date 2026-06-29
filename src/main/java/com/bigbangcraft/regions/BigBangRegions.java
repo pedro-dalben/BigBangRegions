@@ -33,6 +33,7 @@ import com.bigbangcraft.regions.storage.DatabaseManager;
 import com.bigbangcraft.regions.util.MessageHelper;
 import com.bigbangcraft.regions.util.SelectionManager;
 import com.bigbangcraft.regions.config.Config;
+import com.bigbangcraft.regions.journeymap.RegionMapIntegration;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -93,6 +94,11 @@ public class BigBangRegions implements ModInitializer {
     private static RegionExpansionOperationRepository expansionOperationRepository;
     private static RegionExpansionCoordinator expansionCoordinator;
     private static RegionExpansionRecoveryService expansionRecoveryService;
+    private static RegionMapIntegration regionMapIntegration;
+
+    public static void setRegionMapIntegration(RegionMapIntegration integration) {
+        regionMapIntegration = integration;
+    }
 
     public static RegionMembershipCache getMembershipCache() {
         return membershipCache;
@@ -336,10 +342,13 @@ public class BigBangRegions implements ModInitializer {
             }
         });
 
-        // 12.5 Player connect reposition check
+        // 12.5 Player connect reposition check + map sync
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             if (handler.getPlayer() != null && containmentService != null) {
                 containmentService.onPlayerJoin(handler.getPlayer());
+            }
+            if (handler.getPlayer() != null && regionMapIntegration != null) {
+                regionMapIntegration.onPlayerJoin(handler.getPlayer());
             }
         });
 

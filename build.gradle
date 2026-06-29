@@ -8,6 +8,7 @@ group = project.maven_group
 
 repositories {
 	mavenCentral()
+	maven { url "https://jm.gserv.me/repository/maven-public/" }
 	flatDir {
 		dirs '../BigBangEssentials/common/build/libs'
 	}
@@ -45,6 +46,9 @@ dependencies {
 	// Fabric Permissions API
 	modImplementation "me.lucko:fabric-permissions-api:0.3.1"
 	include "me.lucko:fabric-permissions-api:0.3.1"
+
+	// JourneyMap API (optional — compile only, not bundled)
+	modCompileOnly "info.journeymap:journeymap-api-fabric:2.0.0-1.21.1-SNAPSHOT"
 
 	// BigBang Essentials API (compile-only; use reflection only to load the adapter class)
 	def essentialsJar = findLatestJar('../BigBangEssentials/common/build/libs', 'bigbangessentials-common-', '.jar')

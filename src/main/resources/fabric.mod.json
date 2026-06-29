@@ -24,5 +24,11 @@
 		"minecraft": "~1.21.1",
 		"java": ">=21",
 		"fabric-api": "*"
+	},
+	"breaks": {
+		"journeymap-api-fabric": "<2.0.0-1.21.1"
+	},
+	"suggests": {
+		"journeymap": ">=1.21.1"
 	}
 }

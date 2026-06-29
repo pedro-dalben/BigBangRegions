@@ -14,12 +14,13 @@
 8. [Comandos de Jogador](#8-comandos-de-jogador)
 9. [Comandos de Administração](#9-comandos-de-administração)
 10. [Permissões Completas](#10-permissões-completas)
-11. [Estrutura de Configuração](#11-estrutura-de-configuração)
-12. [Banco de Dados (SQLite)](#12-banco-de-dados-sqlite)
-13. [API Pública](#13-api-pública)
-14. [Eventos e Mixins](#14-eventos-e-mixins)
-15. [Cache e Performance](#15-cache-e-performance)
-16. [Limitações Conhecidas](#16-limitações-conhecidas)
+11. [Integração JourneyMap (Opcional)](#11-integração-journeymap-opcional)
+12. [Estrutura de Configuração](#12-estrutura-de-configuração)
+13. [Banco de Dados (SQLite)](#13-banco-de-dados-sqlite)
+14. [API Pública](#14-api-pública)
+15. [Eventos e Mixins](#15-eventos-e-mixins)
+16. [Cache e Performance](#16-cache-e-performance)
+17. [Limitações Conhecidas](#17-limitações-conhecidas)
 
 ---
 
@@ -490,7 +491,44 @@ Se o `fabric-permissions-api` (LuckPerms) não estiver presente, o mod usa o ní
 
 ---
 
-## 11. Estrutura de Configuração
+## 11. Integração JourneyMap (Opcional)
+
+O mod possui integração opcional com o JourneyMap via API v2 (`journeymap-api-fabric:2.0.0-1.21.1`).
+
+### Ativação
+A integração é ativada automaticamente quando o JourneyMap está instalado no servidor e a configuração `journeyMap.enabled` está como `true`.
+
+### Funcionalidades
+- Overlay poligonal com contorno e preenchimento para cada região
+- Marcador central com nome e tipo da região
+- Cores e opacidade configuráveis por tipo de região
+- Visibilidade controlada por permissões
+
+### Permissões Específicas
+
+| Permissão | Descrição |
+|---|---|
+| `bigbangregions.journeymap.view-own` | Ver própria região (automático para membros) |
+| `bigbangregions.journeymap.view-public` | Ver regiões públicas de jogadores |
+| `bigbangregions.journeymap.view-admin` | Ver regiões administrativas (STAFF_ONLY/PERMISSION) |
+| `bigbangregions.journeymap.view-all` | Ver TODAS as regiões |
+
+### Visibilidade de Regiões Administrativas
+
+| Modo | Efeito |
+|---|---|
+| `PUBLIC` | Visível para todos |
+| `STAFF_ONLY` | Requer permissão `view-admin` (padrão) |
+| `HIDDEN` | Invisível para todos |
+| `PERMISSION` | Requer permissão `view-admin` |
+
+### Documentação Completa
+- `docs/bigbangregions/journeymap-integration.md`
+- `docs/bigbangregions/journeymap-qa.md`
+
+---
+
+## 12. Estrutura de Configuração
 
 Arquivo: `config/bigbangregions/config.json` (gerado automaticamente na primeira execução)
 
@@ -686,7 +724,7 @@ Arquivo: `config/bigbangregions/config.json` (gerado automaticamente na primeira
 
 ---
 
-## 12. Banco de Dados (SQLite)
+## 13. Banco de Dados (SQLite)
 
 **Driver:** `org.xerial:sqlite-jdbc:3.46.0.0`
 **Arquivo:** `config/bigbangregions/regions.db`
@@ -752,7 +790,7 @@ Posições de home por região de jogador (dimensão, x, y, z, yaw, pitch).
 
 ---
 
-## 13. API Pública
+## 14. API Pública
 
 A API pública pode ser acessada via `BigBangRegions.getApi()`:
 
@@ -787,7 +825,7 @@ public record RegionView(
 
 ---
 
-## 14. Eventos e Mixins
+## 15. Eventos e Mixins
 
 ### Eventos Registrados
 
@@ -812,7 +850,7 @@ public record RegionView(
 
 ---
 
-## 15. Cache e Performance
+## 16. Cache e Performance
 
 ### Caches em Memória
 
@@ -830,7 +868,7 @@ public record RegionView(
 
 ---
 
-## 16. Limitações Conhecidas
+## 17. Limitações Conhecidas
 
 1. **Formato geométrico:** Apenas cubóide 3D disponível (sem polígonos)
 2. **Automações:** Proteção de mods como Create, Mekanism requer adaptadores adicionais

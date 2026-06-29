@@ -5,6 +5,8 @@ import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.domain.RegionType;
+import com.bigbangcraft.regions.event.RegionChangeEvent;
+import com.bigbangcraft.regions.event.RegionEventBus;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,6 +146,7 @@ public class RegionRepository {
                 }
             }
         }
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.UPDATED, region));
     }
 
     public void saveOnConnection(Connection conn, Region region) throws SQLException {

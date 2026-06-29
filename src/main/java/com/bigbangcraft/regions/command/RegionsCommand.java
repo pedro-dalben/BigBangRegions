@@ -3,6 +3,8 @@ package com.bigbangcraft.regions.command;
 import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.audit.AuditService;
 import com.bigbangcraft.regions.cache.RegionCache;
+import com.bigbangcraft.regions.event.RegionChangeEvent;
+import com.bigbangcraft.regions.event.RegionEventBus;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
@@ -571,6 +573,7 @@ public class RegionsCommand {
             }
 
             regionRepository.delete(region.getId());
+            RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.DELETED, region));
             regionCache.remove(region.getId());
             BigBangRegions.getMembershipCache().removeRegion(region.getId());
 
