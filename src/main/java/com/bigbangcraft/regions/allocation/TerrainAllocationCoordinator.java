@@ -30,6 +30,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TerrainAllocationCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-TerrainAllocationCoordinator");
 
+    // Per-request incremental candidate iterator; avoids regenerating the whole spiral each tick.
+    private final Map<String, PlotSlotService.PlotSlotIterator> searchIterators = new ConcurrentHashMap<>();
+
     private final ConfigManager configManager;
     private final DatabaseManager databaseManager;
     private final AllocationRequestRepository requestRepository;
@@ -145,6 +148,7 @@ public class TerrainAllocationCoordinator {
         request.forceTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION);
         requestRepository.save(request);
 
+        searchIterators.remove(request.getId());
         tryReleaseSlot(request);
         LOGGER.info("Allocation request cancelled: id={}, owner={}", request.getId(), ownerUuid);
     }
@@ -197,16 +201,33 @@ public class TerrainAllocationCoordinator {
                 failRequest(request, AllocationRequestState.FAILED_VALIDATION, "Opcao de bioma nao encontrada: " + request.getRequestedBiomeOption(), level);
                 return 1;
             }
-            int maxCandidates = sc.getMaxCandidateEvaluationsPerTick();
-            int offset = request.getAttempts() * maxCandidates;
-            List<PlotSlotService.PlotSlotCandidate> candidates = slotService.getCandidates(request.getOwnerUuid(), offset, maxCandidates);
-            
-            if (candidates.isEmpty()) {
-                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Nenhum terreno com bioma adequado encontrado no raio limite", level);
-                return 1;
-            }
 
-            for (PlotSlotService.PlotSlotCandidate candidate : candidates) {
+            int maxCandidates = Math.max(1, sc.getMaxCandidateEvaluationsPerTick());
+            long timeBudgetNanos = Math.max(1L, sc.getMaxBiomeSearchMillisPerTick()) * 1_000_000L;
+            long deadline = System.nanoTime() + timeBudgetNanos;
+            int evaluated = 0;
+
+            PlotSlotService.PlotSlotIterator iterator = searchIterators.computeIfAbsent(
+                request.getId(), rid -> slotService.iteratorFor(request.getOwnerUuid()));
+
+            int maxRadiusBlocks = lac.getBiomeSearch().getMaximumSearchRadiusBlocks();
+            int maxRing = maxRadiusBlocks / lac.getSlotSize();
+
+            while (evaluated < maxCandidates && System.nanoTime() < deadline) {
+                Optional<PlotSlotService.PlotSlotCandidate> optCandidate = iterator.next();
+                if (optCandidate.isEmpty()) {
+                    searchIterators.remove(request.getId());
+                    failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Nenhum terreno com bioma adequado encontrado no raio limite", level);
+                    return 1;
+                }
+                PlotSlotService.PlotSlotCandidate candidate = optCandidate.get();
+                if (Math.abs(candidate.gridX) > maxRing || Math.abs(candidate.gridZ) > maxRing) {
+                    searchIterators.remove(request.getId());
+                    failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Raio de busca excedido", level);
+                    return 1;
+                }
+
+                evaluated++;
                 int claimOffset = (lac.getSlotSize() - lac.getInitialClaimSize()) / 2;
                 int claimMinX = candidate.minX + claimOffset;
                 int claimMaxX = claimMinX + lac.getInitialClaimSize() - 1;
@@ -237,6 +258,7 @@ public class TerrainAllocationCoordinator {
                 slotRepository.save(slot);
                 request.transitionTo(AllocationRequestState.SLOT_RESERVED);
                 request.setPlotSlotId(slotId);
+                searchIterators.remove(request.getId());
                 requestRepository.save(request);
                 LOGGER.info("Slot reserved: slotId={}, request={}, grid=({},{})", slotId, request.getId(), candidate.gridX, candidate.gridZ);
                 return 1;
@@ -362,6 +384,8 @@ public class TerrainAllocationCoordinator {
                 LOGGER.info("Region created (free): request={}, regionId={}, claimOffset={}, home=({},{},{})",
                     request.getId(), regionId, claimOffset, homePos.getX(), homePos.getY(), homePos.getZ());
 
+                // Capture the original terrain before we place borders/platforms so deletion
+                // can restore the area instead of restoring our own generated blocks.
                 snapshotCreatedTerrain(regionId, bounds, level, homePos, configManager.getConfig().getPlayerLandAllocation().getBorder().isRestoreOnDelete());
                 postRegionCreationSetup(request, bounds, level, homePos);
             } catch (Exception e) {
@@ -749,6 +773,7 @@ public class TerrainAllocationCoordinator {
         request.forceTransitionTo(target);
         request.setFailureReason(reason);
         requestRepository.save(request);
+        searchIterators.remove(request.getId());
         if (level != null) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
             if (player != null) {

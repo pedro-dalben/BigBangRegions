@@ -3,8 +3,9 @@ package com.bigbangcraft.regions.domain;
 public enum RegionRole {
     OWNER(4),
     LEADER(3),
-    MEMBER(2),
-    VISITOR(1);
+    MANAGER(2),
+    MEMBER(1),
+    VISITOR(0);
 
     private final int level;
 

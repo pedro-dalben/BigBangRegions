@@ -337,6 +337,25 @@ public class RegionsCommand {
                 return 1;
             })
         );
+
+        dispatcher.register(Commands.literal("regionadmin")
+            .requires(source -> checkPermission(source, "bigbangregions.admin.panel"))
+            .executes(context -> {
+                CommandSourceStack source = context.getSource();
+                ServerPlayer player = source.getPlayer();
+                if (player == null) {
+                    source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+                    return 0;
+                }
+                Region current = com.bigbangcraft.regions.gui.RegionGuiHandler.findPlayerRegion(player.getUUID());
+                if (current == null) {
+                    source.sendFailure(Component.literal("Nenhuma região de jogador ativa encontrada para abrir o painel."));
+                    return 0;
+                }
+                com.bigbangcraft.regions.gui.RegionGuiHandler.openAdminMenu(player, current);
+                return 1;
+            })
+        );
     }
 
     private static boolean checkPermission(CommandSourceStack source, String permission) {

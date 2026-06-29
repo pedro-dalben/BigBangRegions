@@ -10,10 +10,13 @@ import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.flag.FlagResolver;
+import com.bigbangcraft.regions.flag.RegionAccessPolicyService;
+import com.bigbangcraft.regions.flag.RegionFlagResolver;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.protection.*;
 import com.bigbangcraft.regions.region.*;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
+import com.bigbangcraft.regions.repository.RegionInviteRepository;
 import com.bigbangcraft.regions.payment.NoPaymentGateway;
 import com.bigbangcraft.regions.payment.api.LandPaymentGateway;
 import com.bigbangcraft.regions.recovery.LandOperationRecoveryService;
@@ -75,6 +78,8 @@ public class BigBangRegions implements ModInitializer {
     private static RegionMembershipCache membershipCache;
     private static RegionRoleResolver roleResolver;
     private static RegionMembershipService membershipService;
+    private static RegionInviteService inviteService;
+    private static RegionAccessPolicyService accessPolicyService;
     private static RegionAccessService regionAccessService;
     private static TerrainAllocationCoordinator allocationCoordinator;
     private static AllocationScheduler allocationScheduler;
@@ -105,12 +110,24 @@ public class BigBangRegions implements ModInitializer {
         return regionAccessService;
     }
 
+    public static RegionAccessPolicyService getAccessPolicyService() {
+        return accessPolicyService;
+    }
+
+    public static RegionInviteService getInviteService() {
+        return inviteService;
+    }
+
     public static TerrainAllocationCoordinator getAllocationCoordinator() {
         return allocationCoordinator;
     }
 
     public static RegionCache getRegionCache() {
         return regionCache;
+    }
+
+    public static RegionRepository getRegionRepository() {
+        return regionRepository;
     }
 
     public static RegionEntryExitService getEntryExitService() {
@@ -169,7 +186,7 @@ public class BigBangRegions implements ModInitializer {
         // 4. Cache and Resolver
         regionCache = new RegionCache();
         RegionResolver regionResolver = new RegionResolver(regionCache);
-        FlagResolver flagResolver = new FlagResolver();
+        RegionFlagResolver flagResolver = new RegionFlagResolver();
         membershipCache = new RegionMembershipCache();
 
         // Load all regions into cache
@@ -184,6 +201,7 @@ public class BigBangRegions implements ModInitializer {
         AllocationRequestRepository allocationRequestRepository = new AllocationRequestRepository(databaseManager);
         PlotSlotRepository plotSlotRepository = new PlotSlotRepository(databaseManager);
         PlayerRegionHomeRepository playerRegionHomeRepository = new PlayerRegionHomeRepository(databaseManager);
+        RegionInviteRepository regionInviteRepository = new RegionInviteRepository(databaseManager);
 
         // 6. Allocation services
         BiomeOptionRegistry biomeOptionRegistry = new BiomeOptionRegistry(configManager);
@@ -228,7 +246,9 @@ public class BigBangRegions implements ModInitializer {
         roleResolver = new RegionRoleResolver(membershipCache);
         membershipService = new RegionMembershipService(regionRepository, membershipCache, auditService, roleResolver);
         regionAccessService = new RegionAccessService(roleResolver, flagResolver, configManager);
-        protectionService = new ProtectionService(regionResolver, permissionManager, regionAccessService);
+        accessPolicyService = new RegionAccessPolicyService(permissionManager, roleResolver, flagResolver, configManager);
+        inviteService = new RegionInviteService(regionInviteRepository, regionRepository, regionCache, membershipCache, roleResolver, auditService);
+        protectionService = new ProtectionService(regionResolver, permissionManager, accessPolicyService);
 
         // 8. Region Entry/Exit notification service
         entryExitService = new RegionEntryExitService(regionCache, roleResolver, configManager);

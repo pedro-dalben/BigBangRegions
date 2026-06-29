@@ -107,15 +107,23 @@ public class RegionMembershipServiceTest {
     public void testLeaderHierarchyRestrictions() {
         service.addMember(region, owner, leader, RegionRole.LEADER, false);
 
+        service.addMember(region, leader, visitor, RegionRole.LEADER, false);
+        assertEquals(RegionRole.LEADER, roleResolver.resolveRole(region, visitor));
+
+        UUID manager = UUID.randomUUID();
+        service.addMember(region, owner, manager, RegionRole.MANAGER, false);
+        assertEquals(RegionRole.MANAGER, roleResolver.resolveRole(region, manager));
+
         assertThrows(IllegalArgumentException.class, () -> {
-            service.addMember(region, leader, visitor, RegionRole.LEADER, false);
+            service.addMember(region, manager, UUID.randomUUID(), RegionRole.LEADER, false);
         });
 
-        service.addMember(region, leader, visitor, RegionRole.MEMBER, false);
-        assertEquals(RegionRole.MEMBER, roleResolver.resolveRole(region, visitor));
+        assertThrows(IllegalArgumentException.class, () -> {
+            service.setRole(region, manager, visitor, RegionRole.LEADER, false);
+        });
 
         assertThrows(IllegalArgumentException.class, () -> {
-            service.setRole(region, leader, visitor, RegionRole.LEADER, false);
+            service.removeMember(region, manager, visitor, false);
         });
 
         assertThrows(IllegalArgumentException.class, () -> {

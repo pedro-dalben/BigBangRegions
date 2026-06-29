@@ -60,6 +60,12 @@ These commands require administrative permissions or OP status.
 
 These commands allow players to manage their claims. Permissions are checked contextually based on their role in the region.
 
+### 0. Main Menu
+- **Open Region Menu**
+  `/regiao`
+  - Opens the chest-style region menu when the player already belongs to a region.
+  - Opens biome selection when the player does not yet have a region.
+
 ### 1. Region Information
 - **Show Info**
   `/regiao info`
@@ -76,6 +82,12 @@ These commands allow players to manage their claims. Permissions are checked con
 - **Remove Member**
   `/regiao membros remover <player>`
   - Removes a member/leader. Requires `OWNER` or `LEADER` (leaders cannot remove other leaders/owners).
+- **Invite Friend**
+  Use `/regiao` > `Membros` > `Convidar membro`.
+  - Sends a pending invite that must be accepted by the invited player.
+- **Transfer Owner**
+  Use `/regiao` > `Membros` and right click a member item while you are the owner.
+  - Sends a transfer request that becomes effective only after the target accepts it.
 - **Promote Member**
   `/regiao membros promover <player>`
   - Promotes a member to `LEADER`. Requires `OWNER`.
@@ -96,3 +108,12 @@ These commands allow players to manage their claims. Permissions are checked con
 - **Set Flag**
   `/regiao flags definir <flag> <allow|deny|inherit>`
   - Sets a flag value. Requires `OWNER` or `LEADER`.
+
+### 4. Invite Inbox
+- **Accept/Decline**
+  Use `/regiao` > `Convites` > `Convites recebidos`.
+  - Left click accepts the invite.
+  - Right click declines the invite.
+- **Cancel Sent Invites**
+  Use `/regiao` > `Convites` > `Convites enviados`.
+  - Cancels pending invitations sent by the current player.

@@ -13,6 +13,18 @@ repositories {
 	}
 }
 
+def findLatestJar(String dirPath, String prefix, String suffix) {
+	def dir = file(dirPath)
+	if (dir.exists() && dir.isDirectory()) {
+		def files = dir.listFiles().findAll { it.name.startsWith(prefix) && it.name.endsWith(suffix) }
+		if (files) {
+			files.sort { a, b -> a.name <=> b.name }
+			return files.last()
+		}
+	}
+	return null
+}
+
 loom {
 	mods {
 		"bigbangregions" {
@@ -35,7 +47,12 @@ dependencies {
 	include "me.lucko:fabric-permissions-api:0.3.1"
 
 	// BigBang Essentials API (compile-only; use reflection only to load the adapter class)
-	compileOnly name: 'bigbangessentials-common-1.0.2.6+build.436'
+	def essentialsJar = findLatestJar('../BigBangEssentials/common/build/libs', 'bigbangessentials-common-', '.jar')
+	if (essentialsJar != null) {
+		compileOnly files(essentialsJar)
+	} else {
+		compileOnly name: 'bigbangessentials-common-1.0.2.6+build.436'
+	}
 
 	// SQLite JDBC
 	implementation "org.xerial:sqlite-jdbc:3.46.0.0"

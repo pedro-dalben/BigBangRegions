@@ -43,3 +43,12 @@ Eventos auditados:
 * `DELETE_REGION`: Exclusão de regiões.
 * `SET_FLAG`: Alteração de flags (armazena valores antigos e novos).
 * `RELOAD`: Recarga do mod.
+
+## Performance da Criação de Terrenos
+
+Se a criação de terrenos (`/regiao criar <bioma>`) estiver demorando ou gerando `Can't keep up!`,
+pré-gerue o mundo com o **Chunky** — a busca de bioma é instantânea quando os chunks já existem em
+disco. Veja o guia completo em [`docs/bigbangregions/chunky-pregen.md`](bigbangregions/chunky-pregen.md).
+
+Ajustes de tempo por tick ficam em `config.json` > `playerLandAllocation.scheduler`:
+`maxCandidateEvaluationsPerTick` (hard cap) e `maxBiomeSearchMillisPerTick` (limite por tempo).

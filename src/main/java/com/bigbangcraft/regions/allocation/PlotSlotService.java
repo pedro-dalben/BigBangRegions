@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public class PlotSlotService {
@@ -24,6 +25,73 @@ public class PlotSlotService {
         this.configManager = configManager;
         this.plotSlotRepository = plotSlotRepository;
         this.regionCache = regionCache;
+    }
+
+    public PlotSlotIterator iteratorFor(UUID ownerUuid) {
+        Config.PlayerLandAllocationConfig lac = configManager.getConfig().getPlayerLandAllocation();
+        int slotSize = lac.getSlotSize();
+        int minRadius = Math.max(Math.abs(lac.getExplorationExclusion().getMaxX()),
+                                 Math.abs(lac.getExplorationExclusion().getMinX())) + lac.getExplorationExclusion().getSafetyBuffer();
+        int startRing = Math.max(1, (minRadius / slotSize) + 1);
+        return new PlotSlotIterator(this, slotSize, startRing);
+    }
+
+    public static class PlotSlotIterator {
+        private final PlotSlotService service;
+        private final int slotSize;
+        private int ring;
+        private int counter;
+        private int maxRing;
+
+        PlotSlotIterator(PlotSlotService service, int slotSize, int startRing) {
+            this.service = service;
+            this.slotSize = slotSize;
+            this.ring = startRing;
+            this.counter = 0;
+            this.maxRing = startRing + 10000;
+        }
+
+        public Optional<PlotSlotCandidate> next() {
+            while (ring <= maxRing) {
+                if (ring == 0) {
+                    ring = 1;
+                    if (service.isSlotEligible(0, 0, slotSize)) {
+                        return Optional.of(new PlotSlotCandidate(0, 0, 0, 0));
+                    }
+                    continue;
+                }
+                int perimeter = 8 * ring;
+                while (counter < perimeter) {
+                    int[] g = perimeterCell(ring, counter);
+                    counter++;
+                    if (service.isSlotEligible(g[0] * slotSize, g[1] * slotSize, slotSize)) {
+                        return Optional.of(new PlotSlotCandidate(g[0], g[1], g[0] * slotSize, g[1] * slotSize));
+                    }
+                }
+                ring++;
+                counter = 0;
+            }
+            return Optional.empty();
+        }
+
+        // Walks the square perimeter of radius `ring` exactly once (8*ring cells, each corner once).
+        private static int[] perimeterCell(int ring, int k) {
+            int dx, dz;
+            if (k < 2 * ring) {
+                dx = -ring + k;
+                dz = -ring;
+            } else if (k < 4 * ring) {
+                dx = ring;
+                dz = -ring + (k - 2 * ring);
+            } else if (k < 6 * ring) {
+                dx = ring - (k - 4 * ring);
+                dz = ring;
+            } else {
+                dx = -ring;
+                dz = ring - (k - 6 * ring);
+            }
+            return new int[]{dx, dz};
+        }
     }
 
     public boolean isSlotEligible(int minX, int minZ, int slotSize) {

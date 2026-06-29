@@ -572,8 +572,9 @@ Arquivo: `config/bigbangregions/config.json` (gerado automaticamente na primeira
     },
     "scheduler": {
       "maxActiveRequests": 1,
-      "maxCandidateEvaluationsPerTick": 1,
+      "maxCandidateEvaluationsPerTick": 256,
       "maxPreparationChunksPerTick": 1,
+      "maxBiomeSearchMillisPerTick": 25,
       "requestTimeoutSeconds": 180,
       "reservationLeaseSeconds": 300,
       "creationCooldownSeconds": 60,
@@ -671,7 +672,8 @@ Arquivo: `config/bigbangregions/config.json` (gerado automaticamente na primeira
 | `playerLandAllocation.biomeSearch` | `maximumCandidateSlots` | int | 100 | Máx. de slots candidatos |
 | `playerLandAllocation.biomeSearch` | `maximumSearchRadiusBlocks` | int | 120000 | Raio máx. de busca |
 | `playerLandAllocation.scheduler` | `maxActiveRequests` | int | 1 | Máx. de requisições ativas |
-| `playerLandAllocation.scheduler` | `maxCandidateEvaluationsPerTick` | int | 1 | Avaliações por tick |
+| `playerLandAllocation.scheduler` | `maxCandidateEvaluationsPerTick` | int | 256 | Candidatos verificados por tick (hard cap) |
+| `playerLandAllocation.scheduler` | `maxBiomeSearchMillisPerTick` | int | 25 | Tempo máx. por tick gasto na busca de bioma |
 | `playerLandAllocation.scheduler` | `requestTimeoutSeconds` | int | 180 | Timeout da requisição |
 | `playerLandAllocation.scheduler` | `reservationLeaseSeconds` | int | 300 | Lease da reserva do slot |
 | `playerLandAllocation.scheduler` | `creationCooldownSeconds` | int | 60 | Cooldown entre criações |

@@ -4,8 +4,7 @@ import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionRole;
-import com.bigbangcraft.regions.flag.EffectiveRegionPolicy;
-import com.bigbangcraft.regions.flag.FlagResolver;
+import com.bigbangcraft.regions.flag.RegionAccessPolicyService;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.region.RegionResolver;
 import net.minecraft.core.BlockPos;
@@ -17,12 +16,22 @@ public class ProtectionService {
     private final RegionResolver regionResolver;
     private final PermissionManager permissionManager;
     private final RegionAccessService accessService;
+    private final RegionAccessPolicyService accessPolicyService;
 
     public ProtectionService(RegionResolver regionResolver, PermissionManager permissionManager,
                              RegionAccessService accessService) {
         this.regionResolver = regionResolver;
         this.permissionManager = permissionManager;
         this.accessService = accessService;
+        this.accessPolicyService = null;
+    }
+
+    public ProtectionService(RegionResolver regionResolver, PermissionManager permissionManager,
+                             RegionAccessPolicyService accessPolicyService) {
+        this.regionResolver = regionResolver;
+        this.permissionManager = permissionManager;
+        this.accessService = null;
+        this.accessPolicyService = accessPolicyService;
     }
 
     public ProtectionResult check(ProtectionContext context) {
@@ -55,7 +64,16 @@ public class ProtectionService {
             }
         }
 
-        // 5 & 6. Evaluate access based on type and roles/flags via RegionAccessService
+        if (accessPolicyService != null) {
+            boolean allowed = accessPolicyService.canPerform(player, region, action, context);
+            return new ProtectionResult(
+                allowed ? ProtectionDecision.ALLOW : ProtectionDecision.DENY,
+                allowed ? "ALLOW_REASON_POLICY" : "DENY_REASON_REGION_POLICY",
+                region,
+                flagId
+            );
+        }
+
         java.util.UUID playerUuid = player != null ? player.getUUID() : null;
         return accessService.checkAccess(region, playerUuid, action);
     }

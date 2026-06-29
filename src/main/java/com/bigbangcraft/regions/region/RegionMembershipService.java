@@ -28,8 +28,8 @@ public class RegionMembershipService {
     public void addMember(Region region, UUID actorUuid, UUID memberUuid, RegionRole role, boolean isAdmin) {
         if (region == null) throw new IllegalArgumentException("Region cannot be null");
         if (memberUuid == null) throw new IllegalArgumentException("Member UUID cannot be null");
-        if (role != RegionRole.MEMBER && role != RegionRole.LEADER) {
-            throw new IllegalArgumentException("Invalid role: Only MEMBER or LEADER can be added");
+        if (role != RegionRole.MEMBER && role != RegionRole.MANAGER && role != RegionRole.LEADER) {
+            throw new IllegalArgumentException("Invalid role: Only MEMBER, MANAGER or LEADER can be added");
         }
 
         // owner cannot be added as member
@@ -40,9 +40,7 @@ public class RegionMembershipService {
         // if member already exists with the same role (use cache since region is immutable)
         RegionRole existingRole = cache.getRole(region.getId(), memberUuid, region.getOwnerUuid());
         if (existingRole != RegionRole.VISITOR && existingRole != RegionRole.OWNER) {
-            if (existingRole == role) {
-                throw new IllegalArgumentException("Player is already a " + role.name() + " in this region");
-            }
+            throw new IllegalArgumentException("Player is already a member of this region");
         }
 
         // hierarchy validation
@@ -52,11 +50,16 @@ public class RegionMembershipService {
             }
             RegionRole actorRole = roleResolver.resolveRole(region, actorUuid);
             if (!actorRole.isAtLeast(RegionRole.LEADER)) {
-                throw new IllegalArgumentException("Only owners and leaders can add members");
+                throw new IllegalArgumentException("Only owners, leaders and managers can add members");
+            }
+            if (actorRole == RegionRole.MANAGER) {
+                if (role != RegionRole.MEMBER) {
+                    throw new IllegalArgumentException("Managers can only invite or add MEMBERS");
+                }
             }
             if (actorRole == RegionRole.LEADER) {
-                if (role == RegionRole.LEADER) {
-                    throw new IllegalArgumentException("Leaders cannot add other leaders");
+                if (role == RegionRole.OWNER) {
+                    throw new IllegalArgumentException("Leaders cannot assign owner role");
                 }
             }
             if (actorUuid.equals(memberUuid)) {
@@ -98,13 +101,16 @@ public class RegionMembershipService {
                 throw new IllegalArgumentException("Actor UUID cannot be null for non-admin requests");
             }
             RegionRole actorRole = roleResolver.resolveRole(region, actorUuid);
-            if (!actorRole.isAtLeast(RegionRole.LEADER)) {
-                throw new IllegalArgumentException("Only owners and leaders can remove members");
+            if (!actorRole.isAtLeast(RegionRole.MANAGER)) {
+                throw new IllegalArgumentException("Only owners, leaders and managers can remove members");
             }
-            if (actorRole == RegionRole.LEADER) {
-                if (existingRole == RegionRole.LEADER) {
-                    throw new IllegalArgumentException("Leaders cannot remove other leaders");
+            if (actorRole == RegionRole.MANAGER) {
+                if (existingRole != RegionRole.MEMBER) {
+                    throw new IllegalArgumentException("Managers can only remove MEMBERS");
                 }
+            }
+            if (actorRole == RegionRole.LEADER && existingRole == RegionRole.OWNER) {
+                throw new IllegalArgumentException("Leaders cannot remove owners");
             }
             if (actorUuid.equals(memberUuid)) {
                 throw new IllegalArgumentException("You cannot remove yourself this way, use leave instead");
@@ -125,8 +131,8 @@ public class RegionMembershipService {
     public void setRole(Region region, UUID actorUuid, UUID memberUuid, RegionRole role, boolean isAdmin) {
         if (region == null) throw new IllegalArgumentException("Region cannot be null");
         if (memberUuid == null) throw new IllegalArgumentException("Member UUID cannot be null");
-        if (role != RegionRole.MEMBER && role != RegionRole.LEADER) {
-            throw new IllegalArgumentException("Invalid role: must be LEADER or MEMBER");
+        if (role != RegionRole.MEMBER && role != RegionRole.MANAGER && role != RegionRole.LEADER) {
+            throw new IllegalArgumentException("Invalid role: must be LEADER, MANAGER or MEMBER");
         }
 
         if (memberUuid.equals(region.getOwnerUuid())) {
@@ -148,8 +154,14 @@ public class RegionMembershipService {
                 throw new IllegalArgumentException("Actor UUID cannot be null for non-admin requests");
             }
             RegionRole actorRole = roleResolver.resolveRole(region, actorUuid);
-            if (actorRole != RegionRole.OWNER) {
-                throw new IllegalArgumentException("Only owners can promote or demote members");
+            if (actorRole != RegionRole.OWNER && actorRole != RegionRole.LEADER) {
+                throw new IllegalArgumentException("Only owners and leaders can change roles");
+            }
+            if (actorRole == RegionRole.LEADER && role == RegionRole.OWNER) {
+                throw new IllegalArgumentException("Leaders cannot assign owner role");
+            }
+            if (actorRole == RegionRole.LEADER && existingRole == RegionRole.OWNER) {
+                throw new IllegalArgumentException("Leaders cannot modify owner role");
             }
             if (actorUuid.equals(memberUuid)) {
                 throw new IllegalArgumentException("You cannot promote or demote yourself");

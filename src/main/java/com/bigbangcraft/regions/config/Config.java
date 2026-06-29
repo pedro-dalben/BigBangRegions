@@ -59,6 +59,56 @@ public class Config {
             Arrays.asList("minecraft:jungle", "minecraft:sparse_jungle", "minecraft:bamboo_jungle"),
             "minecraft:jungle_log"
         ));
+        biomeOptions.put("praia", new BiomeOptionConfig("Praia",
+            Arrays.asList("beach", "praia", "costa"),
+            Arrays.asList("minecraft:beach", "minecraft:snowy_beach", "minecraft:stony_shore"),
+            "minecraft:sand"
+        ));
+        biomeOptions.put("oceano", new BiomeOptionConfig("Oceano",
+            Arrays.asList("ocean", "oceano", "mar"),
+            Arrays.asList("minecraft:ocean", "minecraft:deep_ocean", "minecraft:cold_ocean",
+                "minecraft:deep_cold_ocean", "minecraft:lukewarm_ocean", "minecraft:deep_lukewarm_ocean",
+                "minecraft:warm_ocean", "minecraft:frozen_ocean", "minecraft:deep_frozen_ocean"),
+            "minecraft:water_bucket"
+        ));
+        biomeOptions.put("montanha", new BiomeOptionConfig("Montanha",
+            Arrays.asList("mountain", "montanha", "serra", "windswept", "hills"),
+            Arrays.asList("minecraft:windswept_hills", "minecraft:windswept_gravelly_hills",
+                "minecraft:windswept_forest", "minecraft:stony_peaks", "minecraft:windswept_peaks",
+                "minecraft:windswept_savanna"),
+            "minecraft:stone"
+        ));
+        biomeOptions.put("pantano", new BiomeOptionConfig("Pântano",
+            Arrays.asList("swamp", "pantano", "mangue"),
+            Arrays.asList("minecraft:swamp", "minecraft:mangrove_swamp"),
+            "minecraft:lily_pad"
+        ));
+        biomeOptions.put("neve", new BiomeOptionConfig("Neve",
+            Arrays.asList("snow", "neve", "snowy", "gelo"),
+            Arrays.asList("minecraft:snowy_plains", "minecraft:ice_spikes", "minecraft:snowy_slopes",
+                "minecraft:snowy_taiga", "minecraft:grove", "minecraft:jagged_peaks"),
+            "minecraft:snow_block"
+        ));
+        biomeOptions.put("cerejeira", new BiomeOptionConfig("Cerejeira",
+            Arrays.asList("cherry", "cerejeira", "cereja", "cherry_grove"),
+            Arrays.asList("minecraft:cherry_grove", "minecraft:meadow"),
+            "minecraft:cherry_sapling"
+        ));
+        biomeOptions.put("cogumelo", new BiomeOptionConfig("Cogumelo",
+            Arrays.asList("mushroom", "cogumelo", "mushroom_fields"),
+            Arrays.asList("minecraft:mushroom_fields"),
+            "minecraft:red_mushroom"
+        ));
+        biomeOptions.put("rio", new BiomeOptionConfig("Rio",
+            Arrays.asList("river", "rio"),
+            Arrays.asList("minecraft:river", "minecraft:frozen_river"),
+            "minecraft:seagrass"
+        ));
+        biomeOptions.put("costapedra", new BiomeOptionConfig("Costa de Pedra",
+            Arrays.asList("stony_shore", "costapedra", "costa_pedra"),
+            Arrays.asList("minecraft:stony_shore", "minecraft:stony_peaks"),
+            "minecraft:stone"
+        ));
     }
 
     public static class DefaultPriorities {
@@ -272,12 +322,13 @@ public class Config {
 
     public static class SchedulerConfig {
         private int maxActiveRequests = 1;
-        private int maxCandidateEvaluationsPerTick = 1;
+        private int maxCandidateEvaluationsPerTick = 256;
         private int maxPreparationChunksPerTick = 1;
         private int requestTimeoutSeconds = 180;
         private int reservationLeaseSeconds = 300;
         private int creationCooldownSeconds = 60;
         private int homeTeleportCooldownSeconds = 30;
+        private int maxBiomeSearchMillisPerTick = 25;
 
         public int getMaxActiveRequests() { return maxActiveRequests; }
         public int getMaxCandidateEvaluationsPerTick() { return maxCandidateEvaluationsPerTick; }
@@ -286,6 +337,7 @@ public class Config {
         public int getReservationLeaseSeconds() { return reservationLeaseSeconds; }
         public int getCreationCooldownSeconds() { return creationCooldownSeconds; }
         public int getHomeTeleportCooldownSeconds() { return homeTeleportCooldownSeconds; }
+        public int getMaxBiomeSearchMillisPerTick() { return maxBiomeSearchMillisPerTick; }
 
         public void setMaxActiveRequests(int maxActiveRequests) { this.maxActiveRequests = maxActiveRequests; }
         public void setMaxCandidateEvaluationsPerTick(int maxCandidateEvaluationsPerTick) { this.maxCandidateEvaluationsPerTick = maxCandidateEvaluationsPerTick; }
@@ -294,6 +346,7 @@ public class Config {
         public void setReservationLeaseSeconds(int reservationLeaseSeconds) { this.reservationLeaseSeconds = reservationLeaseSeconds; }
         public void setCreationCooldownSeconds(int creationCooldownSeconds) { this.creationCooldownSeconds = creationCooldownSeconds; }
         public void setHomeTeleportCooldownSeconds(int homeTeleportCooldownSeconds) { this.homeTeleportCooldownSeconds = homeTeleportCooldownSeconds; }
+        public void setMaxBiomeSearchMillisPerTick(int maxBiomeSearchMillisPerTick) { this.maxBiomeSearchMillisPerTick = maxBiomeSearchMillisPerTick; }
     }
 
     public static class BiomeOptionConfig {
