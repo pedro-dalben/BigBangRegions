@@ -3,6 +3,7 @@ package com.bigbangcraft.regions.gui;
 import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionType;
+import com.bigbangcraft.regions.journeymap.PlayerMapPreference;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -49,6 +50,13 @@ public class RegionMainMenu extends ChestMenu {
             "§7Configurar permissões da região"));
         container.setItem(22, button(Items.BOOK, "§6§lInformações",
             "§7Ver informações e limites do terreno"));
+
+        boolean showMap = PlayerMapPreference.isShowOwnRegion(player.getUUID());
+        container.setItem(20, button(
+            showMap ? Items.FILLED_MAP : Items.MAP,
+            (showMap ? "§a§lMapa: Visível" : "§7§lMapa: Oculta"),
+            "§7Clique para " + (showMap ? "ocultar" : "mostrar") + " sua região no JourneyMap"
+        ));
     }
 
     private ItemStack button(net.minecraft.world.item.Item item, String name, String loreLine) {
@@ -88,6 +96,10 @@ public class RegionMainMenu extends ChestMenu {
             serverPlayer.sendSystemMessage(Component.literal("§eLimites: " +
                 region.getBounds().getMinX() + ", " + region.getBounds().getMinY() + ", " + region.getBounds().getMinZ() +
                 " -> " + region.getBounds().getMaxX() + ", " + region.getBounds().getMaxY() + ", " + region.getBounds().getMaxZ()));
+        } else if (slotId == 20) {
+            boolean show = PlayerMapPreference.isShowOwnRegion(serverPlayer.getUUID());
+            PlayerMapPreference.setShowOwnRegion(serverPlayer.getUUID(), !show);
+            RegionGuiHandler.openMainMenu(serverPlayer, region);
         }
     }
 }

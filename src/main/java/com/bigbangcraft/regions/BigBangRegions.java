@@ -33,6 +33,7 @@ import com.bigbangcraft.regions.storage.DatabaseManager;
 import com.bigbangcraft.regions.util.MessageHelper;
 import com.bigbangcraft.regions.util.SelectionManager;
 import com.bigbangcraft.regions.config.Config;
+import com.bigbangcraft.regions.journeymap.PlayerMapPreference;
 import com.bigbangcraft.regions.journeymap.RegionMapIntegration;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -339,6 +340,7 @@ public class BigBangRegions implements ModInitializer {
                 if (containmentService != null) {
                     containmentService.removePlayer(uuid);
                 }
+                PlayerMapPreference.removePlayer(uuid);
             }
         });
 

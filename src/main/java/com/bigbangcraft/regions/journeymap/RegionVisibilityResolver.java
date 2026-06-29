@@ -60,7 +60,7 @@ public class RegionVisibilityResolver {
 
         if (role == RegionRole.OWNER || role == RegionRole.LEADER
             || role == RegionRole.MANAGER || role == RegionRole.MEMBER) {
-            return true;
+            return PlayerMapPreference.isShowOwnRegion(playerUuid);
         }
 
         if (Permissions.check(player, "bigbangregions.journeymap.view-all", false)) {

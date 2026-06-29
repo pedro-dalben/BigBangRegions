@@ -45,7 +45,9 @@ public class RegionAdminMenu extends ChestMenu {
         container.setItem(14, button(Items.ANVIL, "§e§lReparar borda", "§7Ainda em desenvolvimento"));
         container.setItem(15, button(Items.GRASS_BLOCK, "§e§lReparar spawn", "§7Ainda em desenvolvimento"));
         container.setItem(16, button(Items.LAVA_BUCKET, "§c§lExcluir", "§7Excluir regiao"));
+        container.setItem(20, button(Items.FILLED_MAP, "§a§lRessincronizar mapa", "§7Forçar atualização do JourneyMap"));
         container.setItem(22, button(Items.WRITABLE_BOOK, "§f§lAuditoria", "§7Exibir ultimos eventos"));
+        container.setItem(24, button(Items.ENDER_EYE, "§d§lSimular visão", "§7Visualizar como se fosse um jogador"));
     }
 
     private ItemStack button(net.minecraft.world.item.Item item, String name, String loreLine) {
@@ -81,8 +83,15 @@ public class RegionAdminMenu extends ChestMenu {
             serverPlayer.sendSystemMessage(Component.literal("§eReparo de spawn ainda nao implementado."));
         } else if (slotId == 16) {
             serverPlayer.sendSystemMessage(Component.literal("§cUse o comando ou a acao confirmada de exclusao."));
+        } else if (slotId == 20) {
+            serverPlayer.sendSystemMessage(Component.literal("§aSincronizando mapa..."));
+            BigBangRegions.getAllocationCoordinator(); // just to verify loaded
+            serverPlayer.sendSystemMessage(Component.literal("§7Reabra o JourneyMap para ver as alterações."));
         } else if (slotId == 22) {
             serverPlayer.sendSystemMessage(Component.literal("§7Auditoria ainda depende do painel de logs."));
+        } else if (slotId == 24) {
+            serverPlayer.sendSystemMessage(Component.literal("§7Modo de simulação:"));
+            serverPlayer.sendSystemMessage(Component.literal(" §8Use §f/regions jm simulate <jogador>§8 para ver o mapa como outro jogador vê."));
         }
     }
 }
