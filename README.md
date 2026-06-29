@@ -26,7 +26,8 @@ O mod oferece comandos principais com os aliases `/regiao` e `/regioes`:
 ### Comandos de Administração
 * `/regions pos1` - Salva a primeira posição (bloco atual) do jogador.
 * `/regions pos2` - Salva a segunda posição (bloco atual) do jogador.
-* `/regions create admin <id> [priority]` - Cria uma região cubóide administrativa.
+* `/regions create admin <id> [priority]` - Cria uma região administrativa a partir da seleção (pos1/pos2).
+* `/regions admin create <sizeX> <sizeZ> [id] [priority]` - Cria uma região administrativa centrada no jogador (sem seleção).
 * `/regions create player <id> <owner> [priority]` - Cria um terreno de jogador manual atribuindo o proprietário.
 * `/regions delete <id>` - Deleta uma região.
 * `/regions list [page]` - Lista todas as regiões registradas de forma paginada.

@@ -14,10 +14,17 @@ Player commands can be executed using the English `/regions` prefix or the Portu
 These commands require administrative permissions or OP status.
 
 ### 1. Creation and Deletion
-- **Create Admin Region**
+- **Create Admin Region (from selection)**
   `/regions create admin <regionId> [priority]`
   - Permission: `bigbangregions.admin.create`
   - Example: `/regions create admin spawn 2000`
+- **Create Admin Region (centered on player)**
+  `/regions admin create <sizeX> <sizeZ> [id] [priority]`
+  - Creates an admin region centered on the player's position (no pos1/pos2 needed)
+  - Auto-generates an ID like `admin_<timestamp>` if `id` is omitted
+  - Permission: `bigbangregions.admin.create`
+  - Example: `/regions admin create 100 100` — 100×100 region at player position
+  - Example: `/regions admin create 200 200 spawn_center 5000` — named region with custom priority
 - **Create Player Region**
   `/regions create player <regionId> <owner> [priority]`
   - Permission: `bigbangregions.admin.player.create`

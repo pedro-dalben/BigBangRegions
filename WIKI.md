@@ -38,7 +38,8 @@ Comandos de nível administrativo para controle total do servidor.
 | Comando | Descrição | Permissão |
 | :--- | :--- | :--- |
 | `/regions pos1` / `pos2` | Define a seleção de área para criação | `bigbangregions.admin.create` |
-| `/regions create admin <id> [pri]` | Cria região administrativa da seleção | `bigbangregions.admin.create` |
+| `/regions create admin <id> [pri]` | Cria região administrativa da seleção (pos1/pos2) | `bigbangregions.admin.create` |
+| `/regions admin create <sizeX> <sizeZ> [id] [pri]` | Cria região admin centrada no jogador (sem seleção) | `bigbangregions.admin.create` |
 | `/regions create player <id> <owner> [pri]` | Cria região de jogador da seleção | `bigbangregions.admin.player.create` |
 | `/regions delete <id\|nick>` | Deleta região ou todas as claims de um jogador | `bigbangregions.admin.delete` |
 | `/regions list [página]` | Lista todas as regiões do servidor | `bigbangregions.admin.list` |
