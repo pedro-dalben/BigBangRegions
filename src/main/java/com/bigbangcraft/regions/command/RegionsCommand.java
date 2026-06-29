@@ -176,10 +176,8 @@ public class RegionsCommand {
             )
             .then(Commands.literal("rename")
                 .requires(source -> checkPermission(source, "bigbangregions.admin.create"))
-                .then(Commands.argument("id", StringArgumentType.word())
-                    .then(Commands.argument("newName", StringArgumentType.greedyString())
-                        .executes(RegionsCommand::renameRegion)
-                    )
+                .then(Commands.argument("newName", StringArgumentType.greedyString())
+                    .executes(RegionsCommand::renameCurrentRegion)
                 )
             )
             .then(Commands.literal("info").executes(RegionsCommand::showInfo))
@@ -615,25 +613,32 @@ public class RegionsCommand {
         BigBangRegions.getAllocationCoordinator().releaseSlotForRegion(regionId);
     }
 
-    private static int renameRegion(CommandContext<CommandSourceStack> context) {
+    private static int renameCurrentRegion(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
-
-        String id = StringArgumentType.getString(context, "id");
-        String newName = StringArgumentType.getString(context, "newName");
-
-        Region region = regionCache.get(id);
-        if (region == null) {
-            source.sendFailure(Component.literal("Região '" + id + "' não encontrada."));
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
             return 0;
         }
 
+        String newName = StringArgumentType.getString(context, "newName");
+
+        BlockPos pos = player.blockPosition();
+        String dim = player.level().dimension().location().toString();
+        Region region = regionResolver.resolveRegionAt(dim, pos.getX(), pos.getY(), pos.getZ()).orElse(null);
+        if (region == null) {
+            source.sendFailure(Component.literal("Nenhuma região encontrada na sua posição atual."));
+            return 0;
+        }
+
+        String id = region.getId();
         region.setName(newName);
         regionRepository.save(region);
 
-        UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
+        UUID actorUuid = player.getUUID();
         auditService.log(id, actorUuid, "RENAME_REGION", region.getType().name(), null, "newName=" + newName);
 
-        source.sendSuccess(() -> Component.literal("Região '" + id + "' renomeada para §e" + newName + "§r com sucesso.").withStyle(ChatFormatting.GREEN), false);
+        source.sendSuccess(() -> Component.literal("Região §e" + id + "§r renomeada para §e" + newName + "§r com sucesso.").withStyle(ChatFormatting.GREEN), false);
         return 1;
     }
 

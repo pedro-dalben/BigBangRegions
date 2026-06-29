@@ -411,7 +411,7 @@ Os seguintes comandos podem ser desabilitados no `config.json` em `disabledComma
 | `/regions create admin <id> [priority]` | Cria região admin da seleção (pos1/pos2) | `bigbangregions.admin.create` |
 | `/regions admin create <sizeX> <sizeZ> [id] [priority]` | Cria região admin centrada no jogador (sem seleção) | `bigbangregions.admin.create` |
 | `/regions create player <id> <owner> [priority]` | Cria região de jogador da seleção | `bigbangregions.admin.player.create` |
-| `/regions rename <id> <novoNome>` | Renomeia uma região | `bigbangregions.admin.create` |
+| `/regions rename <novoNome>` | Renomeia a região em que o jogador está | `bigbangregions.admin.create` |
 | `/regions delete <id>` | Deleta região + libera slot (PLAYER) | `bigbangregions.admin.delete` |
 | `/regions list [page]` | Lista todas as regiões (paginado, 10/página) | `bigbangregions.admin.list` |
 | `/regions reload` | Recarrega config + regiões do banco | `bigbangregions.admin.reload` |

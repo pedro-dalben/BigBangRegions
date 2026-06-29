@@ -30,9 +30,10 @@ These commands require administrative permissions or OP status.
   - Permission: `bigbangregions.admin.player.create`
   - Example: `/regions create player pedro_claim PedropsRei`
 - **Rename Region**
-  `/regions rename <regionId> <newName>`
+  `/regions rename <newName>`
+  - Renames the region at the player's current position (auto-detects region ID)
   - Permission: `bigbangregions.admin.create`
-  - Example: `/regions rename admin_1743312345678 spawn`
+  - Example: `/regions rename spawn` — renames the region you're standing in to "spawn"
 - **Delete Region**
   `/regions delete <regionId|playerName>`
   - Permission: `bigbangregions.admin.delete`

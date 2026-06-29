@@ -41,7 +41,7 @@ Comandos de nível administrativo para controle total do servidor.
 | `/regions create admin <id> [pri]` | Cria região administrativa da seleção (pos1/pos2) | `bigbangregions.admin.create` |
 | `/regions admin create <sizeX> <sizeZ> [id] [pri]` | Cria região admin centrada no jogador (sem seleção) | `bigbangregions.admin.create` |
 | `/regions create player <id> <owner> [pri]` | Cria região de jogador da seleção | `bigbangregions.admin.player.create` |
-| `/regions rename <id> <novoNome>` | Renomeia uma região | `bigbangregions.admin.create` |
+| `/regions rename <novoNome>` | Renomeia a região em que o jogador está | `bigbangregions.admin.create` |
 | `/regions delete <id\|nick>` | Deleta região ou todas as claims de um jogador | `bigbangregions.admin.delete` |
 | `/regions list [página]` | Lista todas as regiões do servidor | `bigbangregions.admin.list` |
 | `/regions reload` | Recarrega configurações e banco de dados | `bigbangregions.admin.reload` |
