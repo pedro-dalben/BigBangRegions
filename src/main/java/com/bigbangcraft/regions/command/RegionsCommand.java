@@ -141,6 +141,34 @@ public class RegionsCommand {
                     )
                 )
             )
+            .then(Commands.literal("admin")
+                .requires(source -> checkPermission(source, "bigbangregions.admin.create"))
+                .then(Commands.literal("create")
+                    .then(Commands.argument("sizeX", IntegerArgumentType.integer(1))
+                        .then(Commands.argument("sizeZ", IntegerArgumentType.integer(1))
+                            .executes(context -> createAdminCentered(context,
+                                IntegerArgumentType.getInteger(context, "sizeX"),
+                                IntegerArgumentType.getInteger(context, "sizeZ"),
+                                null,
+                                configManager.getConfig().getDefaultPriorities().getAdminRegion()))
+                            .then(Commands.argument("id", StringArgumentType.word())
+                                .executes(context -> createAdminCentered(context,
+                                    IntegerArgumentType.getInteger(context, "sizeX"),
+                                    IntegerArgumentType.getInteger(context, "sizeZ"),
+                                    StringArgumentType.getString(context, "id"),
+                                    configManager.getConfig().getDefaultPriorities().getAdminRegion()))
+                                .then(Commands.argument("priority", IntegerArgumentType.integer())
+                                    .executes(context -> createAdminCentered(context,
+                                        IntegerArgumentType.getInteger(context, "sizeX"),
+                                        IntegerArgumentType.getInteger(context, "sizeZ"),
+                                        StringArgumentType.getString(context, "id"),
+                                        IntegerArgumentType.getInteger(context, "priority")))
+                                )
+                            )
+                        )
+                    )
+                )
+            )
             .then(Commands.literal("delete")
                 .then(Commands.argument("target", StringArgumentType.word())
                     .executes(RegionsCommand::deleteRegion)
@@ -447,6 +475,56 @@ public class RegionsCommand {
 
         source.sendSuccess(() -> Component.literal("Região administrativa '" + id + "' criada com sucesso! Prioridade: " + priority).withStyle(ChatFormatting.GREEN), false);
         selectionManager.clear(uuid);
+        return 1;
+    }
+
+    static int createAdminCentered(CommandContext<CommandSourceStack> context, int sizeX, int sizeZ, String id, int priority) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+
+        if (!checkPermission(source, "bigbangregions.admin.create")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+
+        UUID uuid = player.getUUID();
+        BlockPos center = player.blockPosition();
+        String dimension = player.level().dimension().location().toString();
+
+        String regionId = id;
+        if (regionId == null) {
+            regionId = "admin_" + System.currentTimeMillis();
+        }
+
+        if (regionCache.get(regionId) != null) {
+            source.sendFailure(Component.literal("Uma região com ID '" + regionId + "' já existe."));
+            return 0;
+        }
+
+        int halfX = sizeX / 2;
+        int halfZ = sizeZ / 2;
+        RegionBounds bounds = new RegionBounds(dimension,
+            center.getX() - halfX, 0, center.getZ() - halfZ,
+            center.getX() + halfX, 255, center.getZ() + halfZ);
+
+        if (checkPlayerRegionOverlap(bounds, regionId)) {
+            source.sendFailure(Component.literal("A região se sobrepõe com uma região existente e foi bloqueada pela configuração."));
+            return 0;
+        }
+
+        long now = System.currentTimeMillis();
+        Region region = new Region(regionId, regionId, RegionType.ADMIN_REGION, bounds, priority, null, uuid, now, now, "ACTIVE");
+
+        regionRepository.save(region);
+        regionCache.add(region);
+        auditService.log(regionId, uuid, "CREATE_REGION", null, "ADMIN_REGION", null);
+
+        String finalRegionId = regionId;
+        source.sendSuccess(() -> Component.literal("Região administrativa '" + finalRegionId + "' criada com sucesso! Tamanho: " + sizeX + "x" + sizeZ + ", Prioridade: " + priority).withStyle(ChatFormatting.GREEN), false);
         return 1;
     }
 

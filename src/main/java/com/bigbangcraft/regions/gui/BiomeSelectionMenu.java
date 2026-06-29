@@ -2,6 +2,7 @@ package com.bigbangcraft.regions.gui;
 
 import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.allocation.BiomeOption;
+import com.bigbangcraft.regions.config.Config;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -20,38 +21,61 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemLore;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 public class BiomeSelectionMenu extends ChestMenu {
+    private static final int ROWS = 6;
+    private static final int SLOTS = ROWS * 9;
+    private static final int BIOMES_PER_PAGE = 28;
+
+    private static final int[] CONTENT_SLOTS = {
+        10, 11, 12, 13, 14, 15, 16,
+        19, 20, 21, 22, 23, 24, 25,
+        28, 29, 30, 31, 32, 33, 34,
+        37, 38, 39, 40, 41, 42, 43
+    };
+
+    private static final int SLOT_PREV_PAGE = 48;
+    private static final int SLOT_NEXT_PAGE = 50;
+    private static final int SLOT_PAGE_INFO = 4;
+
     private final ServerPlayer player;
-    private final List<BiomeOption> slotBiomes = new ArrayList<>();
+    private final List<BiomeOption> allOptions;
+    private final int initialClaimSize;
+    private int currentPage = 0;
+    private final int maxPage;
 
     public BiomeSelectionMenu(int containerId, Inventory playerInventory, ServerPlayer player) {
-        super(MenuType.GENERIC_9x3, containerId, playerInventory, new SimpleContainer(27), 3);
+        super(MenuType.GENERIC_9x6, containerId, playerInventory, new SimpleContainer(SLOTS), ROWS);
         this.player = player;
+        Config.PlayerLandAllocationConfig lac = BigBangRegions.getConfigManager().getConfig().getPlayerLandAllocation();
+        this.initialClaimSize = lac.getInitialClaimSize();
+        this.allOptions = new ArrayList<>(BigBangRegions.getAllocationCoordinator().getBiomeOptions());
+        this.maxPage = Math.max(0, (int) Math.ceil((double) allOptions.size() / BIOMES_PER_PAGE) - 1);
         populateItems();
     }
 
     private void populateItems() {
         Container container = getContainer();
-        // Decorate all slots with Gray Stained Glass Pane
+
         ItemStack glass = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
         glass.set(DataComponents.CUSTOM_NAME, Component.literal(""));
-        for (int i = 0; i < 27; i++) {
+        for (int i = 0; i < SLOTS; i++) {
             container.setItem(i, glass);
         }
 
-        // Get biome options
-        Collection<BiomeOption> options = BigBangRegions.getAllocationCoordinator().getBiomeOptions();
+        if (maxPage > 0) {
+            ItemStack pageInfo = new ItemStack(Items.PAPER);
+            pageInfo.set(DataComponents.CUSTOM_NAME, Component.literal("§7Página §e" + (currentPage + 1) + "§7/§e" + (maxPage + 1)));
+            container.setItem(SLOT_PAGE_INFO, pageInfo);
+        }
 
-        // Slots to place biomes in the center row(s) to look organized
-        int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25};
-        int index = 0;
+        int startIndex = currentPage * BIOMES_PER_PAGE;
+        int endIndex = Math.min(startIndex + BIOMES_PER_PAGE, allOptions.size());
 
-        for (BiomeOption option : options) {
-            if (index >= slots.length) break;
-            int slot = slots[index];
+        for (int i = startIndex; i < endIndex; i++) {
+            BiomeOption option = allOptions.get(i);
+            int slot = CONTENT_SLOTS[i - startIndex];
 
             Item item = Items.MAP;
             try {
@@ -66,47 +90,67 @@ public class BiomeSelectionMenu extends ChestMenu {
             ItemStack stack = new ItemStack(item);
             stack.set(DataComponents.CUSTOM_NAME, Component.literal("§e" + option.getDisplayName()));
 
-            // Set lore components
             List<Component> loreComponents = new ArrayList<>();
             loreComponents.add(Component.literal("§7Bioma do terreno: §f" + option.getDisplayName()));
-            loreComponents.add(Component.literal("§7Tamanho inicial: §f50x50"));
+            loreComponents.add(Component.literal("§7Tamanho inicial: §f" + initialClaimSize + "x" + initialClaimSize));
             loreComponents.add(Component.literal(""));
             loreComponents.add(Component.literal("§aClique para criar seu terreno neste bioma."));
 
             stack.set(DataComponents.LORE, new ItemLore(loreComponents));
 
             container.setItem(slot, stack);
+        }
 
-            // Map slot to biome
-            while (slotBiomes.size() <= slot) {
-                slotBiomes.add(null);
-            }
-            slotBiomes.set(slot, option);
-            index++;
+        if (currentPage > 0) {
+            ItemStack prevButton = new ItemStack(Items.ARROW);
+            prevButton.set(DataComponents.CUSTOM_NAME, Component.literal("§a« Anterior"));
+            container.setItem(SLOT_PREV_PAGE, prevButton);
+        }
+
+        if (currentPage < maxPage) {
+            ItemStack nextButton = new ItemStack(Items.ARROW);
+            nextButton.set(DataComponents.CUSTOM_NAME, Component.literal("§aPróximo »"));
+            container.setItem(SLOT_NEXT_PAGE, nextButton);
         }
     }
 
     @Override
     public void clicked(int slotId, int button, ClickType clickType, Player player) {
-        // Cancel all slot movements and drag drops
         broadcastChanges();
 
-        if (slotId < 0 || slotId >= 27) {
+        if (slotId < 0 || slotId >= SLOTS) {
             return;
         }
 
-        if (slotId < slotBiomes.size()) {
-            BiomeOption option = slotBiomes.get(slotId);
-            if (option != null && player instanceof ServerPlayer serverPlayer) {
-                // Instantly close container to prevent double click exploits
-                serverPlayer.closeContainer();
-                
-                try {
-                    String requestId = BigBangRegions.getAllocationCoordinator().createRequest(serverPlayer, option.getKey(), "player_gui");
-                    serverPlayer.sendSystemMessage(Component.literal("§aSolicitação de terreno enviada! Processando..."));
-                } catch (Exception e) {
-                    serverPlayer.sendSystemMessage(Component.literal("§c" + e.getMessage()));
+        if (slotId == SLOT_PREV_PAGE && currentPage > 0) {
+            currentPage--;
+            populateItems();
+            return;
+        }
+
+        if (slotId == SLOT_NEXT_PAGE && currentPage < maxPage) {
+            currentPage++;
+            populateItems();
+            return;
+        }
+
+        int startIndex = currentPage * BIOMES_PER_PAGE;
+        for (int i = 0; i < CONTENT_SLOTS.length; i++) {
+            if (CONTENT_SLOTS[i] == slotId) {
+                int optionIndex = startIndex + i;
+                if (optionIndex < allOptions.size()) {
+                    BiomeOption option = allOptions.get(optionIndex);
+                    if (player instanceof ServerPlayer serverPlayer) {
+                        serverPlayer.closeContainer();
+                        try {
+                            BigBangRegions.getAllocationCoordinator().createRequest(serverPlayer, option.getKey(), "player_gui");
+                            serverPlayer.sendSystemMessage(Component.literal("§aSolicitação de terreno enviada! Processando..."));
+                        } catch (Exception e) {
+                            serverPlayer.sendSystemMessage(Component.literal("§c" + e.getMessage()));
+                        }
+                    }
                 }
+                break;
             }
         }
     }

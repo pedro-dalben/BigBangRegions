@@ -118,6 +118,10 @@ public class BigBangRegions implements ModInitializer {
         return inviteService;
     }
 
+    public static ConfigManager getConfigManager() {
+        return configManager;
+    }
+
     public static TerrainAllocationCoordinator getAllocationCoordinator() {
         return allocationCoordinator;
     }
