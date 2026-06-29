@@ -4,7 +4,7 @@ import java.util.*;
 
 public class Region {
     private final String id;
-    private final String name;
+    private String name;
     private final RegionType type;
     private RegionBounds bounds;
     private int priority;
@@ -51,6 +51,11 @@ public class Region {
 
     public RegionType getType() {
         return type;
+    }
+
+    public void setName(String name) {
+        this.name = Objects.requireNonNull(name, "Name cannot be null");
+        this.updatedAt = System.currentTimeMillis();
     }
 
     public RegionBounds getBounds() {

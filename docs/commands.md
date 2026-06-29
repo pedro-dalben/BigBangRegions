@@ -29,6 +29,10 @@ These commands require administrative permissions or OP status.
   `/regions create player <regionId> <owner> [priority]`
   - Permission: `bigbangregions.admin.player.create`
   - Example: `/regions create player pedro_claim PedropsRei`
+- **Rename Region**
+  `/regions rename <regionId> <newName>`
+  - Permission: `bigbangregions.admin.create`
+  - Example: `/regions rename admin_1743312345678 spawn`
 - **Delete Region**
   `/regions delete <regionId|playerName>`
   - Permission: `bigbangregions.admin.delete`

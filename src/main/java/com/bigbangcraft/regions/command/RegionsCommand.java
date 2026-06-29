@@ -174,6 +174,14 @@ public class RegionsCommand {
                     .executes(RegionsCommand::deleteRegion)
                 )
             )
+            .then(Commands.literal("rename")
+                .requires(source -> checkPermission(source, "bigbangregions.admin.create"))
+                .then(Commands.argument("id", StringArgumentType.word())
+                    .then(Commands.argument("newName", StringArgumentType.greedyString())
+                        .executes(RegionsCommand::renameRegion)
+                    )
+                )
+            )
             .then(Commands.literal("info").executes(RegionsCommand::showInfo))
             .then(Commands.literal("list")
                 .executes(context -> listRegions(context, 1))
@@ -375,11 +383,20 @@ public class RegionsCommand {
                     source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
                     return 0;
                 }
+
                 Region current = com.bigbangcraft.regions.gui.RegionGuiHandler.findPlayerRegion(player.getUUID());
+
                 if (current == null) {
-                    source.sendFailure(Component.literal("Nenhuma região de jogador ativa encontrada para abrir o painel."));
+                    BlockPos pos = player.blockPosition();
+                    String dim = player.level().dimension().location().toString();
+                    current = regionResolver.resolveRegionAt(dim, pos.getX(), pos.getY(), pos.getZ()).orElse(null);
+                }
+
+                if (current == null) {
+                    source.sendFailure(Component.literal("Nenhuma região encontrada na sua posição atual para abrir o painel."));
                     return 0;
                 }
+
                 com.bigbangcraft.regions.gui.RegionGuiHandler.openAdminMenu(player, current);
                 return 1;
             })
@@ -596,6 +613,28 @@ public class RegionsCommand {
 
     private static void releaseSlotForRegion(String regionId) {
         BigBangRegions.getAllocationCoordinator().releaseSlotForRegion(regionId);
+    }
+
+    private static int renameRegion(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+
+        String id = StringArgumentType.getString(context, "id");
+        String newName = StringArgumentType.getString(context, "newName");
+
+        Region region = regionCache.get(id);
+        if (region == null) {
+            source.sendFailure(Component.literal("Região '" + id + "' não encontrada."));
+            return 0;
+        }
+
+        region.setName(newName);
+        regionRepository.save(region);
+
+        UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
+        auditService.log(id, actorUuid, "RENAME_REGION", region.getType().name(), null, "newName=" + newName);
+
+        source.sendSuccess(() -> Component.literal("Região '" + id + "' renomeada para §e" + newName + "§r com sucesso.").withStyle(ChatFormatting.GREEN), false);
+        return 1;
     }
 
     private static int showInfo(CommandContext<CommandSourceStack> context) {
