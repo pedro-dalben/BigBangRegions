@@ -53,7 +53,10 @@ public class JourneyMapRegionsPlugin implements IServerPlugin, RegionChangeListe
         RegionRoleResolver roleResolver = BigBangRegions.getRoleResolver();
         var membershipCache = BigBangRegions.getMembershipCache();
 
-        this.visibilityResolver = new RegionVisibilityResolver(configManager, roleResolver, membershipCache);
+        this.visibilityResolver = new RegionVisibilityResolver(
+            configManager, roleResolver, membershipCache,
+            BigBangRegions.getPermissionManager()
+        );
         this.overlayManager = new RegionOverlayManager(overlayApi, configManager);
         this.markerManager = new RegionMarkerManager(jmServerApi, configManager);
 

@@ -95,7 +95,12 @@ public class BigBangRegions implements ModInitializer {
     private static RegionExpansionOperationRepository expansionOperationRepository;
     private static RegionExpansionCoordinator expansionCoordinator;
     private static RegionExpansionRecoveryService expansionRecoveryService;
+    private static PermissionManager permissionManager;
     private static RegionMapIntegration regionMapIntegration;
+
+    public static PermissionManager getPermissionManager() {
+        return permissionManager;
+    }
 
     public static void setRegionMapIntegration(RegionMapIntegration integration) {
         regionMapIntegration = integration;
@@ -252,7 +257,7 @@ public class BigBangRegions implements ModInitializer {
         // 7. Services and Managers
         selectionManager = new SelectionManager();
         int operatorFallback = configManager.getConfig().getPermissions().getOperatorFallbackLevel();
-        PermissionManager permissionManager = new PermissionManager(operatorFallback);
+        permissionManager = new PermissionManager(operatorFallback);
         
         roleResolver = new RegionRoleResolver(membershipCache);
         membershipService = new RegionMembershipService(regionRepository, membershipCache, auditService, roleResolver);
