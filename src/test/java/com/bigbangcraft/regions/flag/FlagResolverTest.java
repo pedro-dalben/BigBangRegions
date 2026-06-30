@@ -27,23 +27,23 @@ public class FlagResolverTest {
     @Test
     public void testExplicitRegionFlagOverrides() {
         // Explicit DENY
-        region.setFlag("player-build", "DENY");
-        EffectiveRegionPolicy policy = flagResolver.resolve(region, "player-build", config);
+        region.setFlag("visitor-build", "DENY");
+        EffectiveRegionPolicy policy = flagResolver.resolve(region, "visitor-build", config);
         assertEquals(FlagPolicy.DENY, policy.policy());
         assertEquals("region_explicit", policy.source());
 
         // Explicit ALLOW
-        region.setFlag("player-build", "ALLOW");
-        policy = flagResolver.resolve(region, "player-build", config);
+        region.setFlag("visitor-build", "ALLOW");
+        policy = flagResolver.resolve(region, "visitor-build", config);
         assertEquals(FlagPolicy.ALLOW, policy.policy());
         assertEquals("region_explicit", policy.source());
     }
 
     @Test
     public void testInheritanceToRegionTypeDefaults() {
-        // Region has INHERIT (or unset) -> Should fallback to type adminRegion's default (DENY for player-build)
-        region.setFlag("player-build", "INHERIT");
-        EffectiveRegionPolicy policy = flagResolver.resolve(region, "player-build", config);
+        // Region has INHERIT (or unset) -> Should fallback to type adminRegion's default (DENY for visitor-build)
+        region.setFlag("visitor-build", "INHERIT");
+        EffectiveRegionPolicy policy = flagResolver.resolve(region, "visitor-build", config);
         assertEquals(FlagPolicy.DENY, policy.policy());
         assertEquals("region_type_default", policy.source());
     }
@@ -52,7 +52,7 @@ public class FlagResolverTest {
     public void testInheritanceToGlobalDefaults() {
         Region playerRegion = new Region("testReg", "Test Region", RegionType.PLAYER_REGION,
                 new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, UUID.randomUUID(), creator, 0, 0, "ACTIVE");
-        EffectiveRegionPolicy policy = flagResolver.resolve(playerRegion, "item-pickup", config);
+        EffectiveRegionPolicy policy = flagResolver.resolve(playerRegion, "visitor-pickup-items", config);
         assertEquals(FlagPolicy.ALLOW, policy.policy());
         assertEquals("region_type_default", policy.source());
     }
@@ -60,7 +60,7 @@ public class FlagResolverTest {
     @Test
     public void testInheritanceWithNoRegion() {
         // Null region (Global coordinate check)
-        EffectiveRegionPolicy policy = flagResolver.resolve(null, "player-build", config);
+        EffectiveRegionPolicy policy = flagResolver.resolve(null, "visitor-build", config);
         assertEquals(FlagPolicy.ALLOW, policy.policy()); // global config is ALLOW
         assertEquals("global_default", policy.source());
     }

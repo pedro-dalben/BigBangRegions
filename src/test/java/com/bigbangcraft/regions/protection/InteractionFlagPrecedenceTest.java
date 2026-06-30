@@ -110,8 +110,8 @@ public class InteractionFlagPrecedenceTest {
         BlockState state = Blocks.CHEST.defaultBlockState();
         BlockEntity chestEntity = mock(BlockEntity.class, withSettings().extraInterfaces(net.minecraft.world.Container.class));
 
-        region.setFlag("container-access", "ALLOW");
-        region.setFlag("player-interact", "DENY");
+        region.setFlag("visitor-containers", "ALLOW");
+        region.setFlag("visitor-interact", "DENY");
 
         assertTrue(checkInteraction(state, chestEntity, ItemStack.EMPTY));
     }
@@ -121,8 +121,8 @@ public class InteractionFlagPrecedenceTest {
         BlockState state = Blocks.CHEST.defaultBlockState();
         BlockEntity chestEntity = mock(BlockEntity.class, withSettings().extraInterfaces(net.minecraft.world.Container.class));
 
-        region.setFlag("container-access", "DENY");
-        region.setFlag("player-interact", "ALLOW");
+        region.setFlag("visitor-containers", "DENY");
+        region.setFlag("visitor-interact", "ALLOW");
 
         assertFalse(checkInteraction(state, chestEntity, ItemStack.EMPTY));
     }
@@ -131,8 +131,8 @@ public class InteractionFlagPrecedenceTest {
     public void testScenario3_DoorAllow_InteractDeny() {
         BlockState state = Blocks.OAK_DOOR.defaultBlockState();
 
-        region.setFlag("door-use", "ALLOW");
-        region.setFlag("player-interact", "DENY");
+        region.setFlag("visitor-doors", "ALLOW");
+        region.setFlag("visitor-interact", "DENY");
 
         assertTrue(checkInteraction(state, null, ItemStack.EMPTY));
     }
@@ -141,8 +141,8 @@ public class InteractionFlagPrecedenceTest {
     public void testScenario4_DoorDeny_InteractAllow() {
         BlockState state = Blocks.OAK_DOOR.defaultBlockState();
 
-        region.setFlag("door-use", "DENY");
-        region.setFlag("player-interact", "ALLOW");
+        region.setFlag("visitor-doors", "DENY");
+        region.setFlag("visitor-interact", "ALLOW");
 
         assertFalse(checkInteraction(state, null, ItemStack.EMPTY));
     }
@@ -151,8 +151,8 @@ public class InteractionFlagPrecedenceTest {
     public void testScenario5_RedstoneAllow_InteractDeny() {
         BlockState state = Blocks.LEVER.defaultBlockState();
 
-        region.setFlag("redstone-use", "ALLOW");
-        region.setFlag("player-interact", "DENY");
+        region.setFlag("visitor-redstone", "ALLOW");
+        region.setFlag("visitor-interact", "DENY");
 
         assertTrue(checkInteraction(state, null, ItemStack.EMPTY));
     }
@@ -161,8 +161,8 @@ public class InteractionFlagPrecedenceTest {
     public void testScenario6_RedstoneDeny_InteractAllow() {
         BlockState state = Blocks.LEVER.defaultBlockState();
 
-        region.setFlag("redstone-use", "DENY");
-        region.setFlag("player-interact", "ALLOW");
+        region.setFlag("visitor-redstone", "DENY");
+        region.setFlag("visitor-interact", "ALLOW");
 
         assertFalse(checkInteraction(state, null, ItemStack.EMPTY));
     }
@@ -171,7 +171,7 @@ public class InteractionFlagPrecedenceTest {
     public void testScenario7_GenericInteractAllow() {
         BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
 
-        region.setFlag("player-interact", "ALLOW");
+        region.setFlag("visitor-interact", "ALLOW");
 
         assertTrue(checkInteraction(state, null, ItemStack.EMPTY));
     }
@@ -180,7 +180,7 @@ public class InteractionFlagPrecedenceTest {
     public void testScenario8_GenericInteractDeny() {
         BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
 
-        region.setFlag("player-interact", "DENY");
+        region.setFlag("visitor-interact", "DENY");
 
         assertFalse(checkInteraction(state, null, ItemStack.EMPTY));
     }
@@ -190,11 +190,11 @@ public class InteractionFlagPrecedenceTest {
         BlockState state = Blocks.CHEST.defaultBlockState();
         BlockEntity chestEntity = mock(BlockEntity.class, withSettings().extraInterfaces(net.minecraft.world.Container.class));
 
-        // inherit -> falls back to type (adminRegion) default, NOT player-interact
-        region.setFlag("container-access", "INHERIT");
-        region.setFlag("player-interact", "ALLOW");
+        // inherit -> falls back to type (adminRegion) default, NOT visitor-interact
+        region.setFlag("visitor-containers", "INHERIT");
+        region.setFlag("visitor-interact", "ALLOW");
         
-        config.getDefaults().getAdminRegion().put("container-access", "DENY");
+        config.getDefaults().getAdminRegion().put("visitor-containers", "DENY");
 
         assertFalse(checkInteraction(state, chestEntity, ItemStack.EMPTY));
     }
@@ -204,11 +204,11 @@ public class InteractionFlagPrecedenceTest {
         BlockState doorState = Blocks.OAK_DOOR.defaultBlockState();
         BlockState leverState = Blocks.LEVER.defaultBlockState();
 
-        region.setFlag("door-use", "INHERIT");
-        region.setFlag("redstone-use", "INHERIT");
+        region.setFlag("visitor-doors", "INHERIT");
+        region.setFlag("visitor-redstone", "INHERIT");
 
-        config.getDefaults().getAdminRegion().put("door-use", "ALLOW");
-        config.getDefaults().getAdminRegion().put("redstone-use", "DENY");
+        config.getDefaults().getAdminRegion().put("visitor-doors", "ALLOW");
+        config.getDefaults().getAdminRegion().put("visitor-redstone", "DENY");
 
         assertTrue(checkInteraction(doorState, null, ItemStack.EMPTY));
         assertFalse(checkInteraction(leverState, null, ItemStack.EMPTY));

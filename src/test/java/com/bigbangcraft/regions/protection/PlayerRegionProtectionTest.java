@@ -118,7 +118,7 @@ public class PlayerRegionProtectionTest {
         ServerPlayer player = mockPlayer(member, level);
         BlockPos pos = new BlockPos(5, 5, 5);
 
-        region.setFlag("player-build", "DENY");
+        region.setFlag("visitor-build", "DENY");
 
         ProtectionContext context = new ProtectionContext.Builder(RegionAction.BLOCK_BREAK, level, pos)
                 .player(player)
@@ -134,7 +134,7 @@ public class PlayerRegionProtectionTest {
         ServerPlayer player = mockPlayer(owner, level);
         BlockPos pos = new BlockPos(5, 5, 5);
 
-        region.setFlag("player-build", "DENY");
+        region.setFlag("visitor-build", "DENY");
 
         ProtectionContext context = new ProtectionContext.Builder(RegionAction.BLOCK_BREAK, level, pos)
                 .player(player)
@@ -150,7 +150,7 @@ public class PlayerRegionProtectionTest {
         ServerPlayer player = mockPlayer(visitor, level);
         BlockPos pos = new BlockPos(5, 5, 5);
 
-        when(permissionManager.hasBypass(player, "player-build")).thenReturn(true);
+        when(permissionManager.hasBypass(player, "visitor-build")).thenReturn(true);
 
         ProtectionContext context = new ProtectionContext.Builder(RegionAction.BLOCK_BREAK, level, pos)
                 .player(player)

@@ -90,7 +90,7 @@ public class ProtectionServiceTest {
     public void testPlayerBypass() {
         // Player has bypass permission
         when(regionResolver.resolveRegionAt("minecraft:overworld", 10, 10, 10)).thenReturn(Optional.of(region));
-        when(permissionManager.hasBypass(player, "player-build")).thenReturn(true);
+        when(permissionManager.hasBypass(player, "visitor-build")).thenReturn(true);
 
         ProtectionContext context = new ProtectionContext.Builder(RegionAction.BLOCK_BREAK, level, pos)
                 .player(player)
@@ -144,7 +144,7 @@ public class ProtectionServiceTest {
         // Set flag resolver to return ALLOW for the flag check
         Config config = new Config();
         when(configManager.getConfig()).thenReturn(config);
-        when(flagResolver.resolve(region, "player-build", config))
+        when(flagResolver.resolve(region, "visitor-build", config))
                 .thenReturn(new EffectiveRegionPolicy(FlagPolicy.ALLOW, "region_explicit", region));
 
         membershipCache.loadFromRegion(region);
@@ -167,7 +167,7 @@ public class ProtectionServiceTest {
         // Set flag resolver to DENY
         Config config = new Config();
         when(configManager.getConfig()).thenReturn(config);
-        when(flagResolver.resolve(region, "player-build", config))
+        when(flagResolver.resolve(region, "visitor-build", config))
                 .thenReturn(new EffectiveRegionPolicy(FlagPolicy.DENY, "region_explicit", region));
 
         ProtectionContext context = new ProtectionContext.Builder(RegionAction.BLOCK_BREAK, level, pos)

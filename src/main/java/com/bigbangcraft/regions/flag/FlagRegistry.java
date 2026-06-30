@@ -6,16 +6,20 @@ public class FlagRegistry {
     private static final Map<String, RegionFlag> flags = new LinkedHashMap<>();
 
     static {
-        // Supported flags
-        register(new RegionFlag("player-build", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows block breaking and placing.", "protection", true));
-        register(new RegionFlag("player-interact", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows basic interaction with blocks.", "protection", true));
-        register(new RegionFlag("container-access", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows accessing containers and inventories.", "protection", true));
-        register(new RegionFlag("door-use", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows using doors, trapdoors, and gates.", "protection", true));
-        register(new RegionFlag("redstone-use", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows using buttons, levers, and plates.", "protection", true));
-        register(new RegionFlag("entity-interact", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows interacting with entities (frames, stands, mounts).", "protection", true));
-        register(new RegionFlag("pvp", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows player-versus-player combat.", "combat", true));
-        register(new RegionFlag("item-pickup", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows picking up items on the ground.", "utility", true));
-        register(new RegionFlag("item-drop", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows dropping items on the ground.", "utility", true));
+        // Supported flags (new visitor-* flags from RegionFlagRegistry)
+        register(new RegionFlag("visitor-build", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to build (break/place blocks).", "protection", true));
+        register(new RegionFlag("visitor-interact", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows basic interaction by visitors.", "protection", true));
+        register(new RegionFlag("visitor-containers", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to access containers and machines.", "protection", true));
+        register(new RegionFlag("visitor-pcs", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use Cobblemon PCs.", "protection", true));
+        register(new RegionFlag("visitor-doors", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use doors, trapdoors, gates.", "protection", true));
+        register(new RegionFlag("visitor-buttons", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use buttons.", "protection", true));
+        register(new RegionFlag("visitor-levers", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use levers.", "protection", true));
+        register(new RegionFlag("visitor-redstone", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use redstone components.", "protection", true));
+        register(new RegionFlag("visitor-item-frames", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to interact with item frames.", "protection", true));
+        register(new RegionFlag("visitor-armor-stands", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to interact with armor stands.", "protection", true));
+        register(new RegionFlag("visitor-pickup-items", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows visitors to pick up items.", "utility", true));
+        register(new RegionFlag("visitor-drop-items", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows visitors to drop items.", "utility", true));
+        register(new RegionFlag("pvp", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows player-versus-player combat.", "combat", true));
 
         // Unsupported/Planned flags
         register(new RegionFlag("hostile-mob-spawn", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows hostile mobs to spawn. (Planned)", "environment", false));

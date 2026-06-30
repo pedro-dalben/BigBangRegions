@@ -16,10 +16,11 @@ public final class RegionFlagRegistry {
 
     static {
         register("enter", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "ALLOW", "Permite entrar na regiao", "OWNER,LEADER,MANAGER");
-        register("visitor-build", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem construir", "OWNER,LEADER");
         register("visitor-interact", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem interagir", "OWNER,LEADER,MANAGER");
-        register("visitor-containers", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem acessar containers", "OWNER,LEADER,MANAGER");
         register("visitor-doors", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem usar portas", "OWNER,LEADER,MANAGER");
+        register("visitor-build", CATEGORY_BUILD, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem construir", "OWNER,LEADER");
+        register("visitor-containers", CATEGORY_CONTAINERS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem acessar containers e maquinas", "OWNER,LEADER,MANAGER");
+        register("visitor-pcs", CATEGORY_CONTAINERS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem usar PCs (Cobblemon)", "OWNER,LEADER,MANAGER");
         register("visitor-buttons", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem usar botoes", "OWNER,LEADER,MANAGER");
         register("visitor-levers", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem usar alavancas", "OWNER,LEADER,MANAGER");
         register("visitor-redstone", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem usar redstone", "OWNER,LEADER,MANAGER");

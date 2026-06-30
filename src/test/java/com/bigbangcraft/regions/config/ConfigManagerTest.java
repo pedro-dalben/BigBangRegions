@@ -27,8 +27,8 @@ public class ConfigManagerTest {
         assertNotNull(config);
         assertEquals(1, config.getSchemaVersion());
         assertEquals(1000, config.getDefaultPriorities().getAdminRegion());
-        assertEquals("ALLOW", config.getDefaults().getGlobal().get("player-build"));
-        assertEquals("DENY", config.getDefaults().getAdminRegion().get("player-build"));
+        assertEquals("ALLOW", config.getDefaults().getGlobal().get("visitor-build"));
+        assertEquals("DENY", config.getDefaults().getAdminRegion().get("visitor-build"));
 
         // 2. Corrupt file with invalid JSON
         Files.writeString(configFile, "{ invalid json garbage }");

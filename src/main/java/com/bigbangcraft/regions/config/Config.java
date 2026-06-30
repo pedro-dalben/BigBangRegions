@@ -133,37 +133,49 @@ public class Config {
         private Map<String, String> playerRegion = new HashMap<>();
         public Defaults() {
             // Global default policies
-            global.put("player-build", "ALLOW");
-            global.put("player-interact", "ALLOW");
-            global.put("container-access", "ALLOW");
-            global.put("door-use", "ALLOW");
-            global.put("redstone-use", "ALLOW");
-            global.put("entity-interact", "ALLOW");
+            global.put("visitor-build", "ALLOW");
+            global.put("visitor-interact", "ALLOW");
+            global.put("visitor-containers", "ALLOW");
+            global.put("visitor-pcs", "ALLOW");
+            global.put("visitor-doors", "ALLOW");
+            global.put("visitor-buttons", "ALLOW");
+            global.put("visitor-levers", "ALLOW");
+            global.put("visitor-redstone", "ALLOW");
+            global.put("visitor-item-frames", "ALLOW");
+            global.put("visitor-armor-stands", "ALLOW");
             global.put("pvp", "ALLOW");
-            global.put("item-pickup", "ALLOW");
-            global.put("item-drop", "ALLOW");
+            global.put("visitor-pickup-items", "ALLOW");
+            global.put("visitor-drop-items", "ALLOW");
 
             // Admin Region default policies
-            adminRegion.put("player-build", "DENY");
-            adminRegion.put("player-interact", "DENY");
-            adminRegion.put("container-access", "DENY");
-            adminRegion.put("door-use", "DENY");
-            adminRegion.put("redstone-use", "DENY");
-            adminRegion.put("entity-interact", "DENY");
+            adminRegion.put("visitor-build", "DENY");
+            adminRegion.put("visitor-interact", "DENY");
+            adminRegion.put("visitor-containers", "DENY");
+            adminRegion.put("visitor-pcs", "DENY");
+            adminRegion.put("visitor-doors", "DENY");
+            adminRegion.put("visitor-buttons", "DENY");
+            adminRegion.put("visitor-levers", "DENY");
+            adminRegion.put("visitor-redstone", "DENY");
+            adminRegion.put("visitor-item-frames", "DENY");
+            adminRegion.put("visitor-armor-stands", "DENY");
             adminRegion.put("pvp", "DENY");
-            adminRegion.put("item-pickup", "ALLOW");
-            adminRegion.put("item-drop", "ALLOW");
+            adminRegion.put("visitor-pickup-items", "ALLOW");
+            adminRegion.put("visitor-drop-items", "ALLOW");
 
             // Player Region default policies
-            playerRegion.put("player-build", "ALLOW");
-            playerRegion.put("player-interact", "ALLOW");
-            playerRegion.put("container-access", "ALLOW");
-            playerRegion.put("door-use", "ALLOW");
-            playerRegion.put("redstone-use", "ALLOW");
-            playerRegion.put("entity-interact", "ALLOW");
+            playerRegion.put("visitor-build", "ALLOW");
+            playerRegion.put("visitor-interact", "ALLOW");
+            playerRegion.put("visitor-containers", "ALLOW");
+            playerRegion.put("visitor-pcs", "ALLOW");
+            playerRegion.put("visitor-doors", "ALLOW");
+            playerRegion.put("visitor-buttons", "ALLOW");
+            playerRegion.put("visitor-levers", "ALLOW");
+            playerRegion.put("visitor-redstone", "ALLOW");
+            playerRegion.put("visitor-item-frames", "ALLOW");
+            playerRegion.put("visitor-armor-stands", "ALLOW");
             playerRegion.put("pvp", "DENY");
-            playerRegion.put("item-pickup", "ALLOW");
-            playerRegion.put("item-drop", "ALLOW");
+            playerRegion.put("visitor-pickup-items", "ALLOW");
+            playerRegion.put("visitor-drop-items", "ALLOW");
         }
 
         public Map<String, String> getGlobal() { return global; }
