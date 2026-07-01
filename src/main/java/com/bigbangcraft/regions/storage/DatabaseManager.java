@@ -112,6 +112,13 @@ public class DatabaseManager {
             setSchemaVersion(6);
             LOGGER.info("Migration V6 applied successfully.");
         }
+
+        if (currentVersion < 7) {
+            LOGGER.info("Applying migration V7...");
+            executeMigrationResource("/storage/migrations/V007__plot_slot_metadata.sql");
+            setSchemaVersion(7);
+            LOGGER.info("Migration V7 applied successfully.");
+        }
     }
 
     private int getCurrentSchemaVersion() {

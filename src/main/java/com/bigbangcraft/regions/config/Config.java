@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class Config {
+    public static final int BIOME_SEARCH_VALIDATION_SCHEMA_VERSION = 1;
+
     private int schemaVersion = 1;
     private DefaultPriorities defaultPriorities = new DefaultPriorities();
     private Permissions permissions = new Permissions();
@@ -36,7 +38,8 @@ public class Config {
         ));
         biomeOptions.put("floresta", new BiomeOptionConfig("Floresta",
             Arrays.asList("forest", "floresta"),
-            Arrays.asList("minecraft:forest", "minecraft:birch_forest", "minecraft:old_growth_birch_forest"),
+            Arrays.asList("minecraft:forest", "minecraft:flower_forest", "minecraft:birch_forest",
+                "minecraft:old_growth_birch_forest", "minecraft:dark_forest"),
             "minecraft:oak_log"
         ));
         biomeOptions.put("taiga", new BiomeOptionConfig("Taiga",
@@ -86,7 +89,8 @@ public class Config {
         biomeOptions.put("neve", new BiomeOptionConfig("Neve",
             Arrays.asList("snow", "neve", "snowy", "gelo"),
             Arrays.asList("minecraft:snowy_plains", "minecraft:ice_spikes", "minecraft:snowy_slopes",
-                "minecraft:snowy_taiga", "minecraft:grove", "minecraft:jagged_peaks"),
+                "minecraft:snowy_taiga", "minecraft:grove", "minecraft:jagged_peaks",
+                "minecraft:frozen_peaks"),
             "minecraft:snow_block"
         ));
         biomeOptions.put("cerejeira", new BiomeOptionConfig("Cerejeira",
@@ -108,6 +112,11 @@ public class Config {
             Arrays.asList("stony_shore", "costapedra", "costa_pedra"),
             Arrays.asList("minecraft:stony_shore", "minecraft:stony_peaks"),
             "minecraft:stone"
+        ));
+        biomeOptions.put("terrasasperas", new BiomeOptionConfig("Terras Ásperas",
+            Arrays.asList("badlands", "terrasasperas", "mesa", "terras_asperas"),
+            Arrays.asList("minecraft:badlands", "minecraft:wooded_badlands", "minecraft:eroded_badlands"),
+            "minecraft:terracotta"
         ));
     }
 

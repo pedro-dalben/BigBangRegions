@@ -52,6 +52,19 @@ public class ConfigManager {
         }
     }
 
+    public void save() {
+        try {
+            if (!Files.exists(configDir)) {
+                Files.createDirectories(configDir);
+            }
+            try (Writer writer = Files.newBufferedWriter(configFile, StandardCharsets.UTF_8)) {
+                GSON.toJson(config, writer);
+            }
+        } catch (IOException e) {
+            LOGGER.error("Failed to save configuration: ", e);
+        }
+    }
+
     private void saveDefault() {
         Config newConfig = new Config();
         try (Writer writer = Files.newBufferedWriter(configFile, StandardCharsets.UTF_8)) {
@@ -64,5 +77,13 @@ public class ConfigManager {
 
     public Config getConfig() {
         return config;
+    }
+
+    public Path getConfigDir() {
+        return configDir;
+    }
+
+    public Path getConfigFile() {
+        return configFile;
     }
 }
