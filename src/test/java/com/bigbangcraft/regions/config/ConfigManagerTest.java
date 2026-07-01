@@ -32,6 +32,9 @@ public class ConfigManagerTest {
         assertEquals("ALLOW", config.getDefaults().getGlobal().get("explosion-block-damage"));
         assertEquals("DENY", config.getDefaults().getAdminRegion().get("explosion-block-damage"));
         assertEquals("DENY", config.getDefaults().getPlayerRegion().get("explosion-block-damage"));
+        assertEquals("ALLOW", config.getDefaults().getGlobal().get("piston-move"));
+        assertEquals("DENY", config.getDefaults().getAdminRegion().get("piston-move"));
+        assertEquals("DENY", config.getDefaults().getPlayerRegion().get("piston-move"));
         assertEquals(5, config.getPlayerLandAllocation().getBiomeSearch().getSampleGridSize());
         assertEquals(64, config.getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY());
         assertEquals(50000, config.getPlayerLandAllocation().getWorldgenSearch().getVirtualBiomeCacheMaxEntries());

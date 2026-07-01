@@ -136,4 +136,27 @@ public class PlayerRegionFlagAndRoleTest {
         region.setFlag("explosion-block-damage", "DENY");
         assertFalse(protectionService.check(memberContext).isAllowed());
     }
+
+    @Test
+    public void testPistonMovementUsesRegionFlag() {
+        Level level = mockLevel();
+        BlockPos pos = new BlockPos(5, 5, 5);
+
+        region.setFlag("piston-move", "ALLOW");
+
+        ServerPlayer visitorPlayer = mockPlayer(visitor, level);
+        ProtectionContext visitorContext = new ProtectionContext.Builder(RegionAction.PISTON_MOVE, level, pos)
+                .player(visitorPlayer)
+                .build();
+        assertTrue(protectionService.check(visitorContext).isAllowed());
+
+        ServerPlayer memberPlayer = mockPlayer(member, level);
+        ProtectionContext memberContext = new ProtectionContext.Builder(RegionAction.PISTON_MOVE, level, pos)
+                .player(memberPlayer)
+                .build();
+        assertTrue(protectionService.check(memberContext).isAllowed());
+
+        region.setFlag("piston-move", "DENY");
+        assertFalse(protectionService.check(memberContext).isAllowed());
+    }
 }

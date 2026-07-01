@@ -554,6 +554,11 @@ public class BigBangRegions implements ModInitializer {
             return false;
         }
 
+        if (!canWorldAction(level, pos, RegionAction.PISTON_MOVE) ||
+            !canWorldAction(level, dest, RegionAction.PISTON_MOVE)) {
+            return false;
+        }
+
         RegionCache cache = getRegionCache();
         if (cache == null) return true;
 

@@ -12,6 +12,10 @@ public class RegionRolePolicy {
             // Explosion damage is decided by region flags, not by membership role.
             return true;
         }
+        if (action == RegionAction.PISTON_MOVE) {
+            // Piston movement is decided by region flags, not by membership role.
+            return true;
+        }
         return role != null && role.isAtLeast(RegionRole.MEMBER);
     }
 }

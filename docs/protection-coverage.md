@@ -15,9 +15,10 @@ Este documento detalha a matriz de cobertura de proteção implementada no BigBa
 | Interagir com Entidade | `entity-interact` | `UseEntityCallback` + `AttackEntityCallback` | Sim | Sim | `IMPLEMENTED_AND_TESTED` | Cobre Armor Stands, Item Frames, barcos e minecarts. |
 | Combate PvP | `pvp` | `PlayerMixin.hurt` | Sim | Sim | `IMPLEMENTED_AND_TESTED` | Checa a posição da vítima e do atacante. Rastreia projéteis via `DamageSource`. |
 | Explosões | `explosion-block-damage` | `ExplosionMixin` + `BigBangRegions.canWorldAction` | Sim | Sim | `IMPLEMENTED_AND_TESTED` | Filtra blocos afetados por explosões; fogo e fluidos seguem planejados. |
+| Pistões | `piston-move` | `PistonStructureResolverMixin` + `BigBangRegions.isPistonAllowed` | Sim | Sim | `IMPLEMENTED_AND_TESTED` | Bloqueia movimento de blocos em bordas e claims com flag negada. |
 | Coletar Item | `item-pickup` | `ItemEntityMixin.playerTouch` | Sim | Sim | `IMPLEMENTED_AND_TESTED` | Usa a posição real do item no chão e não apenas a do jogador. |
 | Dropar Item | `item-drop` | `PlayerMixin.drop` | Sim | Sim | `IMPLEMENTED_AND_TESTED` | Cancela o drop e retorna o item ao inventário ou cursor sem duplicações/perdas. |
-| Automações (Funil/Pistão) | N/A | Nenhum | Não | Não | `NOT_SUPPORTED` | Automações não-jogador não são verificadas nesta fase para otimizar ticks. |
+| Hoppers (Funis) | N/A | Nenhum | Não | Não | `NOT_SUPPORTED` | Transferência automática de inventário não é verificada nesta fase para otimizar ticks. |
 | Fogo/Fluidos/Mob Griefing | N/A | Nenhum | Não | Não | `PLANNED` | Propagação de fogo, fluxo de fluidos e mob griefing seguem planejados. |
 
 ## Detalhes de Implementação e Evidências

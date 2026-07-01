@@ -154,6 +154,7 @@ public class Config {
             global.put("visitor-armor-stands", "ALLOW");
             global.put("pvp", "ALLOW");
             global.put("explosion-block-damage", "ALLOW");
+            global.put("piston-move", "ALLOW");
             global.put("visitor-pickup-items", "ALLOW");
             global.put("visitor-drop-items", "ALLOW");
 
@@ -170,6 +171,7 @@ public class Config {
             adminRegion.put("visitor-armor-stands", "DENY");
             adminRegion.put("pvp", "DENY");
             adminRegion.put("explosion-block-damage", "DENY");
+            adminRegion.put("piston-move", "DENY");
             adminRegion.put("visitor-pickup-items", "ALLOW");
             adminRegion.put("visitor-drop-items", "ALLOW");
 
@@ -186,6 +188,7 @@ public class Config {
             playerRegion.put("visitor-armor-stands", "ALLOW");
             playerRegion.put("pvp", "DENY");
             playerRegion.put("explosion-block-damage", "DENY");
+            playerRegion.put("piston-move", "DENY");
             playerRegion.put("visitor-pickup-items", "ALLOW");
             playerRegion.put("visitor-drop-items", "ALLOW");
         }

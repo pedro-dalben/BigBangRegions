@@ -3,6 +3,10 @@ package com.bigbangcraft.regions.domain;
 import java.util.*;
 
 public class Region {
+    private static final Map<String, String> FLAG_ALIASES = Map.of(
+            "piston-movement", "piston-move"
+    );
+
     private final String id;
     private String name;
     private final RegionType type;
@@ -131,16 +135,31 @@ public class Region {
     }
 
     public void setFlag(String flagId, String value) {
+        String canonicalFlagId = canonicalFlagId(flagId);
         if (value == null || value.equalsIgnoreCase("INHERIT")) {
-            flags.remove(flagId);
+            removeFlagAliases(canonicalFlagId);
         } else {
-            flags.put(flagId, value.toUpperCase());
+            removeFlagAliases(canonicalFlagId);
+            flags.put(canonicalFlagId, value.toUpperCase(Locale.ROOT));
         }
         this.updatedAt = System.currentTimeMillis();
     }
 
     public String getFlagValue(String flagId) {
-        return flags.getOrDefault(flagId, "INHERIT");
+        String canonicalFlagId = canonicalFlagId(flagId);
+        String value = flags.get(canonicalFlagId);
+        if (value != null) {
+            return value;
+        }
+        for (Map.Entry<String, String> alias : FLAG_ALIASES.entrySet()) {
+            if (alias.getValue().equals(canonicalFlagId)) {
+                value = flags.get(alias.getKey());
+                if (value != null) {
+                    return value;
+                }
+            }
+        }
+        return "INHERIT";
     }
 
     public boolean contains(String dimension, int x, int y, int z) {
@@ -170,5 +189,25 @@ public class Region {
                 ", priority=" + priority +
                 ", ownerUuid=" + ownerUuid +
                 '}';
+    }
+
+    private static String canonicalFlagId(String flagId) {
+        if (flagId == null) {
+            return null;
+        }
+        String normalized = flagId.toLowerCase(Locale.ROOT);
+        return FLAG_ALIASES.getOrDefault(normalized, normalized);
+    }
+
+    private void removeFlagAliases(String canonicalFlagId) {
+        if (canonicalFlagId == null) {
+            return;
+        }
+        flags.remove(canonicalFlagId);
+        for (Map.Entry<String, String> alias : FLAG_ALIASES.entrySet()) {
+            if (alias.getValue().equals(canonicalFlagId)) {
+                flags.remove(alias.getKey());
+            }
+        }
     }
 }

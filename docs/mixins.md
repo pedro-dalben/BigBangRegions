@@ -28,3 +28,9 @@ Para cenários onde a API de eventos padrão do Fabric não fornece interceptado
 * **Método Alvo:** `explode`
 * **Motivo de não usar evento Fabric:** A API pública do Fabric não expõe um callback estável para filtrar a lista de blocos afetados por explosões vanilla depois que a explosão é calculada.
 * **Comportamento:** Intercepta o retorno de `explode()`, usa `getToBlow()` para filtrar blocos dentro de claims protegidas ou na borda da região, e preserva o restante da explosão normalmente.
+
+### 5. `PistonStructureResolverMixin`
+* **Classe Alvo:** `net.minecraft.world.level.block.piston.PistonStructureResolver`
+* **Método Alvo:** `resolve`
+* **Motivo de não usar evento Fabric:** A API pública do Fabric não expõe um callback de pré-resolução para a linha de empurrão de pistões vanilla.
+* **Comportamento:** Intercepta o retorno de `resolve()`, percorre as listas `getToPush()` e `getToDestroy()`, e cancela o resultado se qualquer bloco cruzar bordas protegidas ou cair em uma região com `piston-move` negada.

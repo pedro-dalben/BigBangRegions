@@ -4,6 +4,9 @@ import java.util.*;
 
 public class FlagRegistry {
     private static final Map<String, RegionFlag> flags = new LinkedHashMap<>();
+    private static final Map<String, String> FLAG_ALIASES = Map.of(
+            "piston-movement", "piston-move"
+    );
 
     static {
         // Supported flags (new visitor-* flags from RegionFlagRegistry)
@@ -27,7 +30,7 @@ public class FlagRegistry {
         register(new RegionFlag("fire-spread", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows fire to spread. (Planned)", "environment", false));
         register(new RegionFlag("fluid-flow", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows fluid flow (water/lava). (Planned)", "environment", false));
         register(new RegionFlag("explosion-block-damage", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows explosions to damage blocks.", "environment", true));
-        register(new RegionFlag("piston-move", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows pistons to push/pull blocks. (Planned)", "environment", false));
+        register(new RegionFlag("piston-move", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows pistons to push/pull blocks.", "environment", true));
         register(new RegionFlag("projectile-use", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows launching projectiles. (Planned)", "combat", false));
         register(new RegionFlag("mob-griefing", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows mobs to grief (e.g. Endermen, Creepers). (Planned)", "environment", false));
         register(new RegionFlag("crop-trample", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows players/entities to trample crops. (Planned)", "environment", false));
@@ -41,7 +44,7 @@ public class FlagRegistry {
 
     public static Optional<RegionFlag> get(String id) {
         if (id == null) return Optional.empty();
-        return Optional.ofNullable(flags.get(id.toLowerCase()));
+        return Optional.ofNullable(flags.get(canonicalId(id)));
     }
 
     public static Collection<RegionFlag> getAll() {
@@ -50,6 +53,14 @@ public class FlagRegistry {
 
     public static boolean isRegistered(String id) {
         if (id == null) return false;
-        return flags.containsKey(id.toLowerCase());
+        return flags.containsKey(canonicalId(id));
+    }
+
+    private static String canonicalId(String id) {
+        if (id == null) {
+            return null;
+        }
+        String normalized = id.toLowerCase(java.util.Locale.ROOT);
+        return FLAG_ALIASES.getOrDefault(normalized, normalized);
     }
 }

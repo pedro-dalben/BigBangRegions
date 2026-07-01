@@ -53,6 +53,8 @@ public class MessageHelper {
                 return "PvP está desativado nesta região" + suffix + ".";
             case EXPLOSION_BLOCK_DAMAGE:
                 return "Você não pode causar dano por explosões nesta região" + suffix + ".";
+            case PISTON_MOVE:
+                return "Você não pode mover blocos com pistões nesta região" + suffix + ".";
             case ITEM_PICKUP:
                 return "Você não pode coletar itens nesta região" + suffix + ".";
             case ITEM_DROP:

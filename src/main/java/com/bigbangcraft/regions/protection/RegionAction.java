@@ -10,6 +10,7 @@ public enum RegionAction {
     ENTITY_INTERACT("visitor-item-frames"),
     PVP("pvp"),
     EXPLOSION_BLOCK_DAMAGE("explosion-block-damage"),
+    PISTON_MOVE("piston-move"),
     ITEM_PICKUP("visitor-pickup-items"),
     ITEM_DROP("visitor-drop-items");
 

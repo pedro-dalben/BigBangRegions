@@ -44,7 +44,7 @@ public final class RegionFlagRegistry {
         register("fire-spread", CATEGORY_WORLD, RegionFlagValueType.BOOLEAN, "DENY", "Propagacao de fogo", "OWNER,LEADER");
         register("fire-block-damage", CATEGORY_WORLD, RegionFlagValueType.BOOLEAN, "DENY", "Fogo danifica blocos", "OWNER,LEADER");
         register("explosion-block-damage", CATEGORY_WORLD, RegionFlagValueType.BOOLEAN, "DENY", "Explosoes danificam blocos", "OWNER,LEADER");
-        register("piston-movement", CATEGORY_WORLD, RegionFlagValueType.BOOLEAN, "DENY", "Pistoes movem blocos", "OWNER,LEADER");
+        register("piston-move", CATEGORY_WORLD, RegionFlagValueType.BOOLEAN, "DENY", "Pistoes movem blocos", "OWNER,LEADER");
         register("leaf-decay", CATEGORY_WORLD, RegionFlagValueType.BOOLEAN, "ALLOW", "Folhas decaem", "OWNER,LEADER");
         register("crop-growth", CATEGORY_WORLD, RegionFlagValueType.BOOLEAN, "ALLOW", "Cultivos crescem", "OWNER,LEADER");
         register("block-physics", CATEGORY_WORLD, RegionFlagValueType.BOOLEAN, "ALLOW", "Fisica de blocos", "OWNER,LEADER");
