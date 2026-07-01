@@ -54,4 +54,10 @@ public class AllocationConfigValidationTest {
         config.getPlayerLandAllocation().getBiomeSearch().setSampleGridSize(2); // Even and < 3
         assertFalse(AllocationConfigValidator.isValid(config));
     }
+
+    @Test
+    public void testInvalidRequestTimeout() {
+        config.getPlayerLandAllocation().getScheduler().setRequestTimeoutSeconds(0);
+        assertFalse(AllocationConfigValidator.isValid(config));
+    }
 }

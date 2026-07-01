@@ -104,16 +104,18 @@ public class TerrainAllocationCoordinator {
             }
         }
 
+        BiomeOption biomeOption = opt.get();
+
         String id = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
         AllocationRequest request = new AllocationRequest(
-            id, ownerUuid, opt.get().getKey(), lac.getTargetDimension(),
+            id, ownerUuid, biomeOption.getKey(), lac.getTargetDimension(),
             AllocationRequestState.PENDING, source, ownerUuid, null, null, null, 0, now, now, null, null
         );
 
         requestRepository.save(request);
         creationCooldowns.put(ownerUuid, now);
-        LOGGER.info("Allocation request created: id={}, owner={}, biome={}", id, ownerUuid, opt.get().getKey());
+        LOGGER.info("Allocation request created (search): id={}, owner={}, biome={}", id, ownerUuid, biomeOption.getKey());
         return id;
     }
 
@@ -214,7 +216,7 @@ public class TerrainAllocationCoordinator {
             int maxRing = maxRadiusBlocks / lac.getSlotSize();
 
             while (evaluated < maxCandidates && System.nanoTime() < deadline) {
-                Optional<PlotSlotService.PlotSlotCandidate> optCandidate = iterator.next();
+                Optional<PlotSlotService.PlotSlotCandidate> optCandidate = iterator.peek();
                 if (optCandidate.isEmpty()) {
                     searchIterators.remove(request.getId());
                     failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Nenhum terreno com bioma adequado encontrado no raio limite", level);
@@ -227,18 +229,30 @@ public class TerrainAllocationCoordinator {
                     return 1;
                 }
 
+                if (!slotService.isSlotEligible(candidate.minX, candidate.minZ, lac.getSlotSize())) {
+                    iterator.advance();
+                    continue;
+                }
+
                 evaluated++;
                 int claimOffset = (lac.getSlotSize() - lac.getInitialClaimSize()) / 2;
                 int claimMinX = candidate.minX + claimOffset;
                 int claimMaxX = claimMinX + lac.getInitialClaimSize() - 1;
                 int claimMinZ = candidate.minZ + claimOffset;
                 int claimMaxZ = claimMinZ + lac.getInitialClaimSize() - 1;
-                boolean biomeMatch = biomeSearchService.isBiomeOptionMatching(
+                BiomeSearchService.MatchResult biomeMatch = biomeSearchService.evaluateBiomeOptionMatching(
                     level, claimMinX, claimMaxX,
                     claimMinZ, claimMaxZ,
                     biomeOpt.get()
                 );
-                if (!biomeMatch) continue;
+                if (biomeMatch == BiomeSearchService.MatchResult.PENDING) {
+                    // Keep the same candidate in place until the chunk load completes.
+                    return 1;
+                }
+                iterator.advance();
+                if (biomeMatch != BiomeSearchService.MatchResult.MATCH) {
+                    continue;
+                }
                 String slotId = lac.getTargetDimension() + ":" + candidate.gridX + ":" + candidate.gridZ;
                 PlotSlot existing = slotRepository.getByGrid(lac.getTargetDimension(), candidate.gridX, candidate.gridZ);
                 if (existing != null && (existing.getState() == PlotSlotState.RESERVED || existing.getState() == PlotSlotState.ALLOCATED || existing.getState() == PlotSlotState.OCCUPIED)) {

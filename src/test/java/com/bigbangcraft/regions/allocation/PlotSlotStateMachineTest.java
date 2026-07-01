@@ -73,4 +73,11 @@ public class PlotSlotStateMachineTest {
         assertThrows(IllegalStateException.class, slot::recycle);
     }
 
+    @Test
+    public void testStaleTransitions() {
+        assertTrue(PlotSlotState.AVAILABLE.canTransitionTo(PlotSlotState.STALE));
+        assertTrue(PlotSlotState.STALE.canTransitionTo(PlotSlotState.AVAILABLE));
+        assertFalse(PlotSlotState.STALE.canTransitionTo(PlotSlotState.RESERVED));
+    }
+
 }

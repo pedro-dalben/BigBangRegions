@@ -51,6 +51,38 @@ public class PlotSlotService {
             this.maxRing = startRing + 10000;
         }
 
+        public Optional<PlotSlotCandidate> peek() {
+            if (ring > maxRing) {
+                return Optional.empty();
+            }
+            if (ring == 0) {
+                return Optional.of(new PlotSlotCandidate(0, 0, 0, 0));
+            }
+            int perimeter = 8 * ring;
+            if (counter >= perimeter) {
+                return Optional.empty();
+            }
+            int[] g = perimeterCell(ring, counter);
+            return Optional.of(new PlotSlotCandidate(g[0], g[1], g[0] * slotSize, g[1] * slotSize));
+        }
+
+        public void advance() {
+            if (ring > maxRing) {
+                return;
+            }
+            if (ring == 0) {
+                ring = 1;
+                counter = 0;
+                return;
+            }
+            int perimeter = 8 * ring;
+            counter++;
+            if (counter >= perimeter) {
+                ring++;
+                counter = 0;
+            }
+        }
+
         public Optional<PlotSlotCandidate> next() {
             while (ring <= maxRing) {
                 if (ring == 0) {

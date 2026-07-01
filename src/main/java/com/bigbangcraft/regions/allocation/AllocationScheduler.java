@@ -18,7 +18,8 @@ public class AllocationScheduler {
     private final ConfigManager configManager;
     private int tickCounter;
 
-    public AllocationScheduler(TerrainAllocationCoordinator coordinator, ConfigManager configManager) {
+    public AllocationScheduler(TerrainAllocationCoordinator coordinator,
+                                ConfigManager configManager) {
         this.coordinator = coordinator;
         this.configManager = configManager;
         this.tickCounter = 0;
@@ -30,8 +31,6 @@ public class AllocationScheduler {
 
         tickCounter++;
 
-        Config.SchedulerConfig sc = config.getPlayerLandAllocation().getScheduler();
-
         if (tickCounter % 20 == 0) {
             coordinator.releaseExpiredReservations();
         }
@@ -42,16 +41,12 @@ public class AllocationScheduler {
             ServerLevel level = server.getLevel(dimensionKey);
             if (level == null) return;
 
-            int processed = 0;
-            int maxPerTick = sc.getMaxCandidateEvaluationsPerTick();
-            for (int i = 0; i < maxPerTick; i++) {
-                int result = coordinator.processNextRequest(level);
-                if (result == 0) break;
-                processed++;
-            }
+            // The coordinator already owns the per-request candidate budget.
+            int processed = coordinator.processNextRequest(level);
             if (processed > 0) {
-                LOGGER.debug("Processed {} allocation request(s) this tick", processed);
+                LOGGER.debug("Processed {} allocation request step(s) this tick", processed);
             }
         }
+
     }
 }
