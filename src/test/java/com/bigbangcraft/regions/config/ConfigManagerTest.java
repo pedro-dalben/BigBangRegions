@@ -50,4 +50,34 @@ public class ConfigManagerTest {
         // Confirm the file was not overwritten (original bad content is still there for user to fix)
         assertEquals("{ invalid json garbage }", Files.readString(configFile).trim());
     }
+
+    @Test
+    public void testPartialLegacyConfigGetsSafeSearchDefaults() throws IOException {
+        Path configDir = tempDir.resolve("legacy-config");
+        Files.createDirectories(configDir);
+        Path configFile = configDir.resolve("config.json");
+        Files.writeString(configFile, """
+            {
+              "playerLandAllocation": {
+                "worldgenSearch": {},
+                "notifications": {}
+              }
+            }
+            """);
+
+        ConfigManager manager = new ConfigManager(configDir);
+        manager.load();
+
+        Config.WorldgenSearchConfig worldgen = manager.getConfig().getPlayerLandAllocation().getWorldgenSearch();
+        assertTrue(worldgen.getSectorSizeBlocks() > 0);
+        assertTrue(worldgen.getLocateRadiusBlocks() > 0);
+        assertTrue(worldgen.getBlockCheckInterval() > 0);
+        assertTrue(worldgen.getMaxSearchWorkNanosPerTick() > 0L);
+        assertTrue(worldgen.getMaxSectorsPerRequest() > 0);
+        assertTrue(worldgen.getMaxCandidateSlotsPerAnchor() > 0);
+        assertFalse(worldgen.getAllocationBands().isEmpty());
+
+        Config.NotificationsConfig notifications = manager.getConfig().getPlayerLandAllocation().getNotifications();
+        assertTrue(notifications.getAllocationProgressIntervalSeconds() > 0);
+    }
 }

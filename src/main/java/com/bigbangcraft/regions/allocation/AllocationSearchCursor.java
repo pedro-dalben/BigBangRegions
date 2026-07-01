@@ -1,0 +1,66 @@
+package com.bigbangcraft.regions.allocation;
+
+public class AllocationSearchCursor {
+    private final String requestId;
+    private String currentBandId;
+    private int currentSectorIndex;
+    private int sectorX;
+    private int sectorZ;
+    private int anchorAttempt;
+    private int localCandidateIndex;
+    private int totalSectorsChecked;
+    private int totalVirtualCandidatesChecked;
+    private int totalBiomeSamples;
+    private int sectorsDiscarded;
+    private int anchorsFound;
+    private int locateCallsUsed;
+    private Integer currentAnchorX;
+    private Integer currentAnchorZ;
+    private String currentAnchorBiomeId;
+    private long lastProgressAt;
+    private String lastRejectionReason;
+    private String fallbackMode;
+
+    public AllocationSearchCursor(String requestId) {
+        this.requestId = requestId;
+    }
+
+    public String getRequestId() { return requestId; }
+    public String getCurrentBandId() { return currentBandId; }
+    public int getCurrentSectorIndex() { return currentSectorIndex; }
+    public int getSectorX() { return sectorX; }
+    public int getSectorZ() { return sectorZ; }
+    public int getAnchorAttempt() { return anchorAttempt; }
+    public int getLocalCandidateIndex() { return localCandidateIndex; }
+    public int getTotalSectorsChecked() { return totalSectorsChecked; }
+    public int getTotalVirtualCandidatesChecked() { return totalVirtualCandidatesChecked; }
+    public int getTotalBiomeSamples() { return totalBiomeSamples; }
+    public int getSectorsDiscarded() { return sectorsDiscarded; }
+    public int getAnchorsFound() { return anchorsFound; }
+    public int getLocateCallsUsed() { return locateCallsUsed; }
+    public Integer getCurrentAnchorX() { return currentAnchorX; }
+    public Integer getCurrentAnchorZ() { return currentAnchorZ; }
+    public String getCurrentAnchorBiomeId() { return currentAnchorBiomeId; }
+    public long getLastProgressAt() { return lastProgressAt; }
+    public String getLastRejectionReason() { return lastRejectionReason; }
+    public String getFallbackMode() { return fallbackMode; }
+
+    public void setCurrentBandId(String currentBandId) { this.currentBandId = currentBandId; }
+    public void setCurrentSectorIndex(int currentSectorIndex) { this.currentSectorIndex = currentSectorIndex; }
+    public void setSectorX(int sectorX) { this.sectorX = sectorX; }
+    public void setSectorZ(int sectorZ) { this.sectorZ = sectorZ; }
+    public void setAnchorAttempt(int anchorAttempt) { this.anchorAttempt = anchorAttempt; }
+    public void setLocalCandidateIndex(int localCandidateIndex) { this.localCandidateIndex = localCandidateIndex; }
+    public void setTotalSectorsChecked(int totalSectorsChecked) { this.totalSectorsChecked = totalSectorsChecked; }
+    public void setTotalVirtualCandidatesChecked(int totalVirtualCandidatesChecked) { this.totalVirtualCandidatesChecked = totalVirtualCandidatesChecked; }
+    public void setTotalBiomeSamples(int totalBiomeSamples) { this.totalBiomeSamples = totalBiomeSamples; }
+    public void setSectorsDiscarded(int sectorsDiscarded) { this.sectorsDiscarded = sectorsDiscarded; }
+    public void setAnchorsFound(int anchorsFound) { this.anchorsFound = anchorsFound; }
+    public void setLocateCallsUsed(int locateCallsUsed) { this.locateCallsUsed = locateCallsUsed; }
+    public void setCurrentAnchorX(Integer currentAnchorX) { this.currentAnchorX = currentAnchorX; }
+    public void setCurrentAnchorZ(Integer currentAnchorZ) { this.currentAnchorZ = currentAnchorZ; }
+    public void setCurrentAnchorBiomeId(String currentAnchorBiomeId) { this.currentAnchorBiomeId = currentAnchorBiomeId; }
+    public void setLastProgressAt(long lastProgressAt) { this.lastProgressAt = lastProgressAt; }
+    public void setLastRejectionReason(String lastRejectionReason) { this.lastRejectionReason = lastRejectionReason; }
+    public void setFallbackMode(String fallbackMode) { this.fallbackMode = fallbackMode; }
+}

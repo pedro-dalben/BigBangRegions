@@ -126,6 +126,13 @@ public class DatabaseManager {
             setSchemaVersion(8);
             LOGGER.info("Migration V8 applied successfully.");
         }
+
+        if (currentVersion < 9) {
+            LOGGER.info("Applying migration V9...");
+            executeMigrationResource("/storage/migrations/V009__allocation_search_cursor.sql");
+            setSchemaVersion(9);
+            LOGGER.info("Migration V9 applied successfully.");
+        }
     }
 
     private int getCurrentSchemaVersion() {

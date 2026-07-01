@@ -255,14 +255,38 @@ public class Config {
         public int getFutureMaximumClaimSize() { return futureMaximumClaimSize; }
         public int getSlotInternalMargin() { return slotInternalMargin; }
         public int getMaxRegionsPerOwner() { return maxRegionsPerOwner; }
-        public ExplorationExclusionConfig getExplorationExclusion() { return explorationExclusion; }
-        public BiomeSearchConfig getBiomeSearch() { return biomeSearch; }
-        public WorldgenSearchConfig getWorldgenSearch() { return worldgenSearch; }
-        public SchedulerConfig getScheduler() { return scheduler; }
-        public RegionPreparationConfig getRegionPreparation() { return regionPreparation; }
-        public NotificationsConfig getNotifications() { return notifications; }
-        public PaymentConfig getPayment() { return payment; }
-        public BorderConfig getBorder() { return border; }
+        public ExplorationExclusionConfig getExplorationExclusion() {
+            if (explorationExclusion == null) explorationExclusion = new ExplorationExclusionConfig();
+            return explorationExclusion;
+        }
+        public BiomeSearchConfig getBiomeSearch() {
+            if (biomeSearch == null) biomeSearch = new BiomeSearchConfig();
+            return biomeSearch;
+        }
+        public WorldgenSearchConfig getWorldgenSearch() {
+            if (worldgenSearch == null) worldgenSearch = new WorldgenSearchConfig();
+            return worldgenSearch;
+        }
+        public SchedulerConfig getScheduler() {
+            if (scheduler == null) scheduler = new SchedulerConfig();
+            return scheduler;
+        }
+        public RegionPreparationConfig getRegionPreparation() {
+            if (regionPreparation == null) regionPreparation = new RegionPreparationConfig();
+            return regionPreparation;
+        }
+        public NotificationsConfig getNotifications() {
+            if (notifications == null) notifications = new NotificationsConfig();
+            return notifications;
+        }
+        public PaymentConfig getPayment() {
+            if (payment == null) payment = new PaymentConfig();
+            return payment;
+        }
+        public BorderConfig getBorder() {
+            if (border == null) border = new BorderConfig();
+            return border;
+        }
 
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public void setTargetDimension(String targetDimension) { this.targetDimension = targetDimension; }
@@ -291,12 +315,18 @@ public class Config {
     public static class NotificationsConfig {
         private boolean entryExitEnabled = true;
         private boolean otherPlayerEntryEnabled = false;
+        private boolean allocationProgressEnabled = true;
+        private int allocationProgressIntervalSeconds = 10;
 
         public boolean isEntryExitEnabled() { return entryExitEnabled; }
         public boolean isOtherPlayerEntryEnabled() { return otherPlayerEntryEnabled; }
+        public boolean isAllocationProgressEnabled() { return allocationProgressEnabled; }
+        public int getAllocationProgressIntervalSeconds() { return allocationProgressIntervalSeconds <= 0 ? 10 : allocationProgressIntervalSeconds; }
 
         public void setEntryExitEnabled(boolean val) { this.entryExitEnabled = val; }
         public void setOtherPlayerEntryEnabled(boolean val) { this.otherPlayerEntryEnabled = val; }
+        public void setAllocationProgressEnabled(boolean allocationProgressEnabled) { this.allocationProgressEnabled = allocationProgressEnabled; }
+        public void setAllocationProgressIntervalSeconds(int allocationProgressIntervalSeconds) { this.allocationProgressIntervalSeconds = allocationProgressIntervalSeconds; }
     }
 
     public static class PaymentConfig {
@@ -364,26 +394,84 @@ public class Config {
         private int sampleBlockY = 64;
         private int virtualBiomeCacheMaxEntries = 50000;
         private int virtualBiomeCacheTtlSeconds = 300;
+        private int sectorSizeBlocks = 2048;
         private int locateRadiusBlocks = 1300;
         private int blockCheckInterval = 64;
         private int maxLocateCallsPerSearchStep = 1;
         private int maxLocateCallsPerTick = 1;
+        private long maxSearchWorkNanosPerTick = 750000L;
+        private int maxSearchStepsPerTick = 1;
+        private int maxSectorsPerRequest = 24;
+        private int maxCandidateSlotsPerAnchor = 25;
+        private boolean fallbackSpiralEnabled = false;
+        private int fallbackSpiralMaxCandidates = 8;
+        private List<AllocationBandConfig> allocationBands = List.of(
+            new AllocationBandConfig("primary", 11264, 30000, true)
+        );
 
-        public int getSampleBlockY() { return sampleBlockY; }
-        public int getVirtualBiomeCacheMaxEntries() { return virtualBiomeCacheMaxEntries; }
-        public int getVirtualBiomeCacheTtlSeconds() { return virtualBiomeCacheTtlSeconds; }
-        public int getLocateRadiusBlocks() { return locateRadiusBlocks; }
-        public int getBlockCheckInterval() { return blockCheckInterval; }
-        public int getMaxLocateCallsPerSearchStep() { return maxLocateCallsPerSearchStep; }
-        public int getMaxLocateCallsPerTick() { return maxLocateCallsPerTick; }
+        public int getSampleBlockY() { return sampleBlockY == 0 ? 64 : sampleBlockY; }
+        public int getVirtualBiomeCacheMaxEntries() { return virtualBiomeCacheMaxEntries <= 0 ? 50000 : virtualBiomeCacheMaxEntries; }
+        public int getVirtualBiomeCacheTtlSeconds() { return virtualBiomeCacheTtlSeconds <= 0 ? 300 : virtualBiomeCacheTtlSeconds; }
+        public int getSectorSizeBlocks() { return sectorSizeBlocks <= 0 ? 2048 : sectorSizeBlocks; }
+        public int getLocateRadiusBlocks() { return locateRadiusBlocks <= 0 ? 1300 : locateRadiusBlocks; }
+        public int getBlockCheckInterval() { return blockCheckInterval <= 0 ? 64 : blockCheckInterval; }
+        public int getMaxLocateCallsPerSearchStep() { return maxLocateCallsPerSearchStep <= 0 ? 1 : maxLocateCallsPerSearchStep; }
+        public int getMaxLocateCallsPerTick() { return maxLocateCallsPerTick <= 0 ? 1 : maxLocateCallsPerTick; }
+        public long getMaxSearchWorkNanosPerTick() { return maxSearchWorkNanosPerTick <= 0L ? 2_500_000L : maxSearchWorkNanosPerTick; }
+        public int getMaxSearchStepsPerTick() { return maxSearchStepsPerTick <= 0 ? 1 : maxSearchStepsPerTick; }
+        public int getMaxSectorsPerRequest() { return maxSectorsPerRequest <= 0 ? 24 : maxSectorsPerRequest; }
+        public int getMaxCandidateSlotsPerAnchor() { return maxCandidateSlotsPerAnchor <= 0 ? 25 : maxCandidateSlotsPerAnchor; }
+        public boolean isFallbackSpiralEnabled() { return fallbackSpiralEnabled; }
+        public int getFallbackSpiralMaxCandidates() { return fallbackSpiralMaxCandidates <= 0 ? 8 : fallbackSpiralMaxCandidates; }
+        public List<AllocationBandConfig> getAllocationBands() {
+            if (allocationBands == null || allocationBands.isEmpty()) {
+                allocationBands = List.of(new AllocationBandConfig("primary", 11264, 30000, true));
+            }
+            return allocationBands;
+        }
 
         public void setSampleBlockY(int sampleBlockY) { this.sampleBlockY = sampleBlockY; }
         public void setVirtualBiomeCacheMaxEntries(int virtualBiomeCacheMaxEntries) { this.virtualBiomeCacheMaxEntries = virtualBiomeCacheMaxEntries; }
         public void setVirtualBiomeCacheTtlSeconds(int virtualBiomeCacheTtlSeconds) { this.virtualBiomeCacheTtlSeconds = virtualBiomeCacheTtlSeconds; }
+        public void setSectorSizeBlocks(int sectorSizeBlocks) { this.sectorSizeBlocks = sectorSizeBlocks; }
         public void setLocateRadiusBlocks(int locateRadiusBlocks) { this.locateRadiusBlocks = locateRadiusBlocks; }
         public void setBlockCheckInterval(int blockCheckInterval) { this.blockCheckInterval = blockCheckInterval; }
         public void setMaxLocateCallsPerSearchStep(int maxLocateCallsPerSearchStep) { this.maxLocateCallsPerSearchStep = maxLocateCallsPerSearchStep; }
         public void setMaxLocateCallsPerTick(int maxLocateCallsPerTick) { this.maxLocateCallsPerTick = maxLocateCallsPerTick; }
+        public void setMaxSearchWorkNanosPerTick(long maxSearchWorkNanosPerTick) { this.maxSearchWorkNanosPerTick = maxSearchWorkNanosPerTick; }
+        public void setMaxSearchStepsPerTick(int maxSearchStepsPerTick) { this.maxSearchStepsPerTick = maxSearchStepsPerTick; }
+        public void setMaxSectorsPerRequest(int maxSectorsPerRequest) { this.maxSectorsPerRequest = maxSectorsPerRequest; }
+        public void setMaxCandidateSlotsPerAnchor(int maxCandidateSlotsPerAnchor) { this.maxCandidateSlotsPerAnchor = maxCandidateSlotsPerAnchor; }
+        public void setFallbackSpiralEnabled(boolean fallbackSpiralEnabled) { this.fallbackSpiralEnabled = fallbackSpiralEnabled; }
+        public void setFallbackSpiralMaxCandidates(int fallbackSpiralMaxCandidates) { this.fallbackSpiralMaxCandidates = fallbackSpiralMaxCandidates; }
+        public void setAllocationBands(List<AllocationBandConfig> allocationBands) { this.allocationBands = allocationBands; }
+    }
+
+    public static class AllocationBandConfig {
+        private String id = "primary";
+        private int minRadiusBlocks = 11264;
+        private int maxRadiusBlocks = 30000;
+        private boolean enabled = true;
+
+        public AllocationBandConfig() {
+        }
+
+        public AllocationBandConfig(String id, int minRadiusBlocks, int maxRadiusBlocks, boolean enabled) {
+            this.id = id;
+            this.minRadiusBlocks = minRadiusBlocks;
+            this.maxRadiusBlocks = maxRadiusBlocks;
+            this.enabled = enabled;
+        }
+
+        public String getId() { return id; }
+        public int getMinRadiusBlocks() { return minRadiusBlocks; }
+        public int getMaxRadiusBlocks() { return maxRadiusBlocks; }
+        public boolean isEnabled() { return enabled; }
+
+        public void setId(String id) { this.id = id; }
+        public void setMinRadiusBlocks(int minRadiusBlocks) { this.minRadiusBlocks = minRadiusBlocks; }
+        public void setMaxRadiusBlocks(int maxRadiusBlocks) { this.maxRadiusBlocks = maxRadiusBlocks; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
     }
 
     public static class SchedulerConfig {
@@ -562,7 +650,10 @@ public class Config {
     public Permissions getPermissions() { return permissions; }
     public Defaults getDefaults() { return defaults; }
     public PlayerRegionsConfig getPlayerRegions() { return playerRegions; }
-    public PlayerLandAllocationConfig getPlayerLandAllocation() { return playerLandAllocation; }
+    public PlayerLandAllocationConfig getPlayerLandAllocation() {
+        if (playerLandAllocation == null) playerLandAllocation = new PlayerLandAllocationConfig();
+        return playerLandAllocation;
+    }
     public RegionExpansionConfig getRegionExpansion() { return regionExpansion; }
     public Map<String, BiomeOptionConfig> getBiomeOptions() { return biomeOptions; }
     public JourneyMapConfig getJourneyMap() { return journeyMap; }

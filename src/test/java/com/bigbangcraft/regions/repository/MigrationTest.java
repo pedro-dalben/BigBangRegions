@@ -44,11 +44,12 @@ public class MigrationTest {
             assertTrue(tables.contains("player_region_homes"));
             assertTrue(tables.contains("region_expansion_operations"));
             assertTrue(tables.contains("allocation_request_preparation"));
+            assertTrue(tables.contains("allocation_search_cursor"));
 
-            // 2. Verify schema version is marked as 8
+            // 2. Verify schema version is marked as 9
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(8, rs.getInt(1));
+                assertEquals(9, rs.getInt(1));
             }
 
             // Verify columns added in V2
@@ -84,6 +85,16 @@ public class MigrationTest {
                 }
             }
             assertTrue(allocationColumns.contains("preparation_attempt"));
+
+            List<String> cursorColumns = new ArrayList<>();
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(allocation_search_cursor);")) {
+                while (rs.next()) {
+                    cursorColumns.add(rs.getString("name"));
+                }
+            }
+            assertTrue(cursorColumns.contains("current_band_id"));
+            assertTrue(cursorColumns.contains("current_sector_index"));
+            assertTrue(cursorColumns.contains("last_rejection_reason"));
         } finally {
             dbManager.close();
         }
