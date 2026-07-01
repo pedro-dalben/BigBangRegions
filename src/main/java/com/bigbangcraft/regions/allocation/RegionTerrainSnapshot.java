@@ -30,6 +30,7 @@ final class RegionTerrainSnapshot {
     }
 
     static void capture(ServerLevel level, RegionBounds bounds, BlockPos homePos, String regionId, Path directory) throws IOException {
+        ChunkAccessGuard.assertAllowed(AllocationPhase.REGION_CREATING);
         Files.createDirectories(directory);
 
         CompoundTag root = new CompoundTag();
@@ -41,6 +42,7 @@ final class RegionTerrainSnapshot {
     }
 
     static boolean restore(ServerLevel level, Region region, Path directory) throws IOException {
+        ChunkAccessGuard.assertAllowed(AllocationPhase.REGION_CREATING);
         Path file = snapshotPath(directory, region.getId());
         if (!Files.exists(file)) {
             return false;
@@ -53,7 +55,10 @@ final class RegionTerrainSnapshot {
             return false;
         }
 
-        forceLoadChunks(level, region.getBounds());
+        if (!areChunksLoaded(level, region.getBounds())) {
+            LOGGER.warn("Skipping restore for {} because required chunks are not already loaded", region.getId());
+            return false;
+        }
 
         HolderGetter<Block> blockRegistry = level.registryAccess().lookupOrThrow(Registries.BLOCK);
         ListTag blocks = root.getList("blocks", 10);
@@ -134,7 +139,7 @@ final class RegionTerrainSnapshot {
         blocks.add(entry);
     }
 
-    private static void forceLoadChunks(ServerLevel level, RegionBounds bounds) {
+    private static boolean areChunksLoaded(ServerLevel level, RegionBounds bounds) {
         int minChunkX = bounds.getMinX() >> 4;
         int maxChunkX = bounds.getMaxX() >> 4;
         int minChunkZ = bounds.getMinZ() >> 4;
@@ -142,9 +147,12 @@ final class RegionTerrainSnapshot {
 
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                level.getChunkSource().getChunk(cx, cz, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true);
+                if (level.getChunkSource().getChunkNow(cx, cz) == null) {
+                    return false;
+                }
             }
         }
+        return true;
     }
 
     private static Path snapshotPath(Path directory, String regionId) {

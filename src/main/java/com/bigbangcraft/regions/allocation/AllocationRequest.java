@@ -21,6 +21,7 @@ public class AllocationRequest {
 
     private int retryCount;
     private Long nextRetryAt;
+    private int preparationAttempt;
 
     public AllocationRequest(String id, UUID ownerUuid, String requestedBiomeOption, String targetDimension,
                              AllocationRequestState state, String source, UUID requestedByUuid, String regionId,
@@ -60,6 +61,7 @@ public class AllocationRequest {
     public Long getCancelledAt() { return cancelledAt; }
     public int getRetryCount() { return retryCount; }
     public Long getNextRetryAt() { return nextRetryAt; }
+    public int getPreparationAttempt() { return preparationAttempt; }
 
     public void transitionTo(AllocationRequestState nextState) {
         if (!state.canTransitionTo(nextState)) {
@@ -73,6 +75,8 @@ public class AllocationRequest {
             this.cancelledAt = this.updatedAt;
         } else if (nextState == AllocationRequestState.CANCELLED) {
             this.cancelledAt = this.updatedAt;
+        } else if (nextState == AllocationRequestState.PAUSED_RECOVERY) {
+            this.nextRetryAt = null;
         }
     }
 
@@ -85,6 +89,8 @@ public class AllocationRequest {
             this.cancelledAt = this.updatedAt;
         } else if (nextState == AllocationRequestState.CANCELLED) {
             this.cancelledAt = this.updatedAt;
+        } else if (nextState == AllocationRequestState.PAUSED_RECOVERY) {
+            this.nextRetryAt = null;
         }
     }
 
@@ -120,6 +126,16 @@ public class AllocationRequest {
 
     public void incrementRetryCount() {
         this.retryCount++;
+        this.updatedAt = System.currentTimeMillis();
+    }
+
+    public void incrementPreparationAttempt() {
+        this.preparationAttempt++;
+        this.updatedAt = System.currentTimeMillis();
+    }
+
+    public void setPreparationAttempt(int preparationAttempt) {
+        this.preparationAttempt = preparationAttempt;
         this.updatedAt = System.currentTimeMillis();
     }
 

@@ -33,8 +33,8 @@ public class AllocationRequestRepository {
         String sql = "INSERT OR REPLACE INTO player_region_allocation_requests (" +
                 "id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
                 "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, created_at, updated_at, " +
-                "completed_at, cancelled_at, retry_count, next_retry_at" +
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                "completed_at, cancelled_at, retry_count, next_retry_at, preparation_attempt" +
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, request.getId());
             pstmt.setString(2, request.getOwnerUuid().toString());
@@ -53,6 +53,7 @@ public class AllocationRequestRepository {
             pstmt.setObject(15, request.getCancelledAt());
             pstmt.setInt(16, request.getRetryCount());
             pstmt.setObject(17, request.getNextRetryAt());
+            pstmt.setInt(18, request.getPreparationAttempt());
             pstmt.executeUpdate();
         }
     }
@@ -61,7 +62,7 @@ public class AllocationRequestRepository {
         synchronized (dbManager) {
             String sql = "SELECT id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
                     "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, " +
-                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at " +
+                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at, preparation_attempt " +
                     "FROM player_region_allocation_requests WHERE id = ?;";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -82,10 +83,10 @@ public class AllocationRequestRepository {
         synchronized (dbManager) {
             String sql = "SELECT id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
                     "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, " +
-                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at " +
+                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at, preparation_attempt " +
                     "FROM player_region_allocation_requests WHERE owner_uuid = ? AND state IN (" +
-                    "'PENDING', 'SEARCHING', 'SLOT_RESERVED', " +
-                    "'PREPARING', 'REGION_CREATING');";
+                    "'PENDING', 'VIRTUAL_SEARCHING', 'VIRTUAL_VALIDATED', 'SLOT_RESERVED', " +
+                    "'PREPARING_CHUNKS', 'WAITING_FOR_CHUNKS', 'VALIDATING_LOADED_WORLD', 'REGION_CREATING', 'PAUSED_RECOVERY');";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
                 pstmt.setString(1, ownerUuid.toString());
@@ -106,10 +107,10 @@ public class AllocationRequestRepository {
             List<AllocationRequest> list = new ArrayList<>();
             String sql = "SELECT id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
                     "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, " +
-                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at " +
+                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at, preparation_attempt " +
                     "FROM player_region_allocation_requests WHERE state IN (" +
-                    "'PENDING', 'SEARCHING', 'SLOT_RESERVED', " +
-                    "'PREPARING', 'REGION_CREATING');";
+                    "'PENDING', 'VIRTUAL_SEARCHING', 'VIRTUAL_VALIDATED', 'SLOT_RESERVED', " +
+                    "'PREPARING_CHUNKS', 'WAITING_FOR_CHUNKS', 'VALIDATING_LOADED_WORLD', 'REGION_CREATING');";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql);
                  ResultSet rs = pstmt.executeQuery()) {
@@ -131,7 +132,7 @@ public class AllocationRequestRepository {
             List<AllocationRequest> list = new ArrayList<>();
             String sql = "SELECT id, owner_uuid, requested_biome_option, target_dimension, state, source, " +
                     "requested_by_uuid, region_id, plot_slot_id, failure_reason, attempts, " +
-                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at " +
+                    "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at, preparation_attempt " +
                     "FROM player_region_allocation_requests WHERE state IN (" +
                     "'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', 'PAYMENT_RENEW_PENDING', " +
                     "'REGION_CREATED_PAYMENT_CAPTURE_PENDING', 'RELEASE_PENDING', " +
@@ -187,9 +188,8 @@ public class AllocationRequestRepository {
         );
 
         request.setRetryCount(rs.getInt("retry_count"));
-
-        Long nextRetryAt = rs.getObject("next_retry_at") != null ? rs.getLong("next_retry_at") : null;
-        request.setNextRetryAt(nextRetryAt);
+        request.setNextRetryAt(rs.getObject("next_retry_at") != null ? rs.getLong("next_retry_at") : null);
+        request.setPreparationAttempt(rs.getInt("preparation_attempt"));
 
         return request;
     }

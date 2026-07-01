@@ -243,6 +243,7 @@ public class Config {
         private BiomeSearchConfig biomeSearch = new BiomeSearchConfig();
         private WorldgenSearchConfig worldgenSearch = new WorldgenSearchConfig();
         private SchedulerConfig scheduler = new SchedulerConfig();
+        private RegionPreparationConfig regionPreparation = new RegionPreparationConfig();
         private NotificationsConfig notifications = new NotificationsConfig();
         private PaymentConfig payment = new PaymentConfig();
         private BorderConfig border = new BorderConfig();
@@ -258,6 +259,7 @@ public class Config {
         public BiomeSearchConfig getBiomeSearch() { return biomeSearch; }
         public WorldgenSearchConfig getWorldgenSearch() { return worldgenSearch; }
         public SchedulerConfig getScheduler() { return scheduler; }
+        public RegionPreparationConfig getRegionPreparation() { return regionPreparation; }
         public NotificationsConfig getNotifications() { return notifications; }
         public PaymentConfig getPayment() { return payment; }
         public BorderConfig getBorder() { return border; }
@@ -270,6 +272,20 @@ public class Config {
         public void setSlotInternalMargin(int slotInternalMargin) { this.slotInternalMargin = slotInternalMargin; }
         public void setMaxRegionsPerOwner(int maxRegionsPerOwner) { this.maxRegionsPerOwner = maxRegionsPerOwner; }
         public void setWorldgenSearch(WorldgenSearchConfig worldgenSearch) { this.worldgenSearch = worldgenSearch; }
+    }
+
+    public static class RegionPreparationConfig {
+        private int maxConcurrentPreparations = 1;
+        private int maxChunksPerPreparation = 9;
+        private int timeoutSeconds = 45;
+
+        public int getMaxConcurrentPreparations() { return maxConcurrentPreparations; }
+        public int getMaxChunksPerPreparation() { return maxChunksPerPreparation; }
+        public int getTimeoutSeconds() { return timeoutSeconds; }
+
+        public void setMaxConcurrentPreparations(int maxConcurrentPreparations) { this.maxConcurrentPreparations = maxConcurrentPreparations; }
+        public void setMaxChunksPerPreparation(int maxChunksPerPreparation) { this.maxChunksPerPreparation = maxChunksPerPreparation; }
+        public void setTimeoutSeconds(int timeoutSeconds) { this.timeoutSeconds = timeoutSeconds; }
     }
 
     public static class NotificationsConfig {

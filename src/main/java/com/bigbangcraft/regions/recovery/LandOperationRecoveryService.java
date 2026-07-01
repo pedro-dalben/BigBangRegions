@@ -62,7 +62,14 @@ public class LandOperationRecoveryService {
             AllocationRequestState state = request.getState();
             boolean changed = false;
 
-            if (state == AllocationRequestState.REGION_CREATING) {
+            if (state == AllocationRequestState.PREPARING_CHUNKS
+                || state == AllocationRequestState.WAITING_FOR_CHUNKS
+                || state == AllocationRequestState.VALIDATING_LOADED_WORLD) {
+                request.forceTransitionTo(AllocationRequestState.PAUSED_RECOVERY);
+                request.setFailureReason("Recuperacao: preparacao fisica interrompida. Recovery explicito necessario.");
+                requestRepository.save(request);
+                changed = true;
+            } else if (state == AllocationRequestState.REGION_CREATING) {
                 changed = recoverRegionCreating(request);
             } else if (state.isLegacyPaymentState() && state != AllocationRequestState.LEGACY_REQUIRES_ADMIN_REVIEW) {
                 request.forceTransitionTo(AllocationRequestState.LEGACY_REQUIRES_ADMIN_REVIEW);
@@ -93,8 +100,8 @@ public class LandOperationRecoveryService {
     private boolean recoverRegionCreating(AllocationRequest request) {
         String regionId = request.getRegionId();
         if (regionId == null) {
-            LOGGER.warn("RECOVERY: Request {} in REGION_CREATING has no regionId. Moving to BLOCKED.", request.getId());
-            request.forceTransitionTo(AllocationRequestState.BLOCKED_FOR_MANUAL_RECONCILIATION);
+            LOGGER.warn("RECOVERY: Request {} in REGION_CREATING has no regionId. Moving to PAUSED_RECOVERY.", request.getId());
+            request.forceTransitionTo(AllocationRequestState.PAUSED_RECOVERY);
             request.setFailureReason("Recuperacao: REGION_CREATING sem region_id.");
             requestRepository.save(request);
             return true;
@@ -113,16 +120,16 @@ public class LandOperationRecoveryService {
         if (slotId != null) {
             PlotSlot slot = slotRepository.get(slotId);
             if (slot != null && slot.getState() == PlotSlotState.RESERVED) {
-                LOGGER.info("RECOVERY: Request {} region not created, slot still RESERVED. Scheduling retry.", request.getId());
-                request.incrementRetryCount();
-                request.setNextRetryAt(System.currentTimeMillis() + 5000);
+                LOGGER.info("RECOVERY: Request {} region not created, slot still RESERVED. Moving to PAUSED_RECOVERY.", request.getId());
+                request.forceTransitionTo(AllocationRequestState.PAUSED_RECOVERY);
+                request.setFailureReason("Recuperacao: criacao fisica interrompida antes da conclusao.");
                 requestRepository.save(request);
                 return true;
             }
         }
 
-        LOGGER.warn("RECOVERY: Request {} cannot recover. Moving to BLOCKED.", request.getId());
-        request.forceTransitionTo(AllocationRequestState.BLOCKED_FOR_MANUAL_RECONCILIATION);
+        LOGGER.warn("RECOVERY: Request {} cannot recover automatically. Moving to PAUSED_RECOVERY.", request.getId());
+        request.forceTransitionTo(AllocationRequestState.PAUSED_RECOVERY);
         request.setFailureReason("Recuperacao: falha na criacao da regiao.");
         requestRepository.save(request);
         return true;
