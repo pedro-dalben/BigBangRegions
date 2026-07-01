@@ -144,6 +144,11 @@ public class RegionsCommand {
                             .executes(RegionsCommand::adminCancelAllocation)
                         )
                     )
+                    .then(Commands.literal("inspect")
+                        .then(Commands.argument("requestId", StringArgumentType.word())
+                            .executes(RegionsCommand::inspectAllocationById)
+                        )
+                    )
                 )
             )
             .then(Commands.literal("admin")
@@ -277,7 +282,7 @@ public class RegionsCommand {
         }
         if (isCommandEnabled("criar")) {
             builder.then(Commands.literal("criar")
-                .requires(source -> checkPermission(source, "bigbangregions.admin.create"))
+                .requires(source -> checkPermission(source, "bigbangregions.player.create"))
                 .then(Commands.argument("bioma", StringArgumentType.greedyString())
                     .executes(RegionsCommand::createPlayerAllocation)
                 )
@@ -379,6 +384,11 @@ public class RegionsCommand {
 
         dispatcher.register(Commands.literal("regionadmin")
             .requires(source -> checkPermission(source, "bigbangregions.admin.panel"))
+            .then(Commands.literal("allocation")
+                .then(Commands.argument("player", StringArgumentType.word())
+                    .executes(RegionsCommand::adminAllocationStatus)
+                )
+            )
             .executes(context -> {
                 CommandSourceStack source = context.getSource();
                 ServerPlayer player = source.getPlayer();
@@ -404,6 +414,83 @@ public class RegionsCommand {
                 return 1;
             })
         );
+    }
+
+    private static String formatPlayerAllocationStatus(com.bigbangcraft.regions.allocation.AllocationStatusSnapshot snapshot) {
+        var request = snapshot.request();
+        var cursor = snapshot.cursor();
+        int percent = cursor == null || snapshot.totalKnownSectors() <= 0
+            ? 0
+            : Math.min(100, (cursor.getTotalSectorsChecked() * 100) / snapshot.totalKnownSectors());
+        return "§6=== Criação de Terreno ===\n" +
+            "§eBiome escolhido: §f" + snapshot.biomeDisplayName() + "\n" +
+            "§eRequest: §f" + request.getId().substring(0, 8) + "\n" +
+            "§eEstado: §f" + snapshot.statusLine() + "\n" +
+            "§eTempo decorrido: §f" + formatDuration(snapshot.elapsedMillis()) + "\n" +
+            "§eTentativas de busca: §f" + request.getAttempts() + "\n\n" +
+            (cursor == null ? "" : "§eBanda atual: §f" + nullSafe(cursor.getCurrentBandId()) + "\n" +
+                "§eSetor atual: §f" + (cursor.getCurrentSectorIndex() + 1) + " / " + snapshot.totalKnownSectors() + "\n" +
+                "§eSetores descartados: §f" + cursor.getSectorsDiscarded() + "\n" +
+                "§eÂncoras encontradas: §f" + cursor.getAnchorsFound() + "\n" +
+                "§eSlots locais avaliados: §f" + cursor.getTotalVirtualCandidatesChecked() + "\n" +
+                "§eÚltimo motivo de descarte: §f" + nullSafe(cursor.getLastRejectionReason()) + "\n\n" +
+                "§eProgresso: §f[" + progressBar(percent) + "§f] " + percent + "%\n") +
+            "§7Você não precisa permanecer parado.\n" +
+            "§7A busca continua mesmo se você fechar o menu.\n" +
+            "§7Use /regions criar cancelar para cancelar.";
+    }
+
+    private static String formatAdminAllocationStatus(com.bigbangcraft.regions.allocation.AllocationStatusSnapshot snapshot) {
+        var request = snapshot.request();
+        var cursor = snapshot.cursor();
+        return "§6=== Allocation Inspect ===\n" +
+            "§eRequest ID: §f" + request.getId() + "\n" +
+            "§eJogador: §f" + request.getOwnerUuid() + "\n" +
+            "§eBiome option: §f" + request.getRequestedBiomeOption() + "\n" +
+            "§eEstado: §f" + request.getState() + "\n" +
+            "§eCreated at: §f" + new java.util.Date(request.getCreatedAt()) + "\n" +
+            "§eUpdated at: §f" + new java.util.Date(request.getUpdatedAt()) + "\n" +
+            "§eElapsed: §f" + formatDuration(snapshot.elapsedMillis()) + "\n" +
+            "§eTimeout restante: §f" + formatDuration(snapshot.timeoutRemainingMillis()) + "\n" +
+            "§eAttempts: §f" + request.getAttempts() + "\n" +
+            "§eFalha atual: §f" + nullSafe(request.getFailureReason()) + "\n" +
+            (cursor == null ? "" : "§eCursor: §fband=" + nullSafe(cursor.getCurrentBandId()) +
+                ", sectorIndex=" + cursor.getCurrentSectorIndex() +
+                ", sector=(" + cursor.getSectorX() + "," + cursor.getSectorZ() + ")\n" +
+                "§eÂncora atual: §f" + nullSafe(cursor.getCurrentAnchorBiomeId()) +
+                " @ " + nullSafe(cursor.getCurrentAnchorX()) + "," + nullSafe(cursor.getCurrentAnchorZ()) + "\n" +
+                "§eCandidatos avaliados: §f" + cursor.getTotalVirtualCandidatesChecked() + "\n" +
+                "§eSetores descartados: §f" + cursor.getSectorsDiscarded() + "\n" +
+                "§eLocate calls: §f" + cursor.getLocateCallsUsed() + "\n" +
+                "§eÚltima rejeição: §f" + nullSafe(cursor.getLastRejectionReason()) + "\n" +
+                "§eFallback: §f" + nullSafe(cursor.getFallbackMode()) + "\n") +
+            "§eSlot reservado: §f" + nullSafe(request.getPlotSlotId()) + "\n" +
+            "§ePreparation attempt: §f" + request.getPreparationAttempt() + "\n" +
+            "§eNext retry: §f" + (request.getNextRetryAt() == null ? "-" : new java.util.Date(request.getNextRetryAt()));
+    }
+
+    private static String formatDuration(long millis) {
+        long totalSeconds = Math.max(0L, millis / 1000L);
+        long minutes = totalSeconds / 60L;
+        long seconds = totalSeconds % 60L;
+        return minutes + "m " + seconds + "s";
+    }
+
+    private static String progressBar(int percent) {
+        int filled = Math.max(0, Math.min(20, percent / 5));
+        StringBuilder sb = new StringBuilder("§a");
+        for (int i = 0; i < filled; i++) {
+            sb.append('█');
+        }
+        sb.append("§7");
+        for (int i = filled; i < 20; i++) {
+            sb.append('░');
+        }
+        return sb.toString();
+    }
+
+    private static String nullSafe(Object value) {
+        return value == null ? "-" : String.valueOf(value);
     }
 
     private static boolean checkPermission(CommandSourceStack source, String permission) {
@@ -989,18 +1076,13 @@ public class RegionsCommand {
             return 0;
         }
         try {
-            var request = BigBangRegions.getAllocationCoordinator().getActiveRequest(player.getUUID());
+            var snapshot = BigBangRegions.getAllocationCoordinator().getAllocationStatus(player.getUUID());
             long creationCooldown = BigBangRegions.getAllocationCoordinator().getCreationCooldownRemaining(player.getUUID());
             long homeCooldown = BigBangRegions.getAllocationCoordinator().getHomeTeleportCooldownRemaining(player.getUUID());
-            if (request == null) {
+            if (snapshot == null) {
                 source.sendSuccess(() -> Component.literal("§eVoce nao possui um pedido de alocacao ativo."), false);
             } else {
-                source.sendSuccess(() -> Component.literal("§6Pedido de alocacao:\n" +
-                    "§eID: §f" + request.getId() + "\n" +
-                    "§eEstado: §f" + request.getState() + "\n" +
-                    "§eBioma: §f" + request.getRequestedBiomeOption() + "\n" +
-                    (request.getFailureReason() != null ? "§eMotivo: §c" + request.getFailureReason() + "\n" : "") +
-                    "§eCriado em: §f" + new java.util.Date(request.getCreatedAt())), false);
+                source.sendSuccess(() -> Component.literal(formatPlayerAllocationStatus(snapshot)), false);
             }
             if (creationCooldown > 0) {
                 source.sendSuccess(() -> Component.literal("§eCooldown de criacao: §f" + creationCooldown + "s"), false);
@@ -1364,23 +1446,34 @@ public class RegionsCommand {
                 source.sendFailure(Component.literal("Jogador não encontrado: " + playerName));
                 return 0;
             }
-            var request = BigBangRegions.getAllocationCoordinator().getActiveRequest(opt.get().getId());
-            if (request == null) {
+            var snapshot = BigBangRegions.getAllocationCoordinator().getAllocationStatus(opt.get().getId());
+            if (snapshot == null) {
                 source.sendSuccess(() -> Component.literal("Jogador '" + playerName + "' não possui pedido de alocação ativo.")
                     .withStyle(ChatFormatting.YELLOW), false);
                 return 1;
             }
-            source.sendSuccess(() -> Component.literal("§6Pedido de alocação:\n" +
-                "§eID: §f" + request.getId() + "\n" +
-                "§eEstado: §f" + request.getState() + "\n" +
-                "§eBioma: §f" + request.getRequestedBiomeOption() + "\n" +
-                "§eTentativas: §f" + request.getAttempts() + "\n" +
-                "§eCriado em: §f" + new java.util.Date(request.getCreatedAt())), false);
+            source.sendSuccess(() -> Component.literal(formatAdminAllocationStatus(snapshot)), false);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));
             return 0;
         }
+    }
+
+    private static int inspectAllocationById(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.player.allocation.inspect")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        String requestId = StringArgumentType.getString(context, "requestId");
+        var snapshot = BigBangRegions.getAllocationCoordinator().inspectAllocation(requestId);
+        if (snapshot == null) {
+            source.sendFailure(Component.literal("Pedido não encontrado: " + requestId));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(formatAdminAllocationStatus(snapshot)), false);
+        return 1;
     }
 
     private static int adminCancelAllocation(CommandContext<CommandSourceStack> context) {

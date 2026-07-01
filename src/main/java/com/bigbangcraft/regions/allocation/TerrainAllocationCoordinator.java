@@ -9,6 +9,7 @@ import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.domain.RegionType;
 import com.bigbangcraft.regions.repository.AllocationRequestPreparationRepository;
 import com.bigbangcraft.regions.repository.AllocationRequestRepository;
+import com.bigbangcraft.regions.repository.AllocationSearchCursorRepository;
 import com.bigbangcraft.regions.repository.PlayerRegionHomeRepository;
 import com.bigbangcraft.regions.repository.PlotSlotRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
@@ -28,26 +29,33 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class TerrainAllocationCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-TerrainAllocationCoordinator");
 
-    private final Map<String, PlotSlotService.PlotSlotIterator> searchIterators = new ConcurrentHashMap<>();
     private final Map<String, PreparationHandle> preparationHandles = new ConcurrentHashMap<>();
     private final Map<String, PreparationResult> completedPreparations = new ConcurrentHashMap<>();
     private final Map<String, LoadedWorldValidationResult> validatedWorlds = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastProgressNotifications = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastProgressLogs = new ConcurrentHashMap<>();
+    private final Map<String, List<int[]>> sectorSequenceCache = new ConcurrentHashMap<>();
 
     private final ConfigManager configManager;
     private final DatabaseManager databaseManager;
     private final AllocationRequestRepository requestRepository;
     private final AllocationRequestPreparationRepository preparationRepository;
+    private final AllocationSearchCursorRepository cursorRepository;
     private final PlotSlotRepository slotRepository;
     private final PlotSlotService slotService;
     private final PlayerRegionHomeRepository homeRepository;
@@ -79,6 +87,7 @@ public class TerrainAllocationCoordinator {
         this.databaseManager = databaseManager;
         this.requestRepository = requestRepository;
         this.preparationRepository = new AllocationRequestPreparationRepository(databaseManager);
+        this.cursorRepository = new AllocationSearchCursorRepository(databaseManager);
         this.slotRepository = slotRepository;
         this.slotService = slotService;
         this.homeRepository = homeRepository;
@@ -396,7 +405,8 @@ public class TerrainAllocationCoordinator {
             request.setPlotSlotId(slotId);
             searchIterators.remove(request.getId());
             requestRepository.save(request);
-            LOGGER.info("Slot reserved: slotId={}, request={}, grid=({},{})", slotId, request.getId(), candidate.gridX, candidate.gridZ);
+            maybeEmitProgress(request, level, cursor);
+            cursorRepository.save(cursor);
             return 1;
         }
 
@@ -880,6 +890,64 @@ public class TerrainAllocationCoordinator {
         );
     }
 
+
+    private List<Config.AllocationBandConfig> enabledBands(Config.WorldgenSearchConfig worldgen) {
+        return worldgen.getAllocationBands().stream()
+            .filter(Config.AllocationBandConfig::isEnabled)
+            .sorted(Comparator.comparingInt(Config.AllocationBandConfig::getMinRadiusBlocks))
+            .toList();
+    }
+
+    public AllocationStatusSnapshot getAllocationStatus(UUID ownerUuid) {
+        AllocationRequest request = getActiveRequest(ownerUuid);
+        return request == null ? null : inspectAllocation(request.getId());
+    }
+
+    public AllocationStatusSnapshot inspectAllocation(String requestId) {
+        AllocationRequest request = requestRepository.get(requestId);
+        if (request == null) {
+            return null;
+        }
+        AllocationSearchCursor cursor = cursorRepository.get(requestId);
+        Optional<BiomeOption> biome = biomeOptionRegistry.lookup(request.getRequestedBiomeOption());
+        long now = System.currentTimeMillis();
+        Config.SchedulerConfig scheduler = configManager.getConfig().getPlayerLandAllocation().getScheduler();
+        long elapsed = now - request.getCreatedAt();
+        long timeoutRemaining = Math.max(0L, scheduler.getRequestTimeoutSeconds() * 1000L - elapsed);
+        Config.WorldgenSearchConfig worldgen = configManager.getConfig().getPlayerLandAllocation().getWorldgenSearch();
+        int totalKnownSectors = Math.max(1, enabledBands(worldgen).size() * Math.max(1, worldgen.getMaxSectorsPerRequest()));
+        return new AllocationStatusSnapshot(
+            request,
+            cursor,
+            biome.map(BiomeOption::getDisplayName).orElse(request.getRequestedBiomeOption()),
+            elapsed,
+            timeoutRemaining,
+            totalKnownSectors,
+            describeState(request)
+        );
+    }
+
+    private String describeState(AllocationRequest request) {
+        return switch (request.getState()) {
+            case VIRTUAL_SEARCHING -> "Procurando bioma virtualmente";
+            case VIRTUAL_VALIDATED -> "Area validada virtualmente";
+            case SLOT_RESERVED -> "Slot reservado";
+            case PREPARING_CHUNKS, WAITING_FOR_CHUNKS -> "Preparando sua regiao";
+            case VALIDATING_LOADED_WORLD -> "Validando terreno carregado";
+            case REGION_CREATING -> "Criando regiao";
+            default -> request.getState().name();
+        };
+    }
+
+    private String describeProgressLine(AllocationSearchCursor cursor) {
+        if (cursor.getCurrentAnchorBiomeId() != null) {
+            return "Encontramos uma area promissora. Validando terreno...";
+        }
+        if (cursor.getFallbackMode() != null) {
+            return "Busca em fallback limitado. Candidatos testados: " + cursor.getTotalVirtualCandidatesChecked();
+        }
+        return "Procurando uma area do bioma solicitado... setores descartados: " + cursor.getSectorsDiscarded();
+    }
     private boolean isTimedOut(AllocationRequest request, Config.SchedulerConfig sc) {
         return System.currentTimeMillis() - request.getUpdatedAt() > sc.getRequestTimeoutSeconds() * 1000L;
     }
