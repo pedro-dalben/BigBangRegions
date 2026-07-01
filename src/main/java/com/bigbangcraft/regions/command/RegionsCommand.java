@@ -3,8 +3,10 @@ package com.bigbangcraft.regions.command;
 import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.audit.AuditService;
 import com.bigbangcraft.regions.cache.RegionCache;
+import com.bigbangcraft.regions.allocation.BiomeOption;
 import com.bigbangcraft.regions.event.RegionChangeEvent;
 import com.bigbangcraft.regions.event.RegionEventBus;
+import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
@@ -36,6 +38,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 
 import java.util.*;
 
@@ -1401,6 +1404,19 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("§c" + e.getMessage()));
             return 0;
         }
+    }
+
+    private static Optional<String> resolveBiomeOptionKey(String query) {
+        if (query == null || query.isBlank()) {
+            return Optional.empty();
+        }
+        String normalized = query.trim();
+        for (BiomeOption option : BigBangRegions.getAllocationCoordinator().getBiomeOptions()) {
+            if (option.matches(normalized)) {
+                return Optional.of(option.getKey());
+            }
+        }
+        return Optional.empty();
     }
 
     private static Optional<GameProfile> lookupProfile(CommandSourceStack source, String name) {

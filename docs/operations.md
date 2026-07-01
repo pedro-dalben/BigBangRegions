@@ -2,6 +2,10 @@
 
 Guia prático para administradores gerenciarem o BigBang Regions no servidor de produção.
 
+## Sequência de Entrada no Servidor
+
+Não há warmup manual. A criação de terrenos usa a busca normal do mod e o servidor pode subir sem nenhuma ação adicional.
+
 ## Gerenciamento de Regiões Administrativas
 
 ### Criar um Spawn Protegido
