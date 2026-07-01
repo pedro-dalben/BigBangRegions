@@ -105,7 +105,7 @@ public class LandOperationRecoveryServiceTest {
 
         AllocationRequest recovered = requestRepository.get(requestId);
         assertNotNull(recovered);
-        assertTrue(recovered.getState().isTerminal() || recovered.getState() == AllocationRequestState.REGION_CREATING);
+        assertEquals(AllocationRequestState.PAUSED_RECOVERY, recovered.getState());
     }
 
     @Test
@@ -254,7 +254,7 @@ public class LandOperationRecoveryServiceTest {
         recoveryService.recover();
 
         AllocationRequest recovered = requestRepository.get(requestId);
-        assertEquals(AllocationRequestState.BLOCKED_FOR_MANUAL_RECONCILIATION, recovered.getState());
+        assertEquals(AllocationRequestState.PAUSED_RECOVERY, recovered.getState());
     }
 
     @Test
@@ -269,6 +269,6 @@ public class LandOperationRecoveryServiceTest {
         recoveryService.recover();
 
         AllocationRequest recovered = requestRepository.get(requestId);
-        assertEquals(AllocationRequestState.BLOCKED_FOR_MANUAL_RECONCILIATION, recovered.getState());
+        assertEquals(AllocationRequestState.PAUSED_RECOVERY, recovered.getState());
     }
 }
