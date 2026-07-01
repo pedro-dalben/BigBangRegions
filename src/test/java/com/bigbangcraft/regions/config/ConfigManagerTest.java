@@ -30,6 +30,8 @@ public class ConfigManagerTest {
         assertEquals("ALLOW", config.getDefaults().getGlobal().get("visitor-build"));
         assertEquals("DENY", config.getDefaults().getAdminRegion().get("visitor-build"));
         assertEquals(5, config.getPlayerLandAllocation().getBiomeSearch().getSampleGridSize());
+        assertEquals(64, config.getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY());
+        assertEquals(50000, config.getPlayerLandAllocation().getWorldgenSearch().getVirtualBiomeCacheMaxEntries());
         assertEquals(1, config.getPlayerLandAllocation().getScheduler().getMaxActiveRequests());
 
         // 2. Corrupt file with invalid JSON
@@ -43,6 +45,7 @@ public class ConfigManagerTest {
         assertNotNull(fallbackConfig);
         assertEquals(1000, fallbackConfig.getDefaultPriorities().getAdminRegion());
         assertEquals(5, fallbackConfig.getPlayerLandAllocation().getBiomeSearch().getSampleGridSize());
+        assertEquals(64, fallbackConfig.getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY());
         
         // Confirm the file was not overwritten (original bad content is still there for user to fix)
         assertEquals("{ invalid json garbage }", Files.readString(configFile).trim());

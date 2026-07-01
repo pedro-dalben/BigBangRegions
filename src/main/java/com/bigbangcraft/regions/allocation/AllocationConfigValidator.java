@@ -55,6 +55,34 @@ public class AllocationConfigValidator {
             return false;
         }
 
+        Config.WorldgenSearchConfig wsc = lac.getWorldgenSearch();
+        if (wsc == null) return false;
+
+        if (wsc.getSampleBlockY() < 0) {
+            LOGGER.error("Allocation config invalid: sampleBlockY must be >= 0.");
+            return false;
+        }
+
+        if (wsc.getVirtualBiomeCacheMaxEntries() <= 0) {
+            LOGGER.error("Allocation config invalid: virtualBiomeCacheMaxEntries must be > 0.");
+            return false;
+        }
+
+        if (wsc.getVirtualBiomeCacheTtlSeconds() <= 0) {
+            LOGGER.error("Allocation config invalid: virtualBiomeCacheTtlSeconds must be > 0.");
+            return false;
+        }
+
+        if (wsc.getLocateRadiusBlocks() <= 0 || wsc.getBlockCheckInterval() <= 0) {
+            LOGGER.error("Allocation config invalid: locateRadiusBlocks and blockCheckInterval must be > 0.");
+            return false;
+        }
+
+        if (wsc.getMaxLocateCallsPerSearchStep() <= 0 || wsc.getMaxLocateCallsPerTick() <= 0) {
+            LOGGER.error("Allocation config invalid: locate call limits must be > 0.");
+            return false;
+        }
+
         Config.SchedulerConfig sc = lac.getScheduler();
         if (sc == null) return false;
 

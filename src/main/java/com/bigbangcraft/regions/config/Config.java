@@ -241,6 +241,7 @@ public class Config {
         private int maxRegionsPerOwner = 1;
         private ExplorationExclusionConfig explorationExclusion = new ExplorationExclusionConfig();
         private BiomeSearchConfig biomeSearch = new BiomeSearchConfig();
+        private WorldgenSearchConfig worldgenSearch = new WorldgenSearchConfig();
         private SchedulerConfig scheduler = new SchedulerConfig();
         private NotificationsConfig notifications = new NotificationsConfig();
         private PaymentConfig payment = new PaymentConfig();
@@ -255,6 +256,7 @@ public class Config {
         public int getMaxRegionsPerOwner() { return maxRegionsPerOwner; }
         public ExplorationExclusionConfig getExplorationExclusion() { return explorationExclusion; }
         public BiomeSearchConfig getBiomeSearch() { return biomeSearch; }
+        public WorldgenSearchConfig getWorldgenSearch() { return worldgenSearch; }
         public SchedulerConfig getScheduler() { return scheduler; }
         public NotificationsConfig getNotifications() { return notifications; }
         public PaymentConfig getPayment() { return payment; }
@@ -267,6 +269,7 @@ public class Config {
         public void setFutureMaximumClaimSize(int futureMaximumClaimSize) { this.futureMaximumClaimSize = futureMaximumClaimSize; }
         public void setSlotInternalMargin(int slotInternalMargin) { this.slotInternalMargin = slotInternalMargin; }
         public void setMaxRegionsPerOwner(int maxRegionsPerOwner) { this.maxRegionsPerOwner = maxRegionsPerOwner; }
+        public void setWorldgenSearch(WorldgenSearchConfig worldgenSearch) { this.worldgenSearch = worldgenSearch; }
     }
 
     public static class NotificationsConfig {
@@ -339,6 +342,32 @@ public class Config {
         public void setSampleGridSize(int sampleGridSize) { this.sampleGridSize = sampleGridSize; }
         public void setMaximumCandidateSlots(int maximumCandidateSlots) { this.maximumCandidateSlots = maximumCandidateSlots; }
         public void setMaximumSearchRadiusBlocks(int maximumSearchRadiusBlocks) { this.maximumSearchRadiusBlocks = maximumSearchRadiusBlocks; }
+    }
+
+    public static class WorldgenSearchConfig {
+        private int sampleBlockY = 64;
+        private int virtualBiomeCacheMaxEntries = 50000;
+        private int virtualBiomeCacheTtlSeconds = 300;
+        private int locateRadiusBlocks = 1300;
+        private int blockCheckInterval = 64;
+        private int maxLocateCallsPerSearchStep = 1;
+        private int maxLocateCallsPerTick = 1;
+
+        public int getSampleBlockY() { return sampleBlockY; }
+        public int getVirtualBiomeCacheMaxEntries() { return virtualBiomeCacheMaxEntries; }
+        public int getVirtualBiomeCacheTtlSeconds() { return virtualBiomeCacheTtlSeconds; }
+        public int getLocateRadiusBlocks() { return locateRadiusBlocks; }
+        public int getBlockCheckInterval() { return blockCheckInterval; }
+        public int getMaxLocateCallsPerSearchStep() { return maxLocateCallsPerSearchStep; }
+        public int getMaxLocateCallsPerTick() { return maxLocateCallsPerTick; }
+
+        public void setSampleBlockY(int sampleBlockY) { this.sampleBlockY = sampleBlockY; }
+        public void setVirtualBiomeCacheMaxEntries(int virtualBiomeCacheMaxEntries) { this.virtualBiomeCacheMaxEntries = virtualBiomeCacheMaxEntries; }
+        public void setVirtualBiomeCacheTtlSeconds(int virtualBiomeCacheTtlSeconds) { this.virtualBiomeCacheTtlSeconds = virtualBiomeCacheTtlSeconds; }
+        public void setLocateRadiusBlocks(int locateRadiusBlocks) { this.locateRadiusBlocks = locateRadiusBlocks; }
+        public void setBlockCheckInterval(int blockCheckInterval) { this.blockCheckInterval = blockCheckInterval; }
+        public void setMaxLocateCallsPerSearchStep(int maxLocateCallsPerSearchStep) { this.maxLocateCallsPerSearchStep = maxLocateCallsPerSearchStep; }
+        public void setMaxLocateCallsPerTick(int maxLocateCallsPerTick) { this.maxLocateCallsPerTick = maxLocateCallsPerTick; }
     }
 
     public static class SchedulerConfig {
