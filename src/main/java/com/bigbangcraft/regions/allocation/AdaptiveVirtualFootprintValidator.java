@@ -1,6 +1,5 @@
 package com.bigbangcraft.regions.allocation;
 
-import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -37,25 +36,6 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         Set<ResourceKey<Biome>> acceptedKeys = resolveAcceptedKeys(biomeOption);
         if (acceptedKeys.isEmpty()) {
             return VirtualBiomeValidationResult.rejected(0.0, 0, 0, 0, 0, 0, ValidationFailureReason.EMPTY_ACCEPTED_BIOMES);
-        }
-
-        Set<Holder<Biome>> visibleBiomes = context.biomeSource().getBiomesWithin(
-            footprint.centerX(),
-            context.sampleBlockY(),
-            footprint.centerZ(),
-            Math.max(1, footprint.largestRadiusBlocks()),
-            context.noiseSampler()
-        );
-        boolean intersects = false;
-        for (Holder<Biome> visible : visibleBiomes) {
-            ResourceKey<Biome> visibleKey = visible.unwrapKey().orElse(null);
-            if (visibleKey != null && acceptedKeys.contains(visibleKey)) {
-                intersects = true;
-                break;
-            }
-        }
-        if (!intersects) {
-            return VirtualBiomeValidationResult.rejected(0.0, 0, 0, 0, 0, 0, ValidationFailureReason.NO_ACCEPTED_BIOMES_IN_AREA);
         }
 
         int[] sampleXs = buildSampleAxis(footprint.minX(), footprint.maxX());

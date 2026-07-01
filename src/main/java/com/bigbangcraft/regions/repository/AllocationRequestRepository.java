@@ -110,7 +110,7 @@ public class AllocationRequestRepository {
                     "created_at, updated_at, completed_at, cancelled_at, retry_count, next_retry_at, preparation_attempt " +
                     "FROM player_region_allocation_requests WHERE state IN (" +
                     "'PENDING', 'VIRTUAL_SEARCHING', 'VIRTUAL_VALIDATED', 'SLOT_RESERVED', " +
-                    "'PREPARING_CHUNKS', 'WAITING_FOR_CHUNKS', 'VALIDATING_LOADED_WORLD', 'REGION_CREATING');";
+                    "'PREPARING_CHUNKS', 'WAITING_FOR_CHUNKS', 'VALIDATING_LOADED_WORLD', 'REGION_CREATING', 'PAUSED_RECOVERY');";
             try (Connection conn = dbManager.getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql);
                  ResultSet rs = pstmt.executeQuery()) {

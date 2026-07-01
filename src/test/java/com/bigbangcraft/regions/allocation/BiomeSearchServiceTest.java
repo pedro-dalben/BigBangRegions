@@ -26,6 +26,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -47,7 +49,6 @@ public class BiomeSearchServiceTest {
         Holder<Biome> plains = biomeHolder("minecraft:plains");
         Holder<Biome> river = biomeHolder("minecraft:river");
         BiomeSource biomeSource = mock(BiomeSource.class);
-        when(biomeSource.getBiomesWithin(anyInt(), anyInt(), anyInt(), anyInt(), any())).thenReturn(Set.of(plains, river));
         when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any())).thenAnswer(inv -> {
             int quartX = inv.getArgument(0);
             int quartZ = inv.getArgument(2);
@@ -74,7 +75,6 @@ public class BiomeSearchServiceTest {
 
         Holder<Biome> plains = biomeHolder("minecraft:plains");
         BiomeSource biomeSource = mock(BiomeSource.class);
-        when(biomeSource.getBiomesWithin(anyInt(), anyInt(), anyInt(), anyInt(), any())).thenReturn(Set.of(plains));
         when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any())).thenReturn(plains);
 
         WorldgenSearchContext context = worldgenContext(biomeSource, "pure-plains");
@@ -94,7 +94,6 @@ public class BiomeSearchServiceTest {
 
         Holder<Biome> river = biomeHolder("minecraft:river");
         BiomeSource biomeSource = mock(BiomeSource.class);
-        when(biomeSource.getBiomesWithin(anyInt(), anyInt(), anyInt(), anyInt(), any())).thenReturn(Set.of(river));
         when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any())).thenReturn(river);
 
         WorldgenSearchContext context = worldgenContext(biomeSource, "river-only");
@@ -104,6 +103,26 @@ public class BiomeSearchServiceTest {
             BiomeSearchService.MatchResult.MISMATCH,
             service.evaluateBiomeOptionMatching(context, 0, 64, 0, 64, option)
         );
+    }
+
+    @Test
+    public void footprintValidationDoesNotUseGlobalBiomeAreaScan() throws Exception {
+        Path tempDir = Files.createTempDirectory("bigbangregions-biome-search-test");
+        ConfigManager configManager = new ConfigManager(tempDir);
+        BiomeSearchService service = new BiomeSearchService(configManager);
+
+        Holder<Biome> plains = biomeHolder("minecraft:plains");
+        BiomeSource biomeSource = mock(BiomeSource.class);
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any())).thenReturn(plains);
+
+        WorldgenSearchContext context = worldgenContext(biomeSource, "no-area-scan");
+        BiomeOption option = biomeOption("planicies", List.of("minecraft:plains"));
+
+        assertEquals(
+            BiomeSearchService.MatchResult.MATCH,
+            service.evaluateBiomeOptionMatching(context, 0, 64, 0, 64, option)
+        );
+        verify(biomeSource, never()).getBiomesWithin(anyInt(), anyInt(), anyInt(), anyInt(), any());
     }
 
     @Test

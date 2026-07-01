@@ -7,14 +7,19 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.Optional;
+import java.util.Set;
 
 public class SafeSpawnFinder {
     public static Optional<BlockPos> findSafeSpawn(Level level, int minX, int maxX, int minZ, int maxZ) {
+        return findSafeSpawn(level, minX, maxX, minZ, maxZ, null);
+    }
+
+    public static Optional<BlockPos> findSafeSpawn(Level level, int minX, int maxX, int minZ, int maxZ, Set<net.minecraft.world.level.ChunkPos> allowedChunks) {
         int centerX = minX + (maxX - minX) / 2;
         int centerZ = minZ + (maxZ - minZ) / 2;
 
         // Try center first
-        Optional<BlockPos> spawn = checkColumn(level, centerX, centerZ);
+        Optional<BlockPos> spawn = checkColumn(level, centerX, centerZ, allowedChunks);
         if (spawn.isPresent()) {
             return spawn;
         }
@@ -28,7 +33,7 @@ public class SafeSpawnFinder {
                     if (Math.abs(dx) == r || Math.abs(dz) == r) {
                         int x = centerX + dx;
                         int z = centerZ + dz;
-                        spawn = checkColumn(level, x, z);
+                        spawn = checkColumn(level, x, z, allowedChunks);
                         if (spawn.isPresent()) {
                             return spawn;
                         }
@@ -40,7 +45,10 @@ public class SafeSpawnFinder {
         return Optional.empty();
     }
 
-    private static Optional<BlockPos> checkColumn(Level level, int x, int z) {
+    private static Optional<BlockPos> checkColumn(Level level, int x, int z, Set<net.minecraft.world.level.ChunkPos> allowedChunks) {
+        if (allowedChunks != null && !allowedChunks.contains(new net.minecraft.world.level.ChunkPos(x >> 4, z >> 4))) {
+            return Optional.empty();
+        }
         int surfaceY = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
         if (surfaceY <= level.getMinBuildHeight()) {
             return Optional.empty();

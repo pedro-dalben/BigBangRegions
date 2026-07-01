@@ -22,6 +22,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,9 +69,16 @@ public class TerrainAllocationCoordinator {
     private final RegionPreparationQueue preparationQueue;
     private final ChunkPreparationService chunkPreparationService;
     private final LoadedWorldValidator loadedWorldValidator;
+    private final BiomeAnchorLocator biomeAnchorLocator;
 
     private final Map<UUID, Long> creationCooldowns = new ConcurrentHashMap<>();
     private final Map<UUID, Long> homeTeleportCooldowns = new ConcurrentHashMap<>();
+
+    private enum LocalAnchorSearchResult {
+        RESERVED,
+        CONTINUE,
+        EXHAUSTED
+    }
 
     public TerrainAllocationCoordinator(ConfigManager configManager,
                                          DatabaseManager databaseManager,
@@ -100,6 +108,7 @@ public class TerrainAllocationCoordinator {
         this.preparationQueue = new RegionPreparationQueue();
         this.chunkPreparationService = new TicketBackedChunkPreparationService(new SimpleRegionChunkTicketManager());
         this.loadedWorldValidator = new PreparedChunkLoadedWorldValidator(configManager, biomeOptionRegistry);
+        this.biomeAnchorLocator = new WorldgenBiomeAnchorLocator();
     }
 
     public String createRequest(ServerPlayer player, String biomeQuery, String source) {
@@ -258,7 +267,14 @@ public class TerrainAllocationCoordinator {
                 return 0;
             }
             if (result.type() != PreparationResultType.READY) {
-                handlePreparationFailure(request, level, AllocationRequestState.FAILED, String.join("; ", result.diagnostics()));
+                resumeSearchAfterCandidateFailure(
+                    request,
+                    lac,
+                    level,
+                    "rejected_physical_validation",
+                    "Preparacao do terreno falhou: " + String.join("; ", result.diagnostics()),
+                    false
+                );
                 return 1;
             }
 
@@ -266,6 +282,8 @@ public class TerrainAllocationCoordinator {
             if (preparation != null) {
                 preparation.updateTicketState("READY");
                 preparationRepository.save(preparation);
+            } else {
+                LOGGER.warn("[BigBangRegions] Preparation metadata missing while chunks became ready for request={}. Rebuilding validation plan.", request.getId());
             }
 
             request.transitionTo(AllocationRequestState.VALIDATING_LOADED_WORLD);
@@ -275,18 +293,19 @@ public class TerrainAllocationCoordinator {
 
         if (request.getState() == AllocationRequestState.VALIDATING_LOADED_WORLD) {
             AllocationRequestPreparation preparation = preparationRepository.get(request.getId());
-            if (preparation == null) {
-                pauseForRecovery(request, "Metadados de preparacao nao encontrados", null);
-                return 1;
-            }
-
             ReservedPlotCandidate candidate = buildReservedCandidate(request, lac);
             if (candidate == null) {
                 handlePreparationFailure(request, level, AllocationRequestState.FAILED_VALIDATION, "Nao foi possivel reconstruir o candidato reservado");
                 return 1;
             }
 
-            ChunkPreparationPlan plan = ChunkPreparationPlanCodec.decode(preparation.getChunkPlanJson());
+            ChunkPreparationPlan plan;
+            if (preparation != null && preparation.getChunkPlanJson() != null) {
+                plan = ChunkPreparationPlanCodec.decode(preparation.getChunkPlanJson());
+            } else {
+                LOGGER.warn("[BigBangRegions] Preparation metadata not found for request={}. Recomputing physical validation plan from reserved candidate.", request.getId());
+                plan = resolvePhysicalValidationPlan(candidate);
+            }
             LoadedWorldValidationResult validation = loadedWorldValidator.validate(level, candidate, plan);
             if (!validation.accepted()) {
                 AllocationRequestPreparation prep = preparationRepository.get(request.getId());
@@ -296,7 +315,14 @@ public class TerrainAllocationCoordinator {
                     preparationRepository.save(prep);
                 }
                 invalidateReservedSlot(candidate.slotId(), validation.failureReason().name());
-                handlePreparationFailure(request, level, AllocationRequestState.FAILED_VALIDATION, String.join("; ", validation.diagnostics()));
+                resumeSearchAfterCandidateFailure(
+                    request,
+                    lac,
+                    level,
+                    "rejected_physical_validation",
+                    String.join("; ", validation.diagnostics()),
+                    true
+                );
                 return 1;
             }
 
@@ -323,7 +349,7 @@ public class TerrainAllocationCoordinator {
         }
 
         if (request.getState() == AllocationRequestState.PAUSED_RECOVERY) {
-            return 0;
+            return recoverPausedRequest(request, level, lac);
         }
 
         return 0;
@@ -339,80 +365,81 @@ public class TerrainAllocationCoordinator {
             failRequest(request, AllocationRequestState.FAILED_VALIDATION, "Opcao de bioma nao encontrada: " + request.getRequestedBiomeOption(), level);
             return 1;
         }
+        AllocationSearchCursor cursor = loadOrCreateCursor(request, lac);
+        Config.WorldgenSearchConfig worldgen = lac.getWorldgenSearch();
+        WorldgenSearchContext context = biomeSearchService.getContextFactory().getOrCreate(level, configManager.getConfig());
+        long deadline = System.nanoTime() + Math.max(1L, worldgen.getMaxSearchWorkNanosPerTick());
+        int maxSteps = Math.max(1, worldgen.getMaxSearchStepsPerTick());
+        boolean progressed = false;
 
-        int maxCandidates = Math.max(1, sc.getMaxCandidateEvaluationsPerTick());
-        long timeBudgetNanos = Math.max(1L, sc.getMaxBiomeSearchMillisPerTick()) * 1_000_000L;
-        long deadline = System.nanoTime() + timeBudgetNanos;
-        int evaluated = 0;
-
-        PlotSlotService.PlotSlotIterator iterator = searchIterators.computeIfAbsent(
-            request.getId(), rid -> slotService.iteratorFor(request.getOwnerUuid()));
-
-        int maxRadiusBlocks = lac.getBiomeSearch().getMaximumSearchRadiusBlocks();
-        int maxRing = maxRadiusBlocks / lac.getSlotSize();
-
-        while (evaluated < maxCandidates && System.nanoTime() < deadline) {
-            Optional<PlotSlotService.PlotSlotCandidate> optCandidate = iterator.peek();
-            if (optCandidate.isEmpty()) {
-                searchIterators.remove(request.getId());
-                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Nenhum terreno com bioma adequado encontrado no raio limite", level);
-                return 1;
-            }
-            PlotSlotService.PlotSlotCandidate candidate = optCandidate.get();
-            if (Math.abs(candidate.gridX) > maxRing || Math.abs(candidate.gridZ) > maxRing) {
-                searchIterators.remove(request.getId());
-                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Raio de busca excedido", level);
+        for (int step = 0; step < maxSteps && System.nanoTime() < deadline; step++) {
+            AllocationSearchSector sector = resolveCurrentSector(request, cursor, worldgen);
+            if (sector == null) {
+                if (tryFallbackSpiral(request, level, lac, sc, biomeOpt.get(), cursor)) {
+                    return 1;
+                }
+                cursor.setLastRejectionReason("rejected_anchor_not_found");
+                cursorRepository.save(cursor);
+                failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Nenhuma area valida encontrada dentro das bandas ativas", level);
                 return 1;
             }
 
-            if (!slotService.isSlotEligible(candidate.minX, candidate.minZ, lac.getSlotSize())) {
-                iterator.advance();
+            if (hasPendingAnchor(cursor, worldgen)) {
+                LocalAnchorSearchResult pendingResult = continueAnchorSearch(request, level, lac, sc, biomeOpt.get(), cursor, sector, deadline);
+                if (pendingResult == LocalAnchorSearchResult.RESERVED) {
+                    return 1;
+                }
+                if (pendingResult == LocalAnchorSearchResult.CONTINUE) {
+                    progressed = true;
+                    break;
+                }
+                markSectorRejected(cursor, sector, cursor.getLastRejectionReason() == null ? "rejected_anchor_candidates_exhausted" : cursor.getLastRejectionReason());
+                progressed = true;
                 continue;
             }
 
-            evaluated++;
-            PlotFootprint claimFootprint = buildClaimFootprint(candidate.minX, candidate.minZ, lac);
-            BiomeSearchService.MatchResult biomeMatch = biomeSearchService.evaluateBiomeOptionMatching(
-                level, claimFootprint.minX(), claimFootprint.maxX(),
-                claimFootprint.minZ(), claimFootprint.maxZ(),
-                biomeOpt.get()
+            if (!sectorContainsAcceptedBiome(context, biomeOpt.get(), sector)) {
+                markSectorRejected(cursor, sector, "rejected_no_biome_in_sector");
+                progressed = true;
+                continue;
+            }
+
+            BiomeAnchorSearchStepResult anchorResult = biomeAnchorLocator.searchStep(
+                context,
+                biomeOpt.get(),
+                anchorCursorForSector(cursor, sector, worldgen),
+                new SearchBudget(worldgen.getBlockCheckInterval(), worldgen.getMaxLocateCallsPerSearchStep())
             );
-            iterator.advance();
-            if (biomeMatch != BiomeSearchService.MatchResult.MATCH) {
+            if (anchorResult instanceof BiomeAnchorSearchStepResult.Found found) {
+                cursor = found.nextCursor();
+                cursor.setAnchorsFound(cursor.getAnchorsFound() + 1);
+                LocalAnchorSearchResult anchorSearchResult = continueAnchorSearch(request, level, lac, sc, biomeOpt.get(), cursor, sector, deadline);
+                if (anchorSearchResult == LocalAnchorSearchResult.RESERVED) {
+                    return 1;
+                }
+                if (anchorSearchResult == LocalAnchorSearchResult.CONTINUE) {
+                    progressed = true;
+                    break;
+                }
+                markSectorRejected(cursor, sector, cursor.getLastRejectionReason() == null ? "rejected_anchor_not_found" : cursor.getLastRejectionReason());
+                progressed = true;
                 continue;
             }
 
-            String slotId = lac.getTargetDimension() + ":" + candidate.gridX + ":" + candidate.gridZ;
-            PlotSlot existing = slotRepository.getByGrid(lac.getTargetDimension(), candidate.gridX, candidate.gridZ);
-            if (existing != null && existing.getState().isOccupied()) {
-                continue;
-            }
+            cursor.setLastRejectionReason("rejected_anchor_not_found");
+            markSectorRejected(cursor, sector, "rejected_anchor_not_found");
+            progressed = true;
+        }
 
-            PlotSlot slot = existing != null && existing.getState() == PlotSlotState.RELEASED
-                ? existing
-                : new PlotSlot(
-                    slotId, lac.getTargetDimension(), candidate.gridX, candidate.gridZ,
-                    candidate.minX, candidate.minZ, lac.getSlotSize(),
-                    PlotSlotState.RELEASED, null, null, null,
-                    null, null, null, System.currentTimeMillis(), System.currentTimeMillis()
-                );
-            slot.reserve(request.getOwnerUuid(), request.getRequestedBiomeOption(), sc.getReservationLeaseSeconds() * 1000L);
-            slotRepository.save(slot);
-
-            request.transitionTo(AllocationRequestState.VIRTUAL_VALIDATED);
-            requestRepository.save(request);
-
-            request.setPlotSlotId(slotId);
-            searchIterators.remove(request.getId());
+        if (progressed) {
+            request.incrementAttempts();
             requestRepository.save(request);
             maybeEmitProgress(request, level, cursor);
             cursorRepository.save(cursor);
             return 1;
         }
 
-        request.incrementAttempts();
-        requestRepository.save(request);
-        return 1;
+        return 0;
     }
 
     private int startPreparationIfPossible(AllocationRequest request, ServerLevel level) {
@@ -463,6 +490,18 @@ public class TerrainAllocationCoordinator {
             now
         );
         preparationRepository.save(preparation);
+        if (preparationRepository.get(request.getId()) == null) {
+            LOGGER.error("[BigBangRegions] Failed to persist preparation metadata for request={}. Resuming search instead of entering chunk wait states.", request.getId());
+            resumeSearchAfterCandidateFailure(
+                request,
+                lac,
+                level,
+                "rejected_physical_validation",
+                "Metadados de preparacao nao persistidos",
+                false
+            );
+            return 1;
+        }
 
         PreparationHandle handle = chunkPreparationService.beginPreparation(level, candidate, plan, this::handlePreparationCallback);
         preparationHandles.put(request.getId(), handle);
@@ -754,6 +793,14 @@ public class TerrainAllocationCoordinator {
         return true;
     }
 
+    private ChunkPreparationPlan resolvePhysicalValidationPlan(ReservedPlotCandidate candidate) {
+        return chunkPlanResolver.resolve(
+            candidate.footprint(),
+            buildRegionGeometry(candidate.footprint()),
+            PreparationPurpose.PHYSICAL_VALIDATION
+        );
+    }
+
     public boolean setHome(ServerPlayer player) {
         UUID ownerUuid = player.getUUID();
         Optional<Region> playerRegion = regionCache.getAll().stream()
@@ -890,12 +937,368 @@ public class TerrainAllocationCoordinator {
         );
     }
 
+    private AllocationSearchCursor loadOrCreateCursor(AllocationRequest request, Config.PlayerLandAllocationConfig lac) {
+        AllocationSearchCursor cursor = cursorRepository.get(request.getId());
+        if (cursor != null) {
+            return cursor;
+        }
+
+        cursor = new AllocationSearchCursor(request.getId());
+        List<Config.AllocationBandConfig> bands = enabledBands(lac.getWorldgenSearch());
+        if (!bands.isEmpty()) {
+            cursor.setCurrentBandId(bands.getFirst().getId());
+        }
+        cursor.setLastProgressAt(System.currentTimeMillis());
+        cursorRepository.save(cursor);
+        return cursor;
+    }
 
     private List<Config.AllocationBandConfig> enabledBands(Config.WorldgenSearchConfig worldgen) {
         return worldgen.getAllocationBands().stream()
             .filter(Config.AllocationBandConfig::isEnabled)
             .sorted(Comparator.comparingInt(Config.AllocationBandConfig::getMinRadiusBlocks))
             .toList();
+    }
+
+    private AllocationSearchSector resolveCurrentSector(AllocationRequest request, AllocationSearchCursor cursor, Config.WorldgenSearchConfig worldgen) {
+        List<Config.AllocationBandConfig> bands = enabledBands(worldgen);
+        if (bands.isEmpty()) {
+            return null;
+        }
+
+        int sectorsPerBand = Math.max(1, worldgen.getMaxSectorsPerRequest());
+        int bandIndex = Math.max(0, cursor.getCurrentBandId() == null ? 0 : indexOfBand(bands, cursor.getCurrentBandId()));
+        while (bandIndex < bands.size()) {
+            Config.AllocationBandConfig band = bands.get(bandIndex);
+            if (cursor.getCurrentSectorIndex() >= sectorsPerBand) {
+                bandIndex++;
+                cursor.setCurrentSectorIndex(0);
+                cursor.setCurrentBandId(bandIndex < bands.size() ? bands.get(bandIndex).getId() : null);
+                continue;
+            }
+            int[] coords = sectorCoordinates(request, band, cursor.getCurrentSectorIndex(), worldgen.getSectorSizeBlocks());
+            cursor.setCurrentBandId(band.getId());
+            cursor.setSectorX(coords[0]);
+            cursor.setSectorZ(coords[1]);
+            return new AllocationSearchSector(
+                band.getId(),
+                cursor.getCurrentSectorIndex(),
+                coords[0],
+                coords[1],
+                worldgen.getSectorSizeBlocks(),
+                band.getMinRadiusBlocks(),
+                band.getMaxRadiusBlocks()
+            );
+        }
+        return null;
+    }
+
+    private int indexOfBand(List<Config.AllocationBandConfig> bands, String bandId) {
+        for (int i = 0; i < bands.size(); i++) {
+            if (bands.get(i).getId().equals(bandId)) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private int[] sectorCoordinates(AllocationRequest request, Config.AllocationBandConfig band, int sectorIndex, int sectorSizeBlocks) {
+        List<int[]> cells = sectorSequenceCache.computeIfAbsent(
+            request.getId() + ":" + band.getId() + ":" + sectorSizeBlocks,
+            ignored -> buildSectorSequence(request, band, sectorSizeBlocks)
+        );
+        if (cells.isEmpty()) {
+            int minRing = Math.max(1, Math.floorDiv(band.getMinRadiusBlocks(), sectorSizeBlocks));
+            return new int[]{minRing, 0};
+        }
+        return cells.get(Math.min(sectorIndex, cells.size() - 1));
+    }
+
+    private List<int[]> buildSectorSequence(AllocationRequest request, Config.AllocationBandConfig band, int sectorSizeBlocks) {
+        int minRing = Math.max(1, Math.floorDiv(band.getMinRadiusBlocks(), sectorSizeBlocks));
+        int maxRing = Math.max(minRing, Math.floorDiv(band.getMaxRadiusBlocks(), sectorSizeBlocks));
+        List<int[]> cells = new ArrayList<>();
+        for (int ring = minRing; ring <= maxRing; ring++) {
+            for (int dx = -ring; dx <= ring; dx++) {
+                for (int dz = -ring; dz <= ring; dz++) {
+                    int radius = Math.max(Math.abs(dx), Math.abs(dz));
+                    if (radius >= minRing && radius <= maxRing) {
+                        cells.add(new int[]{dx, dz});
+                    }
+                }
+            }
+        }
+        if (cells.isEmpty()) {
+            return List.of(new int[]{minRing, 0});
+        }
+        java.util.Collections.shuffle(cells, new java.util.Random(deterministicSectorSeed(request, band)));
+        return cells;
+    }
+
+    private long deterministicSectorSeed(AllocationRequest request, Config.AllocationBandConfig band) {
+        long seed = request.getOwnerUuid().getMostSignificantBits() ^ request.getOwnerUuid().getLeastSignificantBits();
+        seed = 31L * seed + request.getId().hashCode();
+        seed = 31L * seed + request.getRequestedBiomeOption().hashCode();
+        seed = 31L * seed + request.getTargetDimension().hashCode();
+        seed = 31L * seed + band.getId().hashCode();
+        return seed;
+    }
+
+    private boolean sectorContainsAcceptedBiome(WorldgenSearchContext context, BiomeOption option, AllocationSearchSector sector) {
+        Set<ResourceKey<net.minecraft.world.level.biome.Biome>> accepted = new HashSet<>();
+        for (String biomeId : option.getAcceptedBiomeIds()) {
+            try {
+                accepted.add(ResourceKey.create(Registries.BIOME, ResourceLocation.parse(biomeId)));
+            } catch (Exception ignored) {
+            }
+        }
+        if (accepted.isEmpty()) {
+            return false;
+        }
+
+        int sectorMinX = sector.sectorX() * sector.sectorSizeBlocks();
+        int sectorMinZ = sector.sectorZ() * sector.sectorSizeBlocks();
+        int sectorMaxX = sectorMinX + sector.sectorSizeBlocks() - 1;
+        int sectorMaxZ = sectorMinZ + sector.sectorSizeBlocks() - 1;
+        int gridSize = 5;
+        int stepX = Math.max(1, (sectorMaxX - sectorMinX) / (gridSize - 1));
+        int stepZ = Math.max(1, (sectorMaxZ - sectorMinZ) / (gridSize - 1));
+        long seed = deterministicSectorSeedFromValues(option.getKey(), sector.bandId(), sector.sectorIndex(), sector.sectorX(), sector.sectorZ());
+
+        for (int gz = 0; gz < gridSize; gz++) {
+            for (int gx = 0; gx < gridSize; gx++) {
+                int jitterX = deterministicJitter(seed, gx, gz, Math.max(1, stepX / 3));
+                int jitterZ = deterministicJitter(seed ^ 0x9E3779B97F4A7C15L, gz, gx, Math.max(1, stepZ / 3));
+                int x = clamp(sectorMinX + (gx * stepX) + jitterX, sectorMinX, sectorMaxX);
+                int z = clamp(sectorMinZ + (gz * stepZ) + jitterZ, sectorMinZ, sectorMaxZ);
+                ResourceKey<net.minecraft.world.level.biome.Biome> key = biomeSearchService.getVirtualSampler()
+                    .sampleAtBlock(context, x, context.sampleBlockY(), z);
+                if (key != null && accepted.contains(key)) {
+                    return true;
+                }
+            }
+        }
+
+        int[][] fallbackPoints = new int[][]{
+            {sector.centerBlockX(), sector.centerBlockZ()},
+            {sectorMinX, sectorMinZ},
+            {sectorMaxX, sectorMinZ},
+            {sectorMinX, sectorMaxZ},
+            {sectorMaxX, sectorMaxZ}
+        };
+        for (int[] point : fallbackPoints) {
+            ResourceKey<net.minecraft.world.level.biome.Biome> key = biomeSearchService.getVirtualSampler()
+                .sampleAtBlock(context, point[0], context.sampleBlockY(), point[1]);
+            if (key != null && accepted.contains(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private AllocationSearchCursor anchorCursorForSector(AllocationSearchCursor cursor, AllocationSearchSector sector, Config.WorldgenSearchConfig worldgen) {
+        cursor.setSectorX(sector.centerBlockX());
+        cursor.setSectorZ(sector.centerBlockZ());
+        cursor.setAnchorAttempt(Math.min(worldgen.getLocateRadiusBlocks(), Math.max(1, sector.halfSizeBlocks())));
+        return cursor;
+    }
+
+    private boolean hasPendingAnchor(AllocationSearchCursor cursor, Config.WorldgenSearchConfig worldgen) {
+        return cursor.getCurrentAnchorX() != null
+            && cursor.getCurrentAnchorZ() != null
+            && cursor.getLocalCandidateIndex() < worldgen.getMaxCandidateSlotsPerAnchor();
+    }
+
+    private LocalAnchorSearchResult continueAnchorSearch(AllocationRequest request,
+                                                         ServerLevel level,
+                                                         Config.PlayerLandAllocationConfig lac,
+                                                         Config.SchedulerConfig sc,
+                                                         BiomeOption biomeOption,
+                                                         AllocationSearchCursor cursor,
+                                                         AllocationSearchSector sector,
+                                                         long deadlineNanos) {
+        if (cursor.getCurrentAnchorX() == null || cursor.getCurrentAnchorZ() == null) {
+            cursor.setLastRejectionReason("rejected_anchor_not_found");
+            return LocalAnchorSearchResult.EXHAUSTED;
+        }
+
+        int maxPerAnchor = lac.getWorldgenSearch().getMaxCandidateSlotsPerAnchor();
+        int remaining = Math.max(0, maxPerAnchor - cursor.getLocalCandidateIndex());
+        if (remaining <= 0) {
+            cursor.setLastRejectionReason(cursor.getLastRejectionReason() == null ? "rejected_anchor_candidates_exhausted" : cursor.getLastRejectionReason());
+            return LocalAnchorSearchResult.EXHAUSTED;
+        }
+
+        int maxPerTick = Math.max(1, sc.getMaxCandidateEvaluationsPerTick());
+        int limit = Math.max(1, Math.min(remaining, maxPerTick));
+        BiomeAnchor anchor = new BiomeAnchor(cursor.getCurrentAnchorX(), cursor.getCurrentAnchorZ(), cursor.getCurrentAnchorBiomeId());
+        List<PlotSlotService.PlotSlotCandidate> candidates = localCandidatesNearAnchor(anchor, lac, cursor.getLocalCandidateIndex(), limit);
+        WorldgenSearchContext context = biomeSearchService.getContextFactory().getOrCreate(level, configManager.getConfig());
+        int processed = 0;
+        for (int i = 0; i < candidates.size() && (processed == 0 || System.nanoTime() < deadlineNanos); i++) {
+            PlotSlotService.PlotSlotCandidate candidate = candidates.get(i);
+            processed++;
+            cursor.setLocalCandidateIndex(cursor.getLocalCandidateIndex() + 1);
+            cursor.setTotalVirtualCandidatesChecked(cursor.getTotalVirtualCandidatesChecked() + 1);
+
+            if (!slotWithinBand(candidate, lac.getSlotSize(), sector)) {
+                cursor.setLastRejectionReason("rejected_outside_active_band");
+                AllocationMetrics.increment("rejected_outside_active_band");
+                continue;
+            }
+            if (!slotService.isSlotEligible(candidate.minX, candidate.minZ, lac.getSlotSize())) {
+                cursor.setLastRejectionReason("rejected_exclusion_zone");
+                AllocationMetrics.increment("rejected_exclusion_zone");
+                continue;
+            }
+
+            PlotFootprint claimFootprint = buildClaimFootprint(candidate.minX, candidate.minZ, lac);
+            BiomeSearchService.MatchResult biomeMatch = biomeSearchService.evaluateBiomeOptionMatching(context, claimFootprint.minX(), claimFootprint.maxX(), claimFootprint.minZ(), claimFootprint.maxZ(), biomeOption);
+            cursor.setTotalBiomeSamples(cursor.getTotalBiomeSamples() + 1);
+            if (biomeMatch != BiomeSearchService.MatchResult.MATCH) {
+                cursor.setLastRejectionReason("rejected_border_mismatch");
+                AllocationMetrics.increment("rejected_border_mismatch");
+                continue;
+            }
+
+            if (reserveSlotForCandidate(request, candidate, lac, sc)) {
+                cursorRepository.save(cursor);
+                maybeEmitProgress(request, level, cursor);
+                LOGGER.info("Slot reserved: slotId={}, request={}, grid=({},{})", request.getPlotSlotId(), request.getId(), candidate.gridX, candidate.gridZ);
+                return LocalAnchorSearchResult.RESERVED;
+            }
+
+            cursor.setLastRejectionReason("rejected_slot_overlap");
+            AllocationMetrics.increment("rejected_slot_overlap");
+        }
+
+        if (cursor.getLocalCandidateIndex() < maxPerAnchor) {
+            return LocalAnchorSearchResult.CONTINUE;
+        }
+
+        cursor.setLastRejectionReason(cursor.getLastRejectionReason() == null ? "rejected_anchor_candidates_exhausted" : cursor.getLastRejectionReason());
+        return LocalAnchorSearchResult.EXHAUSTED;
+    }
+
+    private boolean reserveSlotForCandidate(AllocationRequest request,
+                                            PlotSlotService.PlotSlotCandidate candidate,
+                                            Config.PlayerLandAllocationConfig lac,
+                                            Config.SchedulerConfig sc) {
+        String slotId = lac.getTargetDimension() + ":" + candidate.gridX + ":" + candidate.gridZ;
+        PlotSlot existing = slotRepository.getByGrid(lac.getTargetDimension(), candidate.gridX, candidate.gridZ);
+        if (existing != null && existing.getState().isOccupied()) {
+            return false;
+        }
+        PlotSlot slot = existing != null && existing.getState() == PlotSlotState.RELEASED
+            ? existing
+            : new PlotSlot(
+                slotId, lac.getTargetDimension(), candidate.gridX, candidate.gridZ,
+                candidate.minX, candidate.minZ, lac.getSlotSize(),
+                PlotSlotState.RELEASED, null, null, null,
+                null, null, null, System.currentTimeMillis(), System.currentTimeMillis()
+            );
+        slot.reserve(request.getOwnerUuid(), request.getRequestedBiomeOption(), sc.getReservationLeaseSeconds() * 1000L);
+        slotRepository.save(slot);
+        request.setPlotSlotId(slotId);
+        request.transitionTo(AllocationRequestState.VIRTUAL_VALIDATED);
+        requestRepository.save(request);
+        return true;
+    }
+
+    private List<PlotSlotService.PlotSlotCandidate> localCandidatesNearAnchor(BiomeAnchor anchor, Config.PlayerLandAllocationConfig lac, int offset, int limit) {
+        int slotSize = lac.getSlotSize();
+        int anchorGridX = Math.floorDiv(anchor.blockX(), slotSize);
+        int anchorGridZ = Math.floorDiv(anchor.blockZ(), slotSize);
+        int[][] deltas = new int[][]{
+            {0, 0}, {0, -1}, {0, 1}, {1, 0}, {-1, 0},
+            {1, -1}, {1, 1}, {-1, -1}, {-1, 1},
+            {0, -2}, {0, 2}, {2, 0}, {-2, 0},
+            {2, -1}, {2, 1}, {-2, -1}, {-2, 1},
+            {1, -2}, {1, 2}, {-1, -2}, {-1, 2},
+            {2, -2}, {2, 2}, {-2, -2}, {-2, 2}
+        };
+        List<PlotSlotService.PlotSlotCandidate> list = new ArrayList<>();
+        for (int i = offset; i < deltas.length && list.size() < limit; i++) {
+            int[] delta = deltas[i];
+            int gridX = anchorGridX + delta[0];
+            int gridZ = anchorGridZ + delta[1];
+            list.add(new PlotSlotService.PlotSlotCandidate(gridX, gridZ, gridX * slotSize, gridZ * slotSize));
+        }
+        return list;
+    }
+
+    private boolean slotWithinBand(PlotSlotService.PlotSlotCandidate candidate, int slotSize, AllocationSearchSector sector) {
+        if (sector == null) {
+            return false;
+        }
+        PlotFootprint footprint = new PlotFootprint(candidate.minX, candidate.minX + slotSize - 1, candidate.minZ, candidate.minZ + slotSize - 1);
+        int radius = Math.max(Math.abs(footprint.centerX()), Math.abs(footprint.centerZ()));
+        return radius >= sector.minRadiusBlocks() && radius <= sector.maxRadiusBlocks();
+    }
+
+    private long deterministicSectorSeedFromValues(String biomeKey, String bandId, int sectorIndex, int sectorX, int sectorZ) {
+        long seed = 17L;
+        seed = 31L * seed + (biomeKey == null ? 0 : biomeKey.hashCode());
+        seed = 31L * seed + (bandId == null ? 0 : bandId.hashCode());
+        seed = 31L * seed + sectorIndex;
+        seed = 31L * seed + sectorX;
+        seed = 31L * seed + sectorZ;
+        return seed;
+    }
+
+    private int deterministicJitter(long seed, int a, int b, int bound) {
+        if (bound <= 0) {
+            return 0;
+        }
+        java.util.Random random = new java.util.Random(seed ^ (31L * a) ^ (17L * b));
+        return random.nextInt(bound * 2 + 1) - bound;
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private void markSectorRejected(AllocationSearchCursor cursor, AllocationSearchSector sector, String reason) {
+        cursor.setCurrentSectorIndex(cursor.getCurrentSectorIndex() + 1);
+        cursor.setTotalSectorsChecked(cursor.getTotalSectorsChecked() + 1);
+        cursor.setSectorsDiscarded(cursor.getSectorsDiscarded() + 1);
+        cursor.setAnchorAttempt(0);
+        cursor.setLocalCandidateIndex(0);
+        cursor.setCurrentAnchorX(null);
+        cursor.setCurrentAnchorZ(null);
+        cursor.setCurrentAnchorBiomeId(null);
+        cursor.setLastRejectionReason(reason);
+        cursor.setLastProgressAt(System.currentTimeMillis());
+        AllocationMetrics.increment(reason);
+        cursorRepository.save(cursor);
+    }
+
+    private boolean tryFallbackSpiral(AllocationRequest request,
+                                      ServerLevel level,
+                                      Config.PlayerLandAllocationConfig lac,
+                                      Config.SchedulerConfig sc,
+                                      BiomeOption option,
+                                      AllocationSearchCursor cursor) {
+        Config.WorldgenSearchConfig worldgen = lac.getWorldgenSearch();
+        if (!worldgen.isFallbackSpiralEnabled()) {
+            return false;
+        }
+        cursor.setFallbackMode("FALLBACK_SPIRAL");
+        PlotSlotService.PlotSlotIterator iterator = slotService.iteratorFor(request.getOwnerUuid());
+        int budget = Math.max(1, worldgen.getFallbackSpiralMaxCandidates());
+        while (budget-- > 0) {
+            Optional<PlotSlotService.PlotSlotCandidate> opt = iterator.next();
+            if (opt.isEmpty()) {
+                return false;
+            }
+            PlotSlotService.PlotSlotCandidate candidate = opt.get();
+            PlotFootprint footprint = buildClaimFootprint(candidate.minX, candidate.minZ, lac);
+            if (biomeSearchService.evaluateBiomeOptionMatching(level, footprint.minX(), footprint.maxX(), footprint.minZ(), footprint.maxZ(), option) == BiomeSearchService.MatchResult.MATCH
+                && reserveSlotForCandidate(request, candidate, lac, sc)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public AllocationStatusSnapshot getAllocationStatus(UUID ownerUuid) {
@@ -914,8 +1317,8 @@ public class TerrainAllocationCoordinator {
         Config.SchedulerConfig scheduler = configManager.getConfig().getPlayerLandAllocation().getScheduler();
         long elapsed = now - request.getCreatedAt();
         long timeoutRemaining = Math.max(0L, scheduler.getRequestTimeoutSeconds() * 1000L - elapsed);
-        Config.WorldgenSearchConfig worldgen = configManager.getConfig().getPlayerLandAllocation().getWorldgenSearch();
-        int totalKnownSectors = Math.max(1, enabledBands(worldgen).size() * Math.max(1, worldgen.getMaxSectorsPerRequest()));
+        int totalKnownSectors = Math.max(1, enabledBands(configManager.getConfig().getPlayerLandAllocation().getWorldgenSearch()).size()
+            * Math.max(1, configManager.getConfig().getPlayerLandAllocation().getWorldgenSearch().getMaxSectorsPerRequest()));
         return new AllocationStatusSnapshot(
             request,
             cursor,
@@ -939,6 +1342,36 @@ public class TerrainAllocationCoordinator {
         };
     }
 
+    private void maybeEmitProgress(AllocationRequest request, ServerLevel level, AllocationSearchCursor cursor) {
+        long now = System.currentTimeMillis();
+        int intervalSeconds = Math.max(1, configManager.getConfig().getPlayerLandAllocation().getNotifications().getAllocationProgressIntervalSeconds());
+        long intervalMillis = intervalSeconds * 1000L;
+        if (configManager.getConfig().getPlayerLandAllocation().getNotifications().isAllocationProgressEnabled()) {
+            Long lastNotify = lastProgressNotifications.get(request.getId());
+            if (lastNotify == null || now - lastNotify >= intervalMillis) {
+                ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
+                if (player != null) {
+                    player.sendSystemMessage(Component.literal("§6[Terrenos] " + describeProgressLine(cursor)));
+                }
+                lastProgressNotifications.put(request.getId(), now);
+            }
+        }
+
+        Long lastLog = lastProgressLogs.get(request.getId());
+        if (lastLog == null || now - lastLog >= 10_000L) {
+            LOGGER.info("[BigBangRegions] Allocation progress: request={} biome={} state={} elapsed={}s sectors={} anchors={} candidates={} lastRejection={}",
+                request.getId().substring(0, 8),
+                request.getRequestedBiomeOption(),
+                request.getState(),
+                (now - request.getCreatedAt()) / 1000L,
+                cursor.getTotalSectorsChecked(),
+                cursor.getAnchorsFound(),
+                cursor.getTotalVirtualCandidatesChecked(),
+                cursor.getLastRejectionReason());
+            lastProgressLogs.put(request.getId(), now);
+        }
+    }
+
     private String describeProgressLine(AllocationSearchCursor cursor) {
         if (cursor.getCurrentAnchorBiomeId() != null) {
             return "Encontramos uma area promissora. Validando terreno...";
@@ -948,22 +1381,83 @@ public class TerrainAllocationCoordinator {
         }
         return "Procurando uma area do bioma solicitado... setores descartados: " + cursor.getSectorsDiscarded();
     }
+
     private boolean isTimedOut(AllocationRequest request, Config.SchedulerConfig sc) {
-        return System.currentTimeMillis() - request.getUpdatedAt() > sc.getRequestTimeoutSeconds() * 1000L;
+        return System.currentTimeMillis() - request.getCreatedAt() > sc.getRequestTimeoutSeconds() * 1000L;
     }
 
     private void failRequest(AllocationRequest request, AllocationRequestState target, String reason, ServerLevel level) {
         request.forceTransitionTo(target);
         request.setFailureReason(reason);
         requestRepository.save(request);
-        searchIterators.remove(request.getId());
         cleanupRequestResources(request, PreparationCancelReason.FAILED, false);
         if (level != null) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
             if (player != null) {
-                player.sendSystemMessage(Component.literal("§cNão foi possível criar seu terreno: " + reason));
+                if (target == AllocationRequestState.FAILED_NO_TERRAIN) {
+                    player.sendSystemMessage(Component.literal("§cNão encontramos uma área grande o suficiente de " + request.getRequestedBiomeOption() + " dentro do limite atual."));
+                    player.sendSystemMessage(Component.literal("§7Nenhuma região foi criada e nenhum recurso foi consumido. Tente novamente ou escolha outro bioma."));
+                } else {
+                    player.sendSystemMessage(Component.literal("§cA criação do terreno falhou: " + reason));
+                    player.sendSystemMessage(Component.literal("§7Nenhuma região foi criada. Você pode tentar novamente."));
+                }
             }
         }
+    }
+
+    private void resumeSearchAfterCandidateFailure(AllocationRequest request,
+                                                   Config.PlayerLandAllocationConfig lac,
+                                                   ServerLevel level,
+                                                   String rejectionReason,
+                                                   String diagnostic,
+                                                   boolean slotAlreadyInvalidated) {
+        if (!slotAlreadyInvalidated) {
+            tryReleaseSlot(request);
+        }
+
+        AllocationMetrics.increment(rejectionReason);
+        AllocationSearchCursor cursor = loadOrCreateCursor(request, lac);
+        cursor.setLastRejectionReason(rejectionReason);
+        cursorRepository.save(cursor);
+
+        cleanupRequestResources(request, PreparationCancelReason.FAILED, false);
+        preparationRepository.delete(request.getId());
+
+        request.setPlotSlotId(null);
+        request.setFailureReason(null);
+        request.transitionTo(AllocationRequestState.VIRTUAL_SEARCHING);
+        requestRepository.save(request);
+
+        LOGGER.info("[BigBangRegions] Candidate rejected after reservation: request={} reason={} detail={}. Resuming virtual search.",
+            request.getId(), rejectionReason, diagnostic);
+
+        if (level != null) {
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("§6[Terrenos] Encontramos uma área, mas ela não passou na validação final. Continuando a busca..."));
+            }
+        }
+    }
+
+    private int recoverPausedRequest(AllocationRequest request, ServerLevel level, Config.PlayerLandAllocationConfig lac) {
+        String reason = request.getFailureReason();
+        if (reason != null && (
+            reason.contains("Metadados de preparacao nao encontrados")
+                || reason.contains("Recuperacao: preparacao fisica interrompida")
+                || reason.contains("Recuperacao: criacao fisica interrompida")
+        )) {
+            LOGGER.info("[BigBangRegions] Auto-recovering paused allocation request={} by resuming virtual search.", request.getId());
+            resumeSearchAfterCandidateFailure(
+                request,
+                lac,
+                level,
+                "rejected_physical_validation",
+                reason,
+                false
+            );
+            return 1;
+        }
+        return 0;
     }
 
     private void handlePreparationFailure(AllocationRequest request, ServerLevel level, AllocationRequestState target, String reason) {
@@ -998,9 +1492,11 @@ public class TerrainAllocationCoordinator {
     }
 
     private void cleanupRequestResources(AllocationRequest request, PreparationCancelReason reason, boolean deletePreparationRecord) {
-        searchIterators.remove(request.getId());
         validatedWorlds.remove(request.getId());
         completedPreparations.remove(request.getId());
+        lastProgressNotifications.remove(request.getId());
+        lastProgressLogs.remove(request.getId());
+        sectorSequenceCache.entrySet().removeIf(entry -> entry.getKey().startsWith(request.getId() + ":"));
 
         PreparationHandle handle = preparationHandles.remove(request.getId());
         if (handle != null) {
@@ -1016,6 +1512,9 @@ public class TerrainAllocationCoordinator {
             if (deletePreparationRecord) {
                 preparationRepository.delete(request.getId());
             }
+        }
+        if (deletePreparationRecord) {
+            cursorRepository.delete(request.getId());
         }
     }
 

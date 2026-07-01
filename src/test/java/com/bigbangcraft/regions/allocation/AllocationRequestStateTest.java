@@ -18,16 +18,21 @@ public class AllocationRequestStateTest {
 
         assertTrue(AllocationRequestState.VIRTUAL_VALIDATED.canTransitionTo(AllocationRequestState.SLOT_RESERVED));
         assertTrue(AllocationRequestState.SLOT_RESERVED.canTransitionTo(AllocationRequestState.PREPARING_CHUNKS));
+        assertTrue(AllocationRequestState.SLOT_RESERVED.canTransitionTo(AllocationRequestState.VIRTUAL_SEARCHING));
         assertTrue(AllocationRequestState.SLOT_RESERVED.canTransitionTo(AllocationRequestState.FAILED_NO_TERRAIN));
         assertTrue(AllocationRequestState.SLOT_RESERVED.canTransitionTo(AllocationRequestState.FAILED_VALIDATION));
         assertTrue(AllocationRequestState.SLOT_RESERVED.canTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION));
 
         assertTrue(AllocationRequestState.PREPARING_CHUNKS.canTransitionTo(AllocationRequestState.WAITING_FOR_CHUNKS));
+        assertTrue(AllocationRequestState.PREPARING_CHUNKS.canTransitionTo(AllocationRequestState.VIRTUAL_SEARCHING));
+        assertTrue(AllocationRequestState.WAITING_FOR_CHUNKS.canTransitionTo(AllocationRequestState.VIRTUAL_SEARCHING));
+        assertTrue(AllocationRequestState.VALIDATING_LOADED_WORLD.canTransitionTo(AllocationRequestState.VIRTUAL_SEARCHING));
         assertTrue(AllocationRequestState.WAITING_FOR_CHUNKS.canTransitionTo(AllocationRequestState.VALIDATING_LOADED_WORLD));
         assertTrue(AllocationRequestState.VALIDATING_LOADED_WORLD.canTransitionTo(AllocationRequestState.REGION_CREATING));
 
         assertTrue(AllocationRequestState.REGION_CREATING.canTransitionTo(AllocationRequestState.COMPLETED));
         assertTrue(AllocationRequestState.REGION_CREATING.canTransitionTo(AllocationRequestState.PAUSED_RECOVERY));
+        assertTrue(AllocationRequestState.PAUSED_RECOVERY.canTransitionTo(AllocationRequestState.VIRTUAL_SEARCHING));
     }
 
     @Test

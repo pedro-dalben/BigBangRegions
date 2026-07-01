@@ -50,25 +50,25 @@ public enum AllocationRequestState {
                     || next == CANCELLED_BEFORE_REGION_CREATION
                     || next == CANCELLED;
             case SLOT_RESERVED:
-                return next == PREPARING_CHUNKS || next == FAILED_NO_TERRAIN
+                return next == PREPARING_CHUNKS || next == VIRTUAL_SEARCHING || next == FAILED_NO_TERRAIN
                     || next == FAILED_VALIDATION
                     || next == CANCELLED_BEFORE_REGION_CREATION
                     || next == CANCELLED;
 
             case PREPARING_CHUNKS:
-                return next == WAITING_FOR_CHUNKS || next == FAILED_NO_TERRAIN
+                return next == WAITING_FOR_CHUNKS || next == VIRTUAL_SEARCHING || next == FAILED_NO_TERRAIN
                     || next == FAILED_VALIDATION
                     || next == PAUSED_RECOVERY
                     || next == CANCELLED_BEFORE_REGION_CREATION
                     || next == CANCELLED;
             case WAITING_FOR_CHUNKS:
-                return next == VALIDATING_LOADED_WORLD || next == FAILED_NO_TERRAIN
+                return next == VALIDATING_LOADED_WORLD || next == VIRTUAL_SEARCHING || next == FAILED_NO_TERRAIN
                     || next == FAILED_VALIDATION
                     || next == PAUSED_RECOVERY
                     || next == CANCELLED_BEFORE_REGION_CREATION
                     || next == CANCELLED;
             case VALIDATING_LOADED_WORLD:
-                return next == REGION_CREATING || next == FAILED_NO_TERRAIN
+                return next == REGION_CREATING || next == VIRTUAL_SEARCHING || next == FAILED_NO_TERRAIN
                     || next == FAILED_VALIDATION
                     || next == PAUSED_RECOVERY
                     || next == CANCELLED_BEFORE_REGION_CREATION
@@ -79,9 +79,15 @@ public enum AllocationRequestState {
                     || next == FAILED
                     || next == FAILED_NO_TERRAIN
                     || next == FAILED_VALIDATION;
+            case PAUSED_RECOVERY:
+                return next == VIRTUAL_SEARCHING
+                    || next == FAILED
+                    || next == FAILED_NO_TERRAIN
+                    || next == FAILED_VALIDATION
+                    || next == CANCELLED_BEFORE_REGION_CREATION
+                    || next == CANCELLED;
 
             case COMPLETED:
-            case PAUSED_RECOVERY:
             case CANCELLED_BEFORE_REGION_CREATION:
             case FAILED_NO_TERRAIN:
             case FAILED_VALIDATION:

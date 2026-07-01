@@ -159,10 +159,10 @@ public class PlayerRegionMigrationTest {
         try (Connection conn = dbManager.getConnection();
              Statement stmt = conn.createStatement()) {
 
-            // Check schema version is 8 (V1+V2+V3+V4+V5+V6+V7+V8)
+            // Check schema version is 9 (V1+...+V9)
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(8, rs.getInt(1));
+                assertEquals(9, rs.getInt(1));
             }
 
             // Verify V3 tables exist
@@ -176,6 +176,7 @@ public class PlayerRegionMigrationTest {
             assertTrue(tables.contains("plot_slots"));
             assertTrue(tables.contains("player_region_homes"));
             assertTrue(tables.contains("allocation_request_preparation"));
+            assertTrue(tables.contains("allocation_search_cursor"));
 
             // Verify columns added in V2
             List<String> columns = new ArrayList<>();
@@ -195,6 +196,15 @@ public class PlayerRegionMigrationTest {
                 }
             }
             assertTrue(allocationColumns.contains("preparation_attempt"));
+
+            List<String> cursorColumns = new ArrayList<>();
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(allocation_search_cursor);")) {
+                while (rs.next()) {
+                    cursorColumns.add(rs.getString("name"));
+                }
+            }
+            assertTrue(cursorColumns.contains("current_band_id"));
+            assertTrue(cursorColumns.contains("current_sector_index"));
 
             // Verify dummy V1 data is preserved and new fields have default values / are readable
             try (ResultSet rs = stmt.executeQuery("SELECT regionId, uuid, role, addedByUuid, createdAt, updatedAt FROM region_members WHERE regionId = 'r1';")) {

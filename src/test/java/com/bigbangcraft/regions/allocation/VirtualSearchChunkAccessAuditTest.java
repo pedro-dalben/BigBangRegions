@@ -22,7 +22,8 @@ public class VirtualSearchChunkAccessAuditTest {
         List<Path> files = List.of(
             Path.of("src/main/java/com/bigbangcraft/regions/allocation/BiomeSearchService.java"),
             Path.of("src/main/java/com/bigbangcraft/regions/allocation/CachingBiomeVirtualSampler.java"),
-            Path.of("src/main/java/com/bigbangcraft/regions/allocation/AdaptiveVirtualFootprintValidator.java")
+            Path.of("src/main/java/com/bigbangcraft/regions/allocation/AdaptiveVirtualFootprintValidator.java"),
+            Path.of("src/main/java/com/bigbangcraft/regions/allocation/WorldgenBiomeAnchorLocator.java")
         );
 
         for (Path file : files) {
