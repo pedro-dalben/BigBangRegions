@@ -22,3 +22,9 @@ Para cenários onde a API de eventos padrão do Fabric não fornece interceptado
 * **Método Alvo:** `playerTouch`
 * **Motivo de não usar evento Fabric:** O Fabric não expõe um evento pré-coleta de itens cancelável no servidor.
 * **Comportamento:** Cancela o método `playerTouch` se a flag `item-pickup` estiver negada na região do item, prevenindo a coleta do item pelo jogador.
+
+### 4. `ExplosionMixin`
+* **Classe Alvo:** `net.minecraft.world.level.Explosion`
+* **Método Alvo:** `explode`
+* **Motivo de não usar evento Fabric:** A API pública do Fabric não expõe um callback estável para filtrar a lista de blocos afetados por explosões vanilla depois que a explosão é calculada.
+* **Comportamento:** Intercepta o retorno de `explode()`, usa `getToBlow()` para filtrar blocos dentro de claims protegidas ou na borda da região, e preserva o restante da explosão normalmente.

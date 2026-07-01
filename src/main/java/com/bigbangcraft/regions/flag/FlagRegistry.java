@@ -26,7 +26,7 @@ public class FlagRegistry {
         register(new RegionFlag("passive-mob-spawn", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows passive mobs to spawn. (Planned)", "environment", false));
         register(new RegionFlag("fire-spread", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows fire to spread. (Planned)", "environment", false));
         register(new RegionFlag("fluid-flow", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows fluid flow (water/lava). (Planned)", "environment", false));
-        register(new RegionFlag("explosion-block-damage", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows explosions to damage blocks. (Planned)", "environment", false));
+        register(new RegionFlag("explosion-block-damage", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows explosions to damage blocks.", "environment", true));
         register(new RegionFlag("piston-move", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows pistons to push/pull blocks. (Planned)", "environment", false));
         register(new RegionFlag("projectile-use", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows launching projectiles. (Planned)", "combat", false));
         register(new RegionFlag("mob-griefing", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows mobs to grief (e.g. Endermen, Creepers). (Planned)", "environment", false));

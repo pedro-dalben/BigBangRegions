@@ -66,6 +66,23 @@ public class FlagResolverTest {
     }
 
     @Test
+    public void testExplosionDefaults() {
+        EffectiveRegionPolicy globalPolicy = flagResolver.resolve(null, "explosion-block-damage", config);
+        assertEquals(FlagPolicy.ALLOW, globalPolicy.policy());
+        assertEquals("global_default", globalPolicy.source());
+
+        Region playerRegion = new Region("playerReg", "Player Region", RegionType.PLAYER_REGION,
+                new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, UUID.randomUUID(), creator, 0, 0, "ACTIVE");
+        EffectiveRegionPolicy playerPolicy = flagResolver.resolve(playerRegion, "explosion-block-damage", config);
+        assertEquals(FlagPolicy.DENY, playerPolicy.policy());
+        assertEquals("region_type_default", playerPolicy.source());
+
+        EffectiveRegionPolicy adminPolicy = flagResolver.resolve(region, "explosion-block-damage", config);
+        assertEquals(FlagPolicy.DENY, adminPolicy.policy());
+        assertEquals("region_type_default", adminPolicy.source());
+    }
+
+    @Test
     public void testModFallback() {
         // Query an unregistered / fake flag
         EffectiveRegionPolicy policy = flagResolver.resolve(null, "non-existent-flag-id", config);

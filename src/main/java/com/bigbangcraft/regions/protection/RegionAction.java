@@ -9,6 +9,7 @@ public enum RegionAction {
     REDSTONE("visitor-redstone"),
     ENTITY_INTERACT("visitor-item-frames"),
     PVP("pvp"),
+    EXPLOSION_BLOCK_DAMAGE("explosion-block-damage"),
     ITEM_PICKUP("visitor-pickup-items"),
     ITEM_DROP("visitor-drop-items");
 

@@ -29,6 +29,9 @@ public class ConfigManagerTest {
         assertEquals(1000, config.getDefaultPriorities().getAdminRegion());
         assertEquals("ALLOW", config.getDefaults().getGlobal().get("visitor-build"));
         assertEquals("DENY", config.getDefaults().getAdminRegion().get("visitor-build"));
+        assertEquals("ALLOW", config.getDefaults().getGlobal().get("explosion-block-damage"));
+        assertEquals("DENY", config.getDefaults().getAdminRegion().get("explosion-block-damage"));
+        assertEquals("DENY", config.getDefaults().getPlayerRegion().get("explosion-block-damage"));
         assertEquals(5, config.getPlayerLandAllocation().getBiomeSearch().getSampleGridSize());
         assertEquals(64, config.getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY());
         assertEquals(50000, config.getPlayerLandAllocation().getWorldgenSearch().getVirtualBiomeCacheMaxEntries());

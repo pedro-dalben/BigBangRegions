@@ -11,7 +11,7 @@ public class RegionRolePolicyTest {
     @Test
     public void testRolePolicyRules() {
         for (RegionAction action : RegionAction.values()) {
-            if (action == RegionAction.PVP) {
+            if (action == RegionAction.PVP || action == RegionAction.EXPLOSION_BLOCK_DAMAGE) {
                 assertTrue(RegionRolePolicy.isAllowed(RegionRole.VISITOR, action));
                 assertTrue(RegionRolePolicy.isAllowed(RegionRole.MEMBER, action));
                 assertTrue(RegionRolePolicy.isAllowed(RegionRole.LEADER, action));

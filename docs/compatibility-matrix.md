@@ -26,5 +26,5 @@ Para garantir compatibilidade com containers de outros mods sem necessidade de d
 | **AE2 / RFTools** | Redes e Pedreiras | `PARTIALLY_SUPPORTED` | Blocos colocados/quebrados por ferramentas de rede ou pedreiras (Quarry/Builder) não são prevenidos nesta fase. |
 | **Pistons (Pistões)** | Movimentação Vanilla | `NOT_SUPPORTED` | Empurrar blocos com pistões normais de dentro para fora ou de fora para dentro de claims ainda não é interceptado nesta fase. |
 | **Hoppers (Funis)** | Transferência Vanilla | `NOT_SUPPORTED` | Funis colocados fora da região podem extrair itens de baús protegidos dentro da região. Proteção de transferência de inventário está planejada para a Fase 2. |
-| **Explosões (TNT/Creeper)** | Dano no Terreno | `PLANNED` | Blocos destruídos por explosões não são restaurados ou prevenidos. Planejado para a Fase 2. |
+| **Explosões (TNT/Creeper)** | Dano no Terreno | `IMPLEMENTED_AND_TESTED` | Blocos afetados por explosões são filtrados pelo `ExplosionMixin`; fogo, fluidos e mob griefing continuam planejados. |
 | **Fogo, Fluidos e Mob Griefing** | Alastramento e Danos | `PLANNED` | Propagação de fogo, fluxo de lava/água e destruição por Endermen/Creepers não são impedidos nesta fase. |

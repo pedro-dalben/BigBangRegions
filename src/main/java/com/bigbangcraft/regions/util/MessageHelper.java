@@ -51,6 +51,8 @@ public class MessageHelper {
                 return "Você não pode usar mecanismos de redstone nesta região" + suffix + ".";
             case PVP:
                 return "PvP está desativado nesta região" + suffix + ".";
+            case EXPLOSION_BLOCK_DAMAGE:
+                return "Você não pode causar dano por explosões nesta região" + suffix + ".";
             case ITEM_PICKUP:
                 return "Você não pode coletar itens nesta região" + suffix + ".";
             case ITEM_DROP:

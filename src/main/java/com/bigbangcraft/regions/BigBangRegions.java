@@ -405,6 +405,17 @@ public class BigBangRegions implements ModInitializer {
         }
         return true;
     }
+
+    public static boolean canWorldAction(Level world, BlockPos pos, RegionAction action) {
+        if (protectionService == null || world == null || pos == null || action == null) {
+            return true;
+        }
+
+        ProtectionContext context = new ProtectionContext.Builder(action, world, pos)
+                .actor(ActorType.UNKNOWN)
+                .build();
+        return protectionService.check(context).isAllowed();
+    }
     
     private LandPaymentGateway initializePaymentGateway() {
         String provider = configManager.getConfig().getPlayerLandAllocation().getPayment().getProvider();

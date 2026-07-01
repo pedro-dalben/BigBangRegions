@@ -109,8 +109,31 @@ public class PlayerRegionFlagAndRoleTest {
 
             region.setFlag(action.getFlagId(), "DENY");
             assertFalse(protectionService.check(memberContext).isAllowed(), "Member should be blocked on " + action + " when flag is DENY");
-            
+
             region.setFlag(action.getFlagId(), "INHERIT");
         }
+    }
+
+    @Test
+    public void testExplosionDamageUsesRegionFlag() {
+        Level level = mockLevel();
+        BlockPos pos = new BlockPos(5, 5, 5);
+
+        region.setFlag("explosion-block-damage", "ALLOW");
+
+        ServerPlayer visitorPlayer = mockPlayer(visitor, level);
+        ProtectionContext visitorContext = new ProtectionContext.Builder(RegionAction.EXPLOSION_BLOCK_DAMAGE, level, pos)
+                .player(visitorPlayer)
+                .build();
+        assertTrue(protectionService.check(visitorContext).isAllowed());
+
+        ServerPlayer memberPlayer = mockPlayer(member, level);
+        ProtectionContext memberContext = new ProtectionContext.Builder(RegionAction.EXPLOSION_BLOCK_DAMAGE, level, pos)
+                .player(memberPlayer)
+                .build();
+        assertTrue(protectionService.check(memberContext).isAllowed());
+
+        region.setFlag("explosion-block-damage", "DENY");
+        assertFalse(protectionService.check(memberContext).isAllowed());
     }
 }

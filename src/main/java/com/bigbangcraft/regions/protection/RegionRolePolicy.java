@@ -8,6 +8,10 @@ public class RegionRolePolicy {
             // PVP is not decided by role in this phase
             return true;
         }
+        if (action == RegionAction.EXPLOSION_BLOCK_DAMAGE) {
+            // Explosion damage is decided by region flags, not by membership role.
+            return true;
+        }
         return role != null && role.isAtLeast(RegionRole.MEMBER);
     }
 }
