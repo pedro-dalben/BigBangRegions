@@ -222,8 +222,7 @@ public class BigBangRegions implements ModInitializer {
         // 6. Allocation services
         BiomeOptionRegistry biomeOptionRegistry = new BiomeOptionRegistry(configManager);
         biomeOptionRegistry.load();
-        BiomeSampleCache biomeSampleCache = new BiomeSampleCache(2048, 120_000L);
-        BiomeSearchService biomeSearchService = new BiomeSearchService(configManager, biomeSampleCache);
+        BiomeSearchService biomeSearchService = new BiomeSearchService(configManager);
         PlotSlotService plotSlotService = new PlotSlotService(configManager, plotSlotRepository, regionCache);
         
         // 7. Payment Gateway initialization (only used for region expansion, not initial allocation)
