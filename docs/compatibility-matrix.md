@@ -10,7 +10,7 @@ O mod cobre 100% das ações diretas do jogador no Vanilla:
 * Abertura de portas, alçapões e portões de cerca.
 * Interação com entidades decorativas (Armor Stands, Item Frames) e veículos (Barcos, Minecarts).
 * Combate PvP (corpo a corpo e projéteis como flechas, poções e tridentes).
-* Proteção de explosões e pistões dentro de claims.
+* Proteção de explosões, pistões, fogo, fluidos e mob griefing dentro de claims.
 * Coleta e drop manual de itens.
 
 ## Inventários Modded (Critério Técnico de Detecção)
@@ -27,5 +27,5 @@ Para garantir compatibilidade com containers de outros mods sem necessidade de d
 | **AE2 / RFTools** | Redes e Pedreiras | `PARTIALLY_SUPPORTED` | Blocos colocados/quebrados por ferramentas de rede ou pedreiras (Quarry/Builder) não são prevenidos nesta fase. |
 | **Pistons (Pistões)** | Movimentação Vanilla | `IMPLEMENTED_AND_TESTED` | O `PistonStructureResolverMixin` bloqueia empurrar/romper blocos quando atravessariam bordas de claims ou quando a flag `piston-move` está negada. |
 | **Hoppers (Funis)** | Transferência Vanilla | `NOT_SUPPORTED` | Funis colocados fora da região podem extrair itens de baús protegidos dentro da região. Proteção de transferência de inventário está planejada para a Fase 2. |
-| **Explosões (TNT/Creeper)** | Dano no Terreno | `IMPLEMENTED_AND_TESTED` | Blocos afetados por explosões são filtrados pelo `ExplosionMixin`; fogo, fluidos e mob griefing continuam planejados. |
-| **Fogo, Fluidos e Mob Griefing** | Alastramento e Danos | `PLANNED` | Propagação de fogo, fluxo de lava/água e destruição por Endermen/Creepers não são impedidos nesta fase. |
+| **Explosões (TNT/Creeper)** | Dano no Terreno | `IMPLEMENTED_AND_TESTED` | Blocos afetados por explosões são filtrados pelo `ExplosionMixin`; as proteções ambientais agora são tratadas por hooks dedicados. |
+| **Fogo, Fluidos e Mob Griefing** | Alastramento e Danos | `IMPLEMENTED_AND_TESTED` | `FireBlockMixin`, `FlowingFluidMixin`, `LavaFluidMixin` e os mixins de Enderman bloqueiam ignição/propagação, fluxo de água/lava e alteração de blocos por mobs nesta fase. |
