@@ -12,11 +12,14 @@ import com.bigbangcraft.regions.flag.FlagResolver;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.region.RegionResolver;
 import com.bigbangcraft.regions.region.RegionRoleResolver;
+import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.Bootstrap;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.util.HashMap;
@@ -38,6 +41,12 @@ public class PlayerRegionProtectionTest {
     private UUID owner;
     private UUID member;
     private UUID visitor;
+
+    @BeforeAll
+    public static void beforeAll() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+    }
 
     private ServerPlayer mockPlayer(UUID uuid, Level level) {
         ServerPlayer player = mock(ServerPlayer.class);

@@ -100,6 +100,31 @@ public class FlagResolverTest {
     }
 
     @Test
+    public void testEnvironmentDefaults() {
+        assertDefaultPolicy("fire-spread", FlagPolicy.ALLOW, FlagPolicy.DENY, FlagPolicy.DENY);
+        assertDefaultPolicy("fire-block-damage", FlagPolicy.ALLOW, FlagPolicy.DENY, FlagPolicy.DENY);
+        assertDefaultPolicy("water-flow", FlagPolicy.ALLOW, FlagPolicy.DENY, FlagPolicy.DENY);
+        assertDefaultPolicy("lava-flow", FlagPolicy.ALLOW, FlagPolicy.DENY, FlagPolicy.DENY);
+        assertDefaultPolicy("mob-griefing", FlagPolicy.ALLOW, FlagPolicy.DENY, FlagPolicy.DENY);
+    }
+
+    private void assertDefaultPolicy(String flagId, FlagPolicy globalExpected, FlagPolicy adminExpected, FlagPolicy playerExpected) {
+        EffectiveRegionPolicy globalPolicy = flagResolver.resolve(null, flagId, config);
+        assertEquals(globalExpected, globalPolicy.policy(), "Unexpected global policy for " + flagId);
+        assertEquals("global_default", globalPolicy.source(), "Unexpected global source for " + flagId);
+
+        EffectiveRegionPolicy adminPolicy = flagResolver.resolve(region, flagId, config);
+        assertEquals(adminExpected, adminPolicy.policy(), "Unexpected admin policy for " + flagId);
+        assertEquals("region_type_default", adminPolicy.source(), "Unexpected admin source for " + flagId);
+
+        Region playerRegion = new Region("playerReg", "Player Region", RegionType.PLAYER_REGION,
+                new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, UUID.randomUUID(), creator, 0, 0, "ACTIVE");
+        EffectiveRegionPolicy playerPolicy = flagResolver.resolve(playerRegion, flagId, config);
+        assertEquals(playerExpected, playerPolicy.policy(), "Unexpected player policy for " + flagId);
+        assertEquals("region_type_default", playerPolicy.source(), "Unexpected player source for " + flagId);
+    }
+
+    @Test
     public void testModFallback() {
         // Query an unregistered / fake flag
         EffectiveRegionPolicy policy = flagResolver.resolve(null, "non-existent-flag-id", config);

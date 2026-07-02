@@ -12,8 +12,13 @@ public class RegionRolePolicyTest {
     public void testRolePolicyRules() {
         for (RegionAction action : RegionAction.values()) {
             if (action == RegionAction.PVP ||
+                action == RegionAction.FIRE_SPREAD ||
+                action == RegionAction.FIRE_BLOCK_DAMAGE ||
+                action == RegionAction.WATER_FLOW ||
+                action == RegionAction.LAVA_FLOW ||
                 action == RegionAction.EXPLOSION_BLOCK_DAMAGE ||
-                action == RegionAction.PISTON_MOVE) {
+                action == RegionAction.PISTON_MOVE ||
+                action == RegionAction.MOB_GRIEFING) {
                 assertTrue(RegionRolePolicy.isAllowed(RegionRole.VISITOR, action));
                 assertTrue(RegionRolePolicy.isAllowed(RegionRole.MEMBER, action));
                 assertTrue(RegionRolePolicy.isAllowed(RegionRole.LEADER, action));

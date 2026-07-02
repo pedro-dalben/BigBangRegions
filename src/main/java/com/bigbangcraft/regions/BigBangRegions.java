@@ -411,10 +411,55 @@ public class BigBangRegions implements ModInitializer {
             return true;
         }
 
+        String dimension = world.dimension().location().toString();
+        if (isBoundaryBlock(dimension, pos)) {
+            return false;
+        }
+
         ProtectionContext context = new ProtectionContext.Builder(action, world, pos)
                 .actor(ActorType.UNKNOWN)
                 .build();
         return protectionService.check(context).isAllowed();
+    }
+
+    public static boolean canWorldAction(Level world, BlockPos sourcePos, BlockPos targetPos, RegionAction action) {
+        if (protectionService == null || world == null || sourcePos == null || targetPos == null || action == null) {
+            return true;
+        }
+
+        String dimension = world.dimension().location().toString();
+        if (isBoundaryBlock(dimension, sourcePos) || isBoundaryBlock(dimension, targetPos)) {
+            return false;
+        }
+
+        if (!canWorldAction(world, sourcePos, action) || !canWorldAction(world, targetPos, action)) {
+            return false;
+        }
+
+        RegionCache cache = getRegionCache();
+        if (cache == null) {
+            return true;
+        }
+
+        var sourceRegions = cache.getRegionsAt(dimension, sourcePos.getX(), sourcePos.getY(), sourcePos.getZ());
+        var targetRegions = cache.getRegionsAt(dimension, targetPos.getX(), targetPos.getY(), targetPos.getZ());
+
+        if (sourceRegions.isEmpty() && targetRegions.isEmpty()) {
+            return true;
+        }
+        if (sourceRegions.isEmpty() != targetRegions.isEmpty()) {
+            return false;
+        }
+
+        for (Region sourceRegion : sourceRegions) {
+            for (Region targetRegion : targetRegions) {
+                if (sourceRegion.getId().equals(targetRegion.getId())) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
     
     private LandPaymentGateway initializePaymentGateway() {
@@ -464,8 +509,10 @@ public class BigBangRegions implements ModInitializer {
         // 1. Container (any block with Container or MenuProvider block entity) -> container-access
         // 2. Door (any DoorBlock, TrapDoorBlock, FenceGateBlock) -> door-use
         // 3. Redstone (any ButtonBlock, LeverBlock, DiodeBlock) -> redstone-use
-        // 4. Block Placement (if carrying a block/bucket item) -> player-build
-        // 5. Generic Interaction (Fallback) -> player-interact
+        // 4. Fire ignition (flint and steel / fire charge) -> fire-spread
+        // 5. Fluid placement/pickup (water/lava buckets) -> water-flow / lava-flow
+        // 6. Block Placement (generic block items) -> player-build
+        // 7. Generic Interaction (Fallback) -> player-interact
         // Once an interaction is classified into a specific category, the handler returns PASS or FAIL immediately,
         // preventing it from being evaluated again under the fallback player-interact check.
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
@@ -547,44 +594,7 @@ public class BigBangRegions implements ModInitializer {
     }
 
     public static boolean isPistonAllowed(Level level, BlockPos pos, net.minecraft.core.Direction direction) {
-        String dimension = level.dimension().location().toString();
         BlockPos dest = pos.relative(direction);
-
-        if (isBoundaryBlock(dimension, pos) || isBoundaryBlock(dimension, dest)) {
-            return false;
-        }
-
-        if (!canWorldAction(level, pos, RegionAction.PISTON_MOVE) ||
-            !canWorldAction(level, dest, RegionAction.PISTON_MOVE)) {
-            return false;
-        }
-
-        RegionCache cache = getRegionCache();
-        if (cache == null) return true;
-
-        var regionsSource = cache.getRegionsAt(dimension, pos.getX(), pos.getY(), pos.getZ());
-        var regionsDest = cache.getRegionsAt(dimension, dest.getX(), dest.getY(), dest.getZ());
-
-        if (regionsSource.isEmpty() && !regionsDest.isEmpty()) {
-            return false;
-        }
-        if (!regionsSource.isEmpty() && regionsDest.isEmpty()) {
-            return false;
-        }
-        if (!regionsSource.isEmpty() && !regionsDest.isEmpty()) {
-            boolean matches = false;
-            for (Region rSource : regionsSource) {
-                for (Region rDest : regionsDest) {
-                    if (rSource.getId().equals(rDest.getId())) {
-                        matches = true;
-                        break;
-                    }
-                }
-            }
-            if (!matches) {
-                return false;
-            }
-        }
-        return true;
+        return canWorldAction(level, pos, dest, RegionAction.PISTON_MOVE);
     }
 }

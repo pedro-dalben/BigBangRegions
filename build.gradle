@@ -27,6 +27,11 @@ def findLatestJar(String dirPath, String prefix, String suffix) {
 }
 
 loom {
+	mixin {
+		useLegacyMixinAp = true
+		defaultRefmapName = "bigbangregions.refmap.json"
+	}
+
 	mods {
 		"bigbangregions" {
 			sourceSet sourceSets.main

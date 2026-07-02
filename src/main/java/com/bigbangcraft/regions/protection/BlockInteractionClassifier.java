@@ -11,6 +11,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
 
 public class BlockInteractionClassifier {
@@ -62,14 +64,32 @@ public class BlockInteractionClassifier {
                 return new ClassifiedInteraction(RegionAction.BLOCK_PLACE, placePos);
             }
             if (heldItem.getItem() instanceof BucketItem) {
-                // Empty bucket used on a fluid block = fluid pickup (INTERACT), not placement
                 if (heldItem.is(Items.BUCKET)) {
+                    FluidState fluidState = world.getFluidState(pos);
+                    if (fluidState.is(Fluids.WATER)) {
+                        return new ClassifiedInteraction(RegionAction.WATER_FLOW, pos);
+                    }
+                    if (fluidState.is(Fluids.LAVA)) {
+                        return new ClassifiedInteraction(RegionAction.LAVA_FLOW, pos);
+                    }
                     return new ClassifiedInteraction(RegionAction.INTERACT, pos);
                 }
-                // Filled bucket = fluid placement (BLOCK_PLACE)
+                if (heldItem.is(Items.WATER_BUCKET)) {
+                    BlockPos placePos = pos.relative(hitResult.getDirection());
+                    return new ClassifiedInteraction(RegionAction.WATER_FLOW, placePos);
+                }
+                if (heldItem.is(Items.LAVA_BUCKET)) {
+                    BlockPos placePos = pos.relative(hitResult.getDirection());
+                    return new ClassifiedInteraction(RegionAction.LAVA_FLOW, placePos);
+                }
                 BlockPos placePos = pos.relative(hitResult.getDirection());
                 return new ClassifiedInteraction(RegionAction.BLOCK_PLACE, placePos);
             }
+        }
+
+        if (heldItem.is(Items.FLINT_AND_STEEL) || heldItem.is(Items.FIRE_CHARGE)) {
+            BlockPos firePos = state.is(Blocks.TNT) ? pos : pos.relative(hitResult.getDirection());
+            return new ClassifiedInteraction(RegionAction.FIRE_SPREAD, firePos);
         }
 
         // 5. Fallback interaction check

@@ -2,9 +2,15 @@
 	"required": true,
 	"package": "com.bigbangcraft.regions.mixin",
 	"compatibilityLevel": "JAVA_21",
+	"refmap": "bigbangregions.refmap.json",
 	"mixins": [
 		"BasePressurePlateBlockMixin",
+		"EndermanLeaveBlockGoalMixin",
+		"EndermanTakeBlockGoalMixin",
+		"FireBlockMixin",
 		"ItemEntityMixin",
+		"LavaFluidMixin",
+		"FlowingFluidMixin",
 		"PlayerMixin",
 		"ExplosionMixin",
 		"PistonStructureResolverMixin"

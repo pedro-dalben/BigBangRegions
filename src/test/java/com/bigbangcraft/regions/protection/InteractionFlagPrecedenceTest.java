@@ -18,10 +18,13 @@ import net.minecraft.server.Bootstrap;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.BeforeAll;
@@ -84,12 +87,18 @@ public class InteractionFlagPrecedenceTest {
         region = new Region("regA", "Region A", RegionType.ADMIN_REGION, bounds, 1000, null, UUID.randomUUID(), 0, 0, "ACTIVE");
         
         when(regionResolver.resolveRegionAt("minecraft:overworld", 10, 10, 10)).thenReturn(Optional.of(region));
+        when(regionResolver.resolveRegionAt("minecraft:overworld", 10, 11, 10)).thenReturn(Optional.of(region));
         when(permissionManager.hasBypass(any(), any())).thenReturn(false);
     }
 
     private boolean checkInteraction(BlockState state, BlockEntity be, ItemStack heldItem) {
+        return checkInteraction(state, be, heldItem, Fluids.EMPTY.defaultFluidState());
+    }
+
+    private boolean checkInteraction(BlockState state, BlockEntity be, ItemStack heldItem, FluidState fluidState) {
         when(level.getBlockState(pos)).thenReturn(state);
         when(level.getBlockEntity(pos)).thenReturn(be);
+        when(level.getFluidState(pos)).thenReturn(fluidState);
         when(player.getItemInHand(InteractionHand.MAIN_HAND)).thenReturn(heldItem);
 
         BlockHitResult hitResult = new BlockHitResult(new Vec3(10, 10, 10), Direction.UP, pos, false);
@@ -212,5 +221,65 @@ public class InteractionFlagPrecedenceTest {
 
         assertTrue(checkInteraction(doorState, null, ItemStack.EMPTY));
         assertFalse(checkInteraction(leverState, null, ItemStack.EMPTY));
+    }
+
+    @Test
+    public void testWaterBucketUsesWaterFlow() {
+        BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
+
+        region.setFlag("water-flow", "ALLOW");
+        region.setFlag("visitor-interact", "DENY");
+
+        assertTrue(checkInteraction(state, null, new ItemStack(Items.WATER_BUCKET)));
+    }
+
+    @Test
+    public void testLavaBucketUsesLavaFlow() {
+        BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
+
+        region.setFlag("lava-flow", "ALLOW");
+        region.setFlag("visitor-interact", "DENY");
+
+        assertTrue(checkInteraction(state, null, new ItemStack(Items.LAVA_BUCKET)));
+    }
+
+    @Test
+    public void testEmptyBucketOnWaterUsesWaterFlow() {
+        BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
+
+        region.setFlag("water-flow", "ALLOW");
+        region.setFlag("visitor-interact", "DENY");
+
+        assertTrue(checkInteraction(state, null, new ItemStack(Items.BUCKET), Fluids.WATER.defaultFluidState()));
+    }
+
+    @Test
+    public void testEmptyBucketOnLavaUsesLavaFlow() {
+        BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
+
+        region.setFlag("lava-flow", "ALLOW");
+        region.setFlag("visitor-interact", "DENY");
+
+        assertTrue(checkInteraction(state, null, new ItemStack(Items.BUCKET), Fluids.LAVA.defaultFluidState()));
+    }
+
+    @Test
+    public void testFlintAndSteelUsesFireSpread() {
+        BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
+
+        region.setFlag("fire-spread", "ALLOW");
+        region.setFlag("visitor-interact", "DENY");
+
+        assertTrue(checkInteraction(state, null, new ItemStack(Items.FLINT_AND_STEEL)));
+    }
+
+    @Test
+    public void testFireChargeUsesFireSpread() {
+        BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
+
+        region.setFlag("fire-spread", "ALLOW");
+        region.setFlag("visitor-interact", "DENY");
+
+        assertTrue(checkInteraction(state, null, new ItemStack(Items.FIRE_CHARGE)));
     }
 }

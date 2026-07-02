@@ -27,12 +27,14 @@ public class FlagRegistry {
         // Unsupported/Planned flags
         register(new RegionFlag("hostile-mob-spawn", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows hostile mobs to spawn. (Planned)", "environment", false));
         register(new RegionFlag("passive-mob-spawn", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows passive mobs to spawn. (Planned)", "environment", false));
-        register(new RegionFlag("fire-spread", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows fire to spread. (Planned)", "environment", false));
-        register(new RegionFlag("fluid-flow", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows fluid flow (water/lava). (Planned)", "environment", false));
+        register(new RegionFlag("fire-spread", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows fire to spread and be ignited.", "environment", true));
+        register(new RegionFlag("fire-block-damage", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows fire to burn blocks.", "environment", true));
+        register(new RegionFlag("water-flow", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows water to flow and be placed.", "environment", true));
+        register(new RegionFlag("lava-flow", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows lava to flow and be placed.", "environment", true));
         register(new RegionFlag("explosion-block-damage", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows explosions to damage blocks.", "environment", true));
         register(new RegionFlag("piston-move", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows pistons to push/pull blocks.", "environment", true));
         register(new RegionFlag("projectile-use", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows launching projectiles. (Planned)", "combat", false));
-        register(new RegionFlag("mob-griefing", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows mobs to grief (e.g. Endermen, Creepers). (Planned)", "environment", false));
+        register(new RegionFlag("mob-griefing", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows mobs to grief blocks (e.g. Endermen).", "environment", true));
         register(new RegionFlag("crop-trample", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows players/entities to trample crops. (Planned)", "environment", false));
         register(new RegionFlag("teleport-in", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows teleporting into the region. (Planned)", "movement", false));
         register(new RegionFlag("teleport-out", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows teleporting out of the region. (Planned)", "movement", false));

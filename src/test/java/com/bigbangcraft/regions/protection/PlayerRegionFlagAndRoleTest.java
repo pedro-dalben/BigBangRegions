@@ -12,11 +12,14 @@ import com.bigbangcraft.regions.flag.FlagResolver;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.region.RegionResolver;
 import com.bigbangcraft.regions.region.RegionRoleResolver;
+import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.Bootstrap;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.util.HashMap;
@@ -38,6 +41,12 @@ public class PlayerRegionFlagAndRoleTest {
     private UUID owner;
     private UUID member;
     private UUID visitor;
+
+    @BeforeAll
+    public static void beforeAll() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+    }
 
     private ServerPlayer mockPlayer(UUID uuid, Level level) {
         ServerPlayer player = mock(ServerPlayer.class);
@@ -94,6 +103,11 @@ public class PlayerRegionFlagAndRoleTest {
             RegionAction.DOOR,
             RegionAction.REDSTONE,
             RegionAction.ENTITY_INTERACT,
+            RegionAction.FIRE_SPREAD,
+            RegionAction.FIRE_BLOCK_DAMAGE,
+            RegionAction.WATER_FLOW,
+            RegionAction.LAVA_FLOW,
+            RegionAction.MOB_GRIEFING,
             RegionAction.ITEM_PICKUP,
             RegionAction.ITEM_DROP
         };
@@ -105,7 +119,20 @@ public class PlayerRegionFlagAndRoleTest {
 
             ServerPlayer memberPlayer = mockPlayer(member, level);
             ProtectionContext memberContext = new ProtectionContext.Builder(action, level, pos).player(memberPlayer).build();
-            assertTrue(protectionService.check(memberContext).isAllowed(), "Member should be allowed on " + action);
+            boolean flagDriven = action == RegionAction.FIRE_SPREAD ||
+                    action == RegionAction.FIRE_BLOCK_DAMAGE ||
+                    action == RegionAction.WATER_FLOW ||
+                    action == RegionAction.LAVA_FLOW ||
+                    action == RegionAction.MOB_GRIEFING;
+
+            if (flagDriven) {
+                assertFalse(protectionService.check(memberContext).isAllowed(), "Member should be blocked on " + action + " by default");
+
+                region.setFlag(action.getFlagId(), "ALLOW");
+                assertTrue(protectionService.check(memberContext).isAllowed(), "Member should be allowed on " + action + " when flag is ALLOW");
+            } else {
+                assertTrue(protectionService.check(memberContext).isAllowed(), "Member should be allowed on " + action);
+            }
 
             region.setFlag(action.getFlagId(), "DENY");
             assertFalse(protectionService.check(memberContext).isAllowed(), "Member should be blocked on " + action + " when flag is DENY");

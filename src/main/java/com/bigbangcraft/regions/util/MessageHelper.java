@@ -51,10 +51,20 @@ public class MessageHelper {
                 return "Você não pode usar mecanismos de redstone nesta região" + suffix + ".";
             case PVP:
                 return "PvP está desativado nesta região" + suffix + ".";
+            case FIRE_SPREAD:
+                return "Você não pode acender ou espalhar fogo nesta região" + suffix + ".";
+            case FIRE_BLOCK_DAMAGE:
+                return "Você não pode queimar blocos nesta região" + suffix + ".";
+            case WATER_FLOW:
+                return "Você não pode manipular água nesta região" + suffix + ".";
+            case LAVA_FLOW:
+                return "Você não pode manipular lava nesta região" + suffix + ".";
             case EXPLOSION_BLOCK_DAMAGE:
                 return "Você não pode causar dano por explosões nesta região" + suffix + ".";
             case PISTON_MOVE:
                 return "Você não pode mover blocos com pistões nesta região" + suffix + ".";
+            case MOB_GRIEFING:
+                return "Você não pode permitir que mobs alterem blocos nesta região" + suffix + ".";
             case ITEM_PICKUP:
                 return "Você não pode coletar itens nesta região" + suffix + ".";
             case ITEM_DROP:
