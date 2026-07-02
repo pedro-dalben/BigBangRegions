@@ -447,6 +447,7 @@ public class RegionsCommand {
             "§eRequest ID: §f" + request.getId() + "\n" +
             "§eJogador: §f" + request.getOwnerUuid() + "\n" +
             "§eBiome option: §f" + request.getRequestedBiomeOption() + "\n" +
+            "§eTarget dimension: §f" + request.getTargetDimension() + "\n" +
             "§eEstado: §f" + request.getState() + "\n" +
             "§eCreated at: §f" + new java.util.Date(request.getCreatedAt()) + "\n" +
             "§eUpdated at: §f" + new java.util.Date(request.getUpdatedAt()) + "\n" +

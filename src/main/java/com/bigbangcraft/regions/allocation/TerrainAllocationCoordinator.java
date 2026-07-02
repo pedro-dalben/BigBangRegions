@@ -20,6 +20,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
@@ -191,7 +192,7 @@ public class TerrainAllocationCoordinator {
         LOGGER.info("Allocation request cancelled: id={}, owner={}", request.getId(), ownerUuid);
     }
 
-    public int processNextRequest(ServerLevel level) {
+    public int processNextRequest(MinecraftServer server) {
         chunkPreparationService.tick();
 
         List<AllocationRequest> active = requestRepository.getActiveRequests();
@@ -203,9 +204,39 @@ public class TerrainAllocationCoordinator {
             if (request.getNextRetryAt() != null && request.getNextRetryAt() > now) {
                 continue;
             }
+
+            ServerLevel level = resolveTargetLevel(server, request);
+            if (level == null) {
+                String targetDimension = request.getTargetDimension();
+                LOGGER.error("Allocation request {} cannot be processed because target dimension '{}' is unavailable on this server.",
+                    request.getId(), targetDimension);
+                failRequest(request, AllocationRequestState.FAILED_VALIDATION,
+                    "Dimensao alvo indisponivel: " + targetDimension, null);
+                return 1;
+            }
+
             return processRequest(request, level);
         }
         return 0;
+    }
+
+    private ServerLevel resolveTargetLevel(MinecraftServer server, AllocationRequest request) {
+        if (server == null || request == null) {
+            return null;
+        }
+
+        String targetDimension = request.getTargetDimension();
+        if (targetDimension == null || targetDimension.isBlank()) {
+            return null;
+        }
+
+        try {
+            ResourceKey<Level> dimensionKey = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(targetDimension));
+            return server.getLevel(dimensionKey);
+        } catch (RuntimeException e) {
+            LOGGER.error("Invalid target dimension '{}' on allocation request {}", targetDimension, request.getId(), e);
+            return null;
+        }
     }
 
     private int processRequest(AllocationRequest request, ServerLevel level) {
