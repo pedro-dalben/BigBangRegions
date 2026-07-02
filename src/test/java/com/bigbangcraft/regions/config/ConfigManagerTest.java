@@ -50,9 +50,14 @@ public class ConfigManagerTest {
         assertEquals("ALLOW", config.getDefaults().getGlobal().get("mob-griefing"));
         assertEquals("DENY", config.getDefaults().getAdminRegion().get("mob-griefing"));
         assertEquals("DENY", config.getDefaults().getPlayerRegion().get("mob-griefing"));
+        assertEquals(80, config.getPlayerLandAllocation().getInitialClaimSize());
+        assertEquals(-2000, config.getPlayerLandAllocation().getExplorationExclusion().getMinX());
+        assertEquals(2000, config.getPlayerLandAllocation().getExplorationExclusion().getMaxX());
+        assertEquals(0, config.getPlayerLandAllocation().getExplorationExclusion().getSafetyBuffer());
         assertEquals(5, config.getPlayerLandAllocation().getBiomeSearch().getSampleGridSize());
         assertEquals(64, config.getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY());
         assertEquals(50000, config.getPlayerLandAllocation().getWorldgenSearch().getVirtualBiomeCacheMaxEntries());
+        assertEquals(2000, config.getPlayerLandAllocation().getWorldgenSearch().getAllocationBands().getFirst().getMinRadiusBlocks());
         assertEquals(1, config.getPlayerLandAllocation().getScheduler().getMaxActiveRequests());
 
         // 2. Corrupt file with invalid JSON
@@ -65,6 +70,7 @@ public class ConfigManagerTest {
         Config fallbackConfig = brokenManager.getConfig();
         assertNotNull(fallbackConfig);
         assertEquals(1000, fallbackConfig.getDefaultPriorities().getAdminRegion());
+        assertEquals(80, fallbackConfig.getPlayerLandAllocation().getInitialClaimSize());
         assertEquals(5, fallbackConfig.getPlayerLandAllocation().getBiomeSearch().getSampleGridSize());
         assertEquals(64, fallbackConfig.getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY());
         

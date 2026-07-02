@@ -255,7 +255,7 @@ public class Config {
     public static class PlayerLandAllocationConfig {
         private boolean enabled = true;
         private String targetDimension = "minecraft:overworld";
-        private int initialClaimSize = 128;
+        private int initialClaimSize = 80;
         private int slotSize = 512;
         private int futureMaximumClaimSize = 240;
         private int slotInternalMargin = 8;
@@ -375,11 +375,11 @@ public class Config {
     }
 
     public static class ExplorationExclusionConfig {
-        private int minX = -10000;
-        private int maxX = 10000;
-        private int minZ = -10000;
-        private int maxZ = 10000;
-        private int safetyBuffer = 1000;
+        private int minX = -2000;
+        private int maxX = 2000;
+        private int minZ = -2000;
+        private int maxZ = 2000;
+        private int safetyBuffer = 0;
 
         public int getMinX() { return minX; }
         public int getMaxX() { return maxX; }
@@ -427,7 +427,7 @@ public class Config {
         private boolean fallbackSpiralEnabled = false;
         private int fallbackSpiralMaxCandidates = 8;
         private List<AllocationBandConfig> allocationBands = List.of(
-            new AllocationBandConfig("primary", 11264, 30000, true)
+            new AllocationBandConfig("primary", 2000, 30000, true)
         );
 
         public int getSampleBlockY() { return sampleBlockY == 0 ? 64 : sampleBlockY; }
@@ -446,7 +446,7 @@ public class Config {
         public int getFallbackSpiralMaxCandidates() { return fallbackSpiralMaxCandidates <= 0 ? 8 : fallbackSpiralMaxCandidates; }
         public List<AllocationBandConfig> getAllocationBands() {
             if (allocationBands == null || allocationBands.isEmpty()) {
-                allocationBands = List.of(new AllocationBandConfig("primary", 11264, 30000, true));
+                allocationBands = List.of(new AllocationBandConfig("primary", 2000, 30000, true));
             }
             return allocationBands;
         }
@@ -470,7 +470,7 @@ public class Config {
 
     public static class AllocationBandConfig {
         private String id = "primary";
-        private int minRadiusBlocks = 11264;
+        private int minRadiusBlocks = 2000;
         private int maxRadiusBlocks = 30000;
         private boolean enabled = true;
 
