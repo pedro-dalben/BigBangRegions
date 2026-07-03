@@ -67,13 +67,6 @@ public class Config {
             Arrays.asList("minecraft:beach", "minecraft:snowy_beach", "minecraft:stony_shore"),
             "minecraft:sand"
         ));
-        biomeOptions.put("oceano", new BiomeOptionConfig("Oceano",
-            Arrays.asList("ocean", "oceano", "mar"),
-            Arrays.asList("minecraft:ocean", "minecraft:deep_ocean", "minecraft:cold_ocean",
-                "minecraft:deep_cold_ocean", "minecraft:lukewarm_ocean", "minecraft:deep_lukewarm_ocean",
-                "minecraft:warm_ocean", "minecraft:frozen_ocean", "minecraft:deep_frozen_ocean"),
-            "minecraft:water_bucket"
-        ));
         biomeOptions.put("montanha", new BiomeOptionConfig("Montanha",
             Arrays.asList("mountain", "montanha", "serra", "windswept", "hills"),
             Arrays.asList("minecraft:windswept_hills", "minecraft:windswept_gravelly_hills",
@@ -499,7 +492,7 @@ public class Config {
         private int maxActiveRequests = 1;
         private int maxCandidateEvaluationsPerTick = 256;
         private int maxPreparationChunksPerTick = 1;
-        private int requestTimeoutSeconds = 180;
+        private int requestTimeoutSeconds = 300;
         private int reservationLeaseSeconds = 300;
         private int creationCooldownSeconds = 60;
         private int homeTeleportCooldownSeconds = 30;

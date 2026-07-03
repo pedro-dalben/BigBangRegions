@@ -146,6 +146,10 @@ public class BigBangRegions implements ModInitializer {
         return regionRepository;
     }
 
+    public static AuditService getAuditService() {
+        return auditService;
+    }
+
     public static RegionEntryExitService getEntryExitService() {
         return entryExitService;
     }

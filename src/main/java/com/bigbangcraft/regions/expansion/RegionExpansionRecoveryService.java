@@ -205,15 +205,24 @@ public class RegionExpansionRecoveryService {
     }
 
     private void applyResizeRecovery(RegionExpansionOperation op) throws SQLException {
+        Region region = regionCache.get(op.getRegionId());
+        if (region == null) {
+            List<Region> allRegions = regionRepository.loadAll();
+            for (Region r : allRegions) {
+                regionCache.add(r);
+                membershipCache.loadFromRegion(r);
+            }
+            region = regionCache.get(op.getRegionId());
+        }
+        if (region == null) {
+            throw new IllegalStateException("Region not found: " + op.getRegionId());
+        }
+
         synchronized (databaseManager) {
             Connection conn = databaseManager.getConnection();
             boolean wasAutoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
             try {
-                Region region = regionRepository.loadAll().stream()
-                    .filter(r -> r.getId().equals(op.getRegionId()))
-                    .findFirst().orElseThrow(() -> new IllegalStateException("Region not found: " + op.getRegionId()));
-
                 RegionBounds newBounds = new RegionBounds(
                     op.getDimensionKey(),
                     op.getTargetMinX(), region.getBounds().getMinY(), op.getTargetMinZ(),

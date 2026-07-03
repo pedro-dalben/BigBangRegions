@@ -4,6 +4,7 @@ import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import net.minecraft.core.Vec3i;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.core.registries.Registries;
@@ -14,8 +15,11 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,10 +37,24 @@ final class RegionTerrainSnapshot {
         ChunkAccessGuard.assertAllowed(AllocationPhase.REGION_CREATING);
         Files.createDirectories(directory);
 
+        BlockPos origin = new BlockPos(bounds.getMinX(), bounds.getMinY(), bounds.getMinZ());
+        Vec3i size = new Vec3i(
+            bounds.getMaxX() - bounds.getMinX() + 1,
+            bounds.getMaxY() - bounds.getMinY() + 1,
+            bounds.getMaxZ() - bounds.getMinZ() + 1
+        );
+
+        StructureTemplate template = new StructureTemplate();
+        template.fillFromWorld(level, origin, size, false, Blocks.STRUCTURE_VOID);
+
         CompoundTag root = new CompoundTag();
         root.putString("regionId", regionId);
         root.putString("dimension", bounds.getDimension());
-        root.put("blocks", captureBlocks(level, bounds, homePos));
+        root.putString("format", "structure_template_v1");
+        root.putInt("originX", origin.getX());
+        root.putInt("originY", origin.getY());
+        root.putInt("originZ", origin.getZ());
+        root.put("template", template.save(new CompoundTag()));
 
         NbtIo.writeCompressed(root, snapshotPath(directory, regionId));
     }
@@ -55,6 +73,64 @@ final class RegionTerrainSnapshot {
             return false;
         }
 
+        if (root.contains("template", Tag.TAG_COMPOUND)) {
+            boolean restored = restoreFromStructureTemplate(level, region, root);
+            if (restored) {
+                Files.deleteIfExists(file);
+            }
+            return restored;
+        }
+
+        if (root.contains("blocks", Tag.TAG_LIST)) {
+            boolean restored = restoreLegacySnapshot(level, region, root);
+            if (restored) {
+                Files.deleteIfExists(file);
+            }
+            return restored;
+        }
+
+        LOGGER.warn("Skipping restore for {} because snapshot format is not recognized", region.getId());
+        return false;
+    }
+
+    private static boolean restoreFromStructureTemplate(ServerLevel level, Region region, CompoundTag root) {
+        BlockPos origin = new BlockPos(root.getInt("originX"), root.getInt("originY"), root.getInt("originZ"));
+        StructureTemplate template = new StructureTemplate();
+        HolderGetter<Block> blockRegistry = level.registryAccess().lookupOrThrow(Registries.BLOCK);
+        template.load(blockRegistry, root.getCompound("template"));
+
+        Vec3i size = template.getSize();
+        RegionBounds restoreBounds = new RegionBounds(
+            region.getBounds().getDimension(),
+            origin.getX(),
+            origin.getY(),
+            origin.getZ(),
+            origin.getX() + size.getX() - 1,
+            origin.getY() + size.getY() - 1,
+            origin.getZ() + size.getZ() - 1
+        );
+
+        if (!areChunksLoaded(level, restoreBounds)) {
+            LOGGER.warn("Skipping restore for {} because required chunks are not already loaded", region.getId());
+            return false;
+        }
+
+        boolean restored = template.placeInWorld(
+            level,
+            origin,
+            origin,
+            new StructurePlaceSettings().setIgnoreEntities(true).setKnownShape(true),
+            level.getRandom(),
+            2
+        );
+
+        if (!restored) {
+            LOGGER.warn("Failed to restore structure template for region {}", region.getId());
+        }
+        return restored;
+    }
+
+    private static boolean restoreLegacySnapshot(ServerLevel level, Region region, CompoundTag root) {
         if (!areChunksLoaded(level, region.getBounds())) {
             LOGGER.warn("Skipping restore for {} because required chunks are not already loaded", region.getId());
             return false;
@@ -71,8 +147,6 @@ final class RegionTerrainSnapshot {
             BlockState state = NbtUtils.readBlockState(blockRegistry, entry.getCompound("state"));
             level.setBlock(pos, state, 2);
         }
-
-        Files.deleteIfExists(file);
         return true;
     }
 

@@ -9,6 +9,7 @@ import java.util.*;
 
 public class BiomeOptionRegistry {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-BiomeOptionRegistry");
+    private static final Set<String> BLOCKED_OPTION_KEYS = Set.of("oceano");
     private final ConfigManager configManager;
     private final Map<String, BiomeOption> options = new LinkedHashMap<>();
 
@@ -26,6 +27,11 @@ public class BiomeOptionRegistry {
         for (Map.Entry<String, Config.BiomeOptionConfig> entry : config.getBiomeOptions().entrySet()) {
             String key = entry.getKey().toLowerCase();
             Config.BiomeOptionConfig optionConfig = entry.getValue();
+
+            if (BLOCKED_OPTION_KEYS.contains(key)) {
+                LOGGER.info("Biome option '{}' ignored: blocked by server policy.", key);
+                continue;
+            }
 
             if (optionConfig.getDisplayName() == null || optionConfig.getDisplayName().trim().isEmpty()) {
                 LOGGER.warn("Biome option '{}' ignored: missing display name.", key);

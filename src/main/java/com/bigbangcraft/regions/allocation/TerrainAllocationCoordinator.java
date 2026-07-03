@@ -7,6 +7,8 @@ import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.domain.RegionType;
+import com.bigbangcraft.regions.event.RegionChangeEvent;
+import com.bigbangcraft.regions.event.RegionEventBus;
 import com.bigbangcraft.regions.repository.AllocationRequestPreparationRepository;
 import com.bigbangcraft.regions.repository.AllocationRequestRepository;
 import com.bigbangcraft.regions.repository.AllocationSearchCursorRepository;
@@ -25,6 +27,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.AABB;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -130,7 +134,7 @@ public class TerrainAllocationCoordinator {
                 }
             }
         }
-        AllocationRequest existing = requestRepository.getActiveRequestByOwner(ownerUuid);
+        AllocationRequest existing = getActiveRequest(ownerUuid);
         if (existing != null) {
             throw new IllegalStateException("Voce ja possui um pedido de alocacao ativo (ID: " + existing.getId() + ")");
         }
@@ -171,8 +175,29 @@ public class TerrainAllocationCoordinator {
         return (cooldownMs - elapsed + 999) / 1000;
     }
 
+    public long getPlayerRegionDeleteCooldownRemainingMillis(Region region) {
+        if (region == null || region.getType() != RegionType.PLAYER_REGION) {
+            return 0L;
+        }
+        long minAgeMs = 60L * 60L * 1000L;
+        long elapsed = System.currentTimeMillis() - region.getCreatedAt();
+        return Math.max(0L, minAgeMs - elapsed);
+    }
+
+    public boolean canDeleteOwnPlayerRegion(UUID actorUuid, Region region) {
+        if (actorUuid == null || region == null || region.getType() != RegionType.PLAYER_REGION) {
+            return false;
+        }
+        return actorUuid.equals(region.getOwnerUuid()) && getPlayerRegionDeleteCooldownRemainingMillis(region) == 0L;
+    }
+
     public AllocationRequest getActiveRequest(UUID ownerUuid) {
-        return requestRepository.getActiveRequestByOwner(ownerUuid);
+        AllocationRequest request = requestRepository.getActiveRequestByOwner(ownerUuid);
+        if (request != null && isOrphanedPausedRecovery(request)) {
+            retireOrphanedPausedRecoveryRequest(request);
+            return null;
+        }
+        return request;
     }
 
     public void cancelRequest(UUID ownerUuid) {
@@ -387,7 +412,7 @@ public class TerrainAllocationCoordinator {
     }
 
     private int processVirtualSearch(AllocationRequest request, ServerLevel level, Config.PlayerLandAllocationConfig lac, Config.SchedulerConfig sc) {
-        if (isTimedOut(request, sc)) {
+        if (isSearchTimedOut(request, sc)) {
             failRequest(request, AllocationRequestState.FAILED_NO_TERRAIN, "Tempo limite excedido durante busca", level);
             return 1;
         }
@@ -603,8 +628,6 @@ public class TerrainAllocationCoordinator {
 
                 snapshotCreatedTerrain(regionId, bounds, level, homePos, configManager.getConfig().getPlayerLandAllocation().getBorder().isRestoreOnDelete());
                 postRegionCreationSetup(request, bounds, level, homePos);
-
-                cleanupRequestResources(request, PreparationCancelReason.COMPLETED, true);
                 LOGGER.info("[BigBangRegions] Preparation ready request={} duration={}ms.", request.getId(), System.currentTimeMillis() - now);
             } catch (Exception e) {
                 conn.rollback();
@@ -613,6 +636,8 @@ public class TerrainAllocationCoordinator {
                 conn.setAutoCommit(wasAutoCommit);
             }
         }
+
+        cleanupRequestResources(request, PreparationCancelReason.COMPLETED, true);
     }
 
     public boolean restorePlayerRegionTerrain(Region region, ServerLevel level) {
@@ -911,6 +936,38 @@ public class TerrainAllocationCoordinator {
             slotRepository.save(slot);
             LOGGER.info("Slot {} released for deleted region {}", slot.getId(), regionId);
         }
+    }
+
+    public boolean deleteRegionAsAdmin(Region region, ServerLevel level, UUID actorUuid) {
+        return deleteRegionInternal(region, level, actorUuid, true);
+    }
+
+    public boolean deletePlayerOwnedRegion(ServerPlayer player, Region region) {
+        if (player == null) {
+            throw new IllegalStateException("Apenas jogadores podem excluir seu proprio terreno.");
+        }
+        if (region == null) {
+            throw new IllegalArgumentException("Regiao nao encontrada.");
+        }
+        if (region.getType() != RegionType.PLAYER_REGION) {
+            throw new IllegalStateException("Apenas terrenos de jogador podem ser excluidos por este fluxo.");
+        }
+        if (!player.getUUID().equals(region.getOwnerUuid())) {
+            throw new IllegalStateException("Apenas o dono pode excluir este terreno.");
+        }
+
+        long remainingMs = getPlayerRegionDeleteCooldownRemainingMillis(region);
+        if (remainingMs > 0) {
+            throw new IllegalStateException("Voce so pode excluir seu terreno apos 1 hora da criacao. Aguarde " + formatDuration(remainingMs) + ".");
+        }
+
+        ServerLevel level = resolveLevel(player.getServer(), region.getBounds().getDimension());
+        boolean restored = deleteRegionInternal(region, level, player.getUUID(), true);
+
+        if (level != null) {
+            teleportPlayerToSpawn(player, level);
+        }
+        return restored;
     }
 
     public void recycleSlot(String slotId) {
@@ -1217,17 +1274,20 @@ public class TerrainAllocationCoordinator {
                                             Config.SchedulerConfig sc) {
         String slotId = lac.getTargetDimension() + ":" + candidate.gridX + ":" + candidate.gridZ;
         PlotSlot existing = slotRepository.getByGrid(lac.getTargetDimension(), candidate.gridX, candidate.gridZ);
-        if (existing != null && existing.getState().isOccupied()) {
-            return false;
-        }
-        PlotSlot slot = existing != null && existing.getState() == PlotSlotState.RELEASED
-            ? existing
-            : new PlotSlot(
+        PlotSlot slot;
+        if (existing != null) {
+            if (existing.getState() != PlotSlotState.RELEASED && existing.getState() != PlotSlotState.AVAILABLE) {
+                return false;
+            }
+            slot = existing;
+        } else {
+            slot = new PlotSlot(
                 slotId, lac.getTargetDimension(), candidate.gridX, candidate.gridZ,
                 candidate.minX, candidate.minZ, lac.getSlotSize(),
                 PlotSlotState.RELEASED, null, null, null,
                 null, null, null, System.currentTimeMillis(), System.currentTimeMillis()
             );
+        }
         slot.reserve(request.getOwnerUuid(), request.getRequestedBiomeOption(), sc.getReservationLeaseSeconds() * 1000L);
         slotRepository.save(slot);
         request.setPlotSlotId(slotId);
@@ -1417,12 +1477,17 @@ public class TerrainAllocationCoordinator {
         return System.currentTimeMillis() - request.getCreatedAt() > sc.getRequestTimeoutSeconds() * 1000L;
     }
 
+    private boolean isSearchTimedOut(AllocationRequest request, Config.SchedulerConfig sc) {
+        long searchTimeoutSeconds = Math.max(300L, sc.getRequestTimeoutSeconds());
+        return System.currentTimeMillis() - request.getCreatedAt() > searchTimeoutSeconds * 1000L;
+    }
+
     private void failRequest(AllocationRequest request, AllocationRequestState target, String reason, ServerLevel level) {
         request.forceTransitionTo(target);
         request.setFailureReason(reason);
         requestRepository.save(request);
         cleanupRequestResources(request, PreparationCancelReason.FAILED, false);
-        if (level != null) {
+        if (level != null && level.getServer() != null && level.getServer().getPlayerList() != null) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
             if (player != null) {
                 if (target == AllocationRequestState.FAILED_NO_TERRAIN) {
@@ -1462,7 +1527,7 @@ public class TerrainAllocationCoordinator {
         LOGGER.info("[BigBangRegions] Candidate rejected after reservation: request={} reason={} detail={}. Resuming virtual search.",
             request.getId(), rejectionReason, diagnostic);
 
-        if (level != null) {
+        if (level != null && level.getServer() != null && level.getServer().getPlayerList() != null) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
             if (player != null) {
                 player.sendSystemMessage(Component.literal("§6[Terrenos] Encontramos uma área, mas ela não passou na validação final. Continuando a busca..."));
@@ -1549,6 +1614,80 @@ public class TerrainAllocationCoordinator {
         }
     }
 
+    private boolean deleteRegionInternal(Region region, ServerLevel level, UUID actorUuid, boolean restoreTerrain) {
+        if (region == null) {
+            throw new IllegalArgumentException("Regiao nao encontrada.");
+        }
+
+        boolean restored = false;
+        if (region.getType() == RegionType.PLAYER_REGION) {
+            if (restoreTerrain && level != null) {
+                removeEntitiesInRegion(level, region.getBounds());
+                restored = restorePlayerRegionTerrain(region, level);
+            } else if (restoreTerrain) {
+                LOGGER.warn("Skipping terrain restore for deleted region {} because target level is unavailable", region.getId());
+            }
+        }
+
+        regionRepository.delete(region.getId());
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.DELETED, region));
+        regionCache.remove(region.getId());
+        membershipCache.removeRegion(region.getId());
+
+        if (region.getType() == RegionType.PLAYER_REGION) {
+            releaseSlotForRegion(region.getId());
+        }
+
+        LOGGER.info("Region deleted: id={}, type={}, actor={}", region.getId(), region.getType(), actorUuid);
+        return restored;
+    }
+
+    private void removeEntitiesInRegion(ServerLevel level, RegionBounds bounds) {
+        AABB box = new AABB(
+            bounds.getMinX(), bounds.getMinY(), bounds.getMinZ(),
+            bounds.getMaxX() + 1.0, bounds.getMaxY() + 1.0, bounds.getMaxZ() + 1.0
+        );
+        List<Entity> entities = level.getEntities((Entity) null, box, entity -> !(entity instanceof ServerPlayer));
+        for (Entity entity : entities) {
+            entity.discard();
+        }
+        if (!entities.isEmpty()) {
+            LOGGER.info("Removed {} entities from region {}", entities.size(), bounds);
+        }
+    }
+
+    private void teleportPlayerToSpawn(ServerPlayer player, ServerLevel level) {
+        BlockPos spawn = level.getSharedSpawnPos();
+        player.teleportTo(level, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5, player.getYRot(), player.getXRot());
+    }
+
+    private ServerLevel resolveLevel(MinecraftServer server, String dimensionKey) {
+        if (server == null || dimensionKey == null || dimensionKey.isBlank()) {
+            return null;
+        }
+        try {
+            ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(dimensionKey));
+            return server.getLevel(dimension);
+        } catch (RuntimeException e) {
+            LOGGER.warn("Invalid dimension key '{}' while resolving region delete level", dimensionKey, e);
+            return null;
+        }
+    }
+
+    private static String formatDuration(long millis) {
+        long totalSeconds = Math.max(0L, (millis + 999L) / 1000L);
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0) {
+            return hours + "h " + minutes + "m";
+        }
+        if (minutes > 0) {
+            return minutes + "m " + seconds + "s";
+        }
+        return seconds + "s";
+    }
+
     private void pauseForRecovery(AllocationRequest request, String message, String errorCode) {
         request.forceTransitionTo(AllocationRequestState.PAUSED_RECOVERY);
         request.setFailureReason(message);
@@ -1562,5 +1701,27 @@ public class TerrainAllocationCoordinator {
             preparationRepository.save(preparation);
         }
         cleanupRequestResources(request, PreparationCancelReason.RECOVERY, false);
+    }
+
+    private boolean isOrphanedPausedRecovery(AllocationRequest request) {
+        if (request == null || request.getState() != AllocationRequestState.PAUSED_RECOVERY) {
+            return false;
+        }
+
+        String regionId = request.getRegionId();
+        if (regionId == null) {
+            return true;
+        }
+
+        return regionCache.get(regionId) == null;
+    }
+
+    private void retireOrphanedPausedRecoveryRequest(AllocationRequest request) {
+        LOGGER.info("[BigBangRegions] Retirando request pausado orfao request={} owner={} region={}",
+            request.getId(), request.getOwnerUuid(), request.getRegionId());
+        request.forceTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION);
+        request.setFailureReason("Solicitacao pausada descartada automaticamente porque a regiao nao existe mais.");
+        requestRepository.save(request);
+        cleanupRequestResources(request, PreparationCancelReason.CANCELLED, true);
     }
 }

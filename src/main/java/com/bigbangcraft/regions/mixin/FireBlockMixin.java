@@ -31,7 +31,7 @@ public class FireBlockMixin {
         this.bigbangregions$fireSourcePos = null;
     }
 
-    @Inject(method = "getIgniteOdds", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getIgniteOdds(Lnet/minecraft/world/level/LevelReader;Lnet/minecraft/core/BlockPos;)I", at = @At("HEAD"), cancellable = true)
     private void onGetIgniteOdds(LevelReader levelReader, BlockPos pos, CallbackInfoReturnable<Integer> cir) {
         if (this.bigbangregions$fireSourcePos == null || !(levelReader instanceof Level level)) {
             return;

@@ -25,6 +25,15 @@ public class PlotSlotStateMachineTest {
     }
 
     @Test
+    public void testReserveRejectsInvalidated() {
+        PlotSlot slot = createSlot();
+        slot.markInvalidated("rejected_physical_validation");
+        assertThrows(IllegalStateException.class, () ->
+            slot.reserve(UUID.randomUUID(), "planicies", 300000L)
+        );
+    }
+
+    @Test
     public void testReserveAfterRecycleAllowed() {
         PlotSlot slot = createSlot();
         slot.allocate("region_123");

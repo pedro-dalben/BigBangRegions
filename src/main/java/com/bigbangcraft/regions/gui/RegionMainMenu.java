@@ -50,6 +50,7 @@ public class RegionMainMenu extends ChestMenu {
             "§7Configurar permissões da região"));
         container.setItem(22, button(Items.BOOK, "§6§lInformações",
             "§7Ver informações e limites do terreno"));
+        container.setItem(24, buildDeleteButton());
 
         boolean showMap = PlayerMapPreference.isShowOwnRegion(player.getUUID());
         container.setItem(20, button(
@@ -59,13 +60,42 @@ public class RegionMainMenu extends ChestMenu {
         ));
     }
 
-    private ItemStack button(net.minecraft.world.item.Item item, String name, String loreLine) {
+    private ItemStack button(net.minecraft.world.item.Item item, String name, String... loreLines) {
         ItemStack stack = new ItemStack(item);
         stack.set(DataComponents.CUSTOM_NAME, Component.literal(name));
         List<Component> lore = new ArrayList<>();
-        lore.add(Component.literal(loreLine));
+        for (String loreLine : loreLines) {
+            lore.add(Component.literal(loreLine));
+        }
         stack.set(DataComponents.LORE, new ItemLore(lore));
         return stack;
+    }
+
+    private ItemStack buildDeleteButton() {
+        boolean owner = player.getUUID().equals(region.getOwnerUuid());
+        long remainingMs = BigBangRegions.getAllocationCoordinator().getPlayerRegionDeleteCooldownRemainingMillis(region);
+        if (!owner) {
+            return button(
+                Items.BARRIER,
+                "§8§lExcluir terreno",
+                "§7Apenas o dono pode excluir esta região."
+            );
+        }
+        if (remainingMs > 0) {
+            return button(
+                Items.CLOCK,
+                "§6§lExcluir terreno",
+                "§7Disponível em " + formatDuration(remainingMs) + ".",
+                "§7Você precisa aguardar 1 hora após a criação."
+            );
+        }
+        return button(
+            Items.TNT,
+            "§c§lExcluir terreno",
+            "§7Isto é irreversível.",
+            "§7Itens, baús, construções e entidades da área serão removidos.",
+            "§7Clique para confirmar."
+        );
     }
 
     @Override
@@ -96,10 +126,35 @@ public class RegionMainMenu extends ChestMenu {
             serverPlayer.sendSystemMessage(Component.literal("§eLimites: " +
                 region.getBounds().getMinX() + ", " + region.getBounds().getMinY() + ", " + region.getBounds().getMinZ() +
                 " -> " + region.getBounds().getMaxX() + ", " + region.getBounds().getMaxY() + ", " + region.getBounds().getMaxZ()));
+        } else if (slotId == 24) {
+            if (!serverPlayer.getUUID().equals(region.getOwnerUuid())) {
+                serverPlayer.sendSystemMessage(Component.literal("§cApenas o dono pode excluir este terreno."));
+                return;
+            }
+            long remainingMs = BigBangRegions.getAllocationCoordinator().getPlayerRegionDeleteCooldownRemainingMillis(region);
+            if (remainingMs > 0) {
+                serverPlayer.sendSystemMessage(Component.literal("§eVoce ainda precisa aguardar " + formatDuration(remainingMs) + " para excluir este terreno."));
+                return;
+            }
+            RegionGuiHandler.openDeleteConfirmationMenu(serverPlayer, region);
         } else if (slotId == 20) {
             boolean show = PlayerMapPreference.isShowOwnRegion(serverPlayer.getUUID());
             PlayerMapPreference.setShowOwnRegion(serverPlayer.getUUID(), !show);
             RegionGuiHandler.openMainMenu(serverPlayer, region);
         }
+    }
+
+    private static String formatDuration(long millis) {
+        long totalSeconds = Math.max(0L, (millis + 999L) / 1000L);
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0) {
+            return hours + "h " + minutes + "m";
+        }
+        if (minutes > 0) {
+            return minutes + "m " + seconds + "s";
+        }
+        return seconds + "s";
     }
 }

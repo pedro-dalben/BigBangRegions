@@ -652,27 +652,17 @@ public class RegionsCommand {
 
         int deleted = 0;
         for (Region region : targets) {
+            net.minecraft.server.level.ServerLevel level = null;
             if (region.getType() == RegionType.PLAYER_REGION) {
                 ResourceKey<net.minecraft.world.level.Level> dimensionKey = ResourceKey.create(
                     Registries.DIMENSION,
                     ResourceLocation.parse(region.getBounds().getDimension())
                 );
-                net.minecraft.server.level.ServerLevel level = source.getServer().getLevel(dimensionKey);
-                if (level != null) {
-                    BigBangRegions.getAllocationCoordinator().restorePlayerRegionTerrain(region, level);
-                }
-            }
-
-            regionRepository.delete(region.getId());
-            RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.DELETED, region));
-            regionCache.remove(region.getId());
-            BigBangRegions.getMembershipCache().removeRegion(region.getId());
-
-            if (region.getType() == RegionType.PLAYER_REGION) {
-                releaseSlotForRegion(region.getId());
+                level = source.getServer().getLevel(dimensionKey);
             }
 
             UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
+            BigBangRegions.getAllocationCoordinator().deleteRegionAsAdmin(region, level, actorUuid);
             auditService.log(region.getId(), actorUuid, "DELETE_REGION", region.getType().name(), null, null);
             deleted++;
         }

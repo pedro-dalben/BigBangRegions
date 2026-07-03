@@ -21,7 +21,8 @@ public class RegionGuiHandler {
             // Check if they have an active request in progress
             var request = BigBangRegions.getAllocationCoordinator().getActiveRequest(uuid);
             if (request != null && request.getState().isPreRegionCreation()) {
-                player.sendSystemMessage(Component.literal("§eVocê já possui uma solicitação de terreno em andamento (Status: " + request.getState() + "). Aguarde."));
+                player.sendSystemMessage(Component.literal("§eVocê já possui uma solicitação de terreno em andamento (Status: " + request.getState() + ")."));
+                player.sendSystemMessage(Component.literal("§7Use §f/regions criar status§7 para ver o progresso ou §f/regions criar cancelar§7 para cancelar."));
                 return;
             }
 
@@ -37,6 +38,14 @@ public class RegionGuiHandler {
         SimpleMenuProvider menuProvider = new SimpleMenuProvider(
             (containerId, playerInventory, playerEntity) -> new RegionMainMenu(containerId, playerInventory, player, region),
             Component.literal("§8Seu terreno")
+        );
+        player.openMenu(menuProvider);
+    }
+
+    public static void openDeleteConfirmationMenu(ServerPlayer player, Region region) {
+        SimpleMenuProvider menuProvider = new SimpleMenuProvider(
+            (containerId, playerInventory, playerEntity) -> new RegionDeleteConfirmMenu(containerId, playerInventory, player, region),
+            Component.literal("§8Confirmar exclusão")
         );
         player.openMenu(menuProvider);
     }

@@ -42,4 +42,13 @@ public class BiomeOptionRegistryTest {
         assertFalse(registry.lookup("invalid_v1").isPresent());
         assertFalse(registry.lookup("invalid_v2").isPresent());
     }
+
+    @Test
+    public void testOceanBiomeIsBlockedByPolicy() {
+        registry.load();
+
+        assertFalse(registry.lookup("oceano").isPresent());
+        assertFalse(registry.lookup("ocean").isPresent());
+        assertFalse(registry.lookup("mar").isPresent());
+    }
 }

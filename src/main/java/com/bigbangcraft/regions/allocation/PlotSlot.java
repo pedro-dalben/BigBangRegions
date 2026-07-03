@@ -95,14 +95,8 @@ public class PlotSlot {
     public void setState(PlotSlotState state) { this.state = state; this.updatedAt = System.currentTimeMillis(); }
 
     public void reserve(UUID playerUuid, String biomeOptionKey, long leaseDurationMs) {
-        if (state == PlotSlotState.RESERVED) {
-            throw new IllegalStateException("Slot " + id + " is already reserved");
-        }
-        if (state == PlotSlotState.ALLOCATED || state == PlotSlotState.OCCUPIED) {
-            throw new IllegalStateException("Slot " + id + " is already allocated/occupied");
-        }
-        if (state == PlotSlotState.RETIRED) {
-            throw new IllegalStateException("Slot " + id + " is retired and cannot be reserved");
+        if (state != PlotSlotState.AVAILABLE && state != PlotSlotState.RELEASED) {
+            throw new IllegalStateException("Slot " + id + " must be AVAILABLE or RELEASED before reservation, current state: " + state);
         }
         this.state = PlotSlotState.RESERVED;
         this.reservedForUuid = playerUuid;
