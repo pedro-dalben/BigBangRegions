@@ -114,172 +114,117 @@ public class InteractionFlagPrecedenceTest {
     }
 
     @Test
-    public void testScenario1_ContainerAllow_InteractDeny() {
-        // chest interaction
+    public void testVisitorUsageAllow_Container() {
         BlockState state = Blocks.CHEST.defaultBlockState();
         BlockEntity chestEntity = mock(BlockEntity.class, withSettings().extraInterfaces(net.minecraft.world.Container.class));
-
-        region.setFlag("visitor-containers", "ALLOW");
-        region.setFlag("visitor-interact", "DENY");
-
+        region.setFlag("visitor-usage", "ALLOW");
         assertTrue(checkInteraction(state, chestEntity, ItemStack.EMPTY));
     }
 
     @Test
-    public void testScenario2_ContainerDeny_InteractAllow() {
+    public void testVisitorUsageAllow_Door() {
+        BlockState state = Blocks.OAK_DOOR.defaultBlockState();
+        region.setFlag("visitor-usage", "ALLOW");
+        assertTrue(checkInteraction(state, null, ItemStack.EMPTY));
+    }
+
+    @Test
+    public void testVisitorUsageAllow_Redstone() {
+        BlockState state = Blocks.LEVER.defaultBlockState();
+        region.setFlag("visitor-usage", "ALLOW");
+        assertTrue(checkInteraction(state, null, ItemStack.EMPTY));
+    }
+
+    @Test
+    public void testVisitorUsageAllow_GenericInteract() {
+        BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
+        region.setFlag("visitor-usage", "ALLOW");
+        assertTrue(checkInteraction(state, null, ItemStack.EMPTY));
+    }
+
+    @Test
+    public void testVisitorUsageDeny_Container() {
         BlockState state = Blocks.CHEST.defaultBlockState();
         BlockEntity chestEntity = mock(BlockEntity.class, withSettings().extraInterfaces(net.minecraft.world.Container.class));
-
-        region.setFlag("visitor-containers", "DENY");
-        region.setFlag("visitor-interact", "ALLOW");
-
+        region.setFlag("visitor-usage", "DENY");
         assertFalse(checkInteraction(state, chestEntity, ItemStack.EMPTY));
     }
 
     @Test
-    public void testScenario3_DoorAllow_InteractDeny() {
+    public void testVisitorUsageDeny_Door() {
         BlockState state = Blocks.OAK_DOOR.defaultBlockState();
-
-        region.setFlag("visitor-doors", "ALLOW");
-        region.setFlag("visitor-interact", "DENY");
-
-        assertTrue(checkInteraction(state, null, ItemStack.EMPTY));
-    }
-
-    @Test
-    public void testScenario4_DoorDeny_InteractAllow() {
-        BlockState state = Blocks.OAK_DOOR.defaultBlockState();
-
-        region.setFlag("visitor-doors", "DENY");
-        region.setFlag("visitor-interact", "ALLOW");
-
+        region.setFlag("visitor-usage", "DENY");
         assertFalse(checkInteraction(state, null, ItemStack.EMPTY));
     }
 
     @Test
-    public void testScenario5_RedstoneAllow_InteractDeny() {
+    public void testVisitorUsageDeny_Redstone() {
         BlockState state = Blocks.LEVER.defaultBlockState();
-
-        region.setFlag("visitor-redstone", "ALLOW");
-        region.setFlag("visitor-interact", "DENY");
-
-        assertTrue(checkInteraction(state, null, ItemStack.EMPTY));
-    }
-
-    @Test
-    public void testScenario6_RedstoneDeny_InteractAllow() {
-        BlockState state = Blocks.LEVER.defaultBlockState();
-
-        region.setFlag("visitor-redstone", "DENY");
-        region.setFlag("visitor-interact", "ALLOW");
-
+        region.setFlag("visitor-usage", "DENY");
         assertFalse(checkInteraction(state, null, ItemStack.EMPTY));
     }
 
     @Test
-    public void testScenario7_GenericInteractAllow() {
+    public void testVisitorUsageDeny_GenericInteract() {
         BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
-
-        region.setFlag("visitor-interact", "ALLOW");
-
-        assertTrue(checkInteraction(state, null, ItemStack.EMPTY));
-    }
-
-    @Test
-    public void testScenario8_GenericInteractDeny() {
-        BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
-
-        region.setFlag("visitor-interact", "DENY");
-
+        region.setFlag("visitor-usage", "DENY");
         assertFalse(checkInteraction(state, null, ItemStack.EMPTY));
     }
 
     @Test
-    public void testScenario9_ContainerInherit() {
+    public void testVisitorUsageInherit_FallsBackToTypeDefault() {
         BlockState state = Blocks.CHEST.defaultBlockState();
         BlockEntity chestEntity = mock(BlockEntity.class, withSettings().extraInterfaces(net.minecraft.world.Container.class));
-
-        // inherit -> falls back to type (adminRegion) default, NOT visitor-interact
-        region.setFlag("visitor-containers", "INHERIT");
-        region.setFlag("visitor-interact", "ALLOW");
-        
-        config.getDefaults().getAdminRegion().put("visitor-containers", "DENY");
-
+        region.setFlag("visitor-usage", "INHERIT");
+        config.getDefaults().getAdminRegion().put("visitor-usage", "DENY");
         assertFalse(checkInteraction(state, chestEntity, ItemStack.EMPTY));
-    }
-
-    @Test
-    public void testScenario10_DoorAndRedstoneInherit() {
-        BlockState doorState = Blocks.OAK_DOOR.defaultBlockState();
-        BlockState leverState = Blocks.LEVER.defaultBlockState();
-
-        region.setFlag("visitor-doors", "INHERIT");
-        region.setFlag("visitor-redstone", "INHERIT");
-
-        config.getDefaults().getAdminRegion().put("visitor-doors", "ALLOW");
-        config.getDefaults().getAdminRegion().put("visitor-redstone", "DENY");
-
-        assertTrue(checkInteraction(doorState, null, ItemStack.EMPTY));
-        assertFalse(checkInteraction(leverState, null, ItemStack.EMPTY));
     }
 
     @Test
     public void testWaterBucketUsesWaterFlow() {
         BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
-
         region.setFlag("water-flow", "ALLOW");
-        region.setFlag("visitor-interact", "DENY");
-
+        region.setFlag("visitor-usage", "DENY");
         assertTrue(checkInteraction(state, null, new ItemStack(Items.WATER_BUCKET)));
     }
 
     @Test
     public void testLavaBucketUsesLavaFlow() {
         BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
-
         region.setFlag("lava-flow", "ALLOW");
-        region.setFlag("visitor-interact", "DENY");
-
+        region.setFlag("visitor-usage", "DENY");
         assertTrue(checkInteraction(state, null, new ItemStack(Items.LAVA_BUCKET)));
     }
 
     @Test
     public void testEmptyBucketOnWaterUsesWaterFlow() {
         BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
-
         region.setFlag("water-flow", "ALLOW");
-        region.setFlag("visitor-interact", "DENY");
-
+        region.setFlag("visitor-usage", "DENY");
         assertTrue(checkInteraction(state, null, new ItemStack(Items.BUCKET), Fluids.WATER.defaultFluidState()));
     }
 
     @Test
     public void testEmptyBucketOnLavaUsesLavaFlow() {
         BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
-
         region.setFlag("lava-flow", "ALLOW");
-        region.setFlag("visitor-interact", "DENY");
-
+        region.setFlag("visitor-usage", "DENY");
         assertTrue(checkInteraction(state, null, new ItemStack(Items.BUCKET), Fluids.LAVA.defaultFluidState()));
     }
 
     @Test
     public void testFlintAndSteelUsesFireSpread() {
         BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
-
         region.setFlag("fire-spread", "ALLOW");
-        region.setFlag("visitor-interact", "DENY");
-
+        region.setFlag("visitor-usage", "DENY");
         assertTrue(checkInteraction(state, null, new ItemStack(Items.FLINT_AND_STEEL)));
     }
 
     @Test
     public void testFireChargeUsesFireSpread() {
         BlockState state = Blocks.CRAFTING_TABLE.defaultBlockState();
-
         region.setFlag("fire-spread", "ALLOW");
-        region.setFlag("visitor-interact", "DENY");
-
+        region.setFlag("visitor-usage", "DENY");
         assertTrue(checkInteraction(state, null, new ItemStack(Items.FIRE_CHARGE)));
     }
 }

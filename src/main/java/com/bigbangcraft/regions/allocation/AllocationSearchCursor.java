@@ -1,5 +1,9 @@
 package com.bigbangcraft.regions.allocation;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.LongAdder;
+
 public class AllocationSearchCursor {
     private final String requestId;
     private String currentBandId;
@@ -15,11 +19,13 @@ public class AllocationSearchCursor {
     private int anchorsFound;
     private int locateCallsUsed;
     private Integer currentAnchorX;
+    private Integer currentAnchorY;
     private Integer currentAnchorZ;
     private String currentAnchorBiomeId;
     private long lastProgressAt;
     private String lastRejectionReason;
     private String fallbackMode;
+    private final Map<String, LongAdder> rejectionCounts = new ConcurrentHashMap<>();
 
     public AllocationSearchCursor(String requestId) {
         this.requestId = requestId;
@@ -39,11 +45,17 @@ public class AllocationSearchCursor {
     public int getAnchorsFound() { return anchorsFound; }
     public int getLocateCallsUsed() { return locateCallsUsed; }
     public Integer getCurrentAnchorX() { return currentAnchorX; }
+    public Integer getCurrentAnchorY() { return currentAnchorY; }
     public Integer getCurrentAnchorZ() { return currentAnchorZ; }
     public String getCurrentAnchorBiomeId() { return currentAnchorBiomeId; }
     public long getLastProgressAt() { return lastProgressAt; }
     public String getLastRejectionReason() { return lastRejectionReason; }
     public String getFallbackMode() { return fallbackMode; }
+    public Map<String, LongAdder> getRejectionCounts() { return rejectionCounts; }
+
+    public void incrementRejection(String reason) {
+        rejectionCounts.computeIfAbsent(reason, k -> new LongAdder()).increment();
+    }
 
     public void setCurrentBandId(String currentBandId) { this.currentBandId = currentBandId; }
     public void setCurrentSectorIndex(int currentSectorIndex) { this.currentSectorIndex = currentSectorIndex; }
@@ -58,6 +70,7 @@ public class AllocationSearchCursor {
     public void setAnchorsFound(int anchorsFound) { this.anchorsFound = anchorsFound; }
     public void setLocateCallsUsed(int locateCallsUsed) { this.locateCallsUsed = locateCallsUsed; }
     public void setCurrentAnchorX(Integer currentAnchorX) { this.currentAnchorX = currentAnchorX; }
+    public void setCurrentAnchorY(Integer currentAnchorY) { this.currentAnchorY = currentAnchorY; }
     public void setCurrentAnchorZ(Integer currentAnchorZ) { this.currentAnchorZ = currentAnchorZ; }
     public void setCurrentAnchorBiomeId(String currentAnchorBiomeId) { this.currentAnchorBiomeId = currentAnchorBiomeId; }
     public void setLastProgressAt(long lastProgressAt) { this.lastProgressAt = lastProgressAt; }

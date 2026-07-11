@@ -46,6 +46,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.LongAdder;
 
 public class TerrainAllocationCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-TerrainAllocationCoordinator");
@@ -454,11 +455,7 @@ public class TerrainAllocationCoordinator {
                 continue;
             }
 
-            if (!sectorContainsAcceptedBiome(context, biomeOpt.get(), sector)) {
-                markSectorRejected(cursor, sector, "rejected_no_biome_in_sector");
-                progressed = true;
-                continue;
-            }
+            boolean probableBiome = sectorContainsAcceptedBiome(context, biomeOpt.get(), sector);
 
             BiomeAnchorSearchStepResult anchorResult = biomeAnchorLocator.searchStep(
                 context,
@@ -482,9 +479,23 @@ public class TerrainAllocationCoordinator {
                 continue;
             }
 
-            cursor.setLastRejectionReason("rejected_anchor_not_found");
-            markSectorRejected(cursor, sector, "rejected_anchor_not_found");
+            if (!probableBiome && anchorResult instanceof BiomeAnchorSearchStepResult.Continue) {
+                if (cursor.getAnchorAttempt() >= worldgen.getLocateRadiusBlocks()) {
+                    cursor.setLastRejectionReason("rejected_no_biome_in_sector");
+                    markSectorRejected(cursor, sector, "rejected_no_biome_in_sector");
+                    progressed = true;
+                    continue;
+                }
+            }
+
+            cursor.setLastRejectionReason(cursor.getLastRejectionReason() == null ? "rejected_anchor_not_found" : cursor.getLastRejectionReason());
+            if (cursor.getAnchorAttempt() >= worldgen.getLocateRadiusBlocks()) {
+                markSectorRejected(cursor, sector, "rejected_anchor_not_found");
+                progressed = true;
+                continue;
+            }
             progressed = true;
+            break;
         }
 
         if (progressed) {
@@ -581,6 +592,16 @@ public class TerrainAllocationCoordinator {
             throw new SQLException("Slot nao encontrado durante criacao: " + request.getPlotSlotId());
         }
 
+        BlockPos homePos = validation.safeSpawn().blockPos();
+        SpawnPlatformResult platformResult = buildSpawnPlatform(level, homePos);
+        if (!platformResult.success()) {
+            LOGGER.error("[BigBangRegions] Failed to build spawn platform for request={}: {}",
+                request.getId(), String.join("; ", platformResult.diagnostics()));
+            pauseForRecovery(request, "Falha na criacao da plataforma: " + String.join("; ", platformResult.diagnostics()),
+                "failed_platform_generation");
+            return;
+        }
+
         synchronized (databaseManager) {
             Connection conn = databaseManager.getConnection();
             boolean wasAutoCommit = conn.getAutoCommit();
@@ -604,13 +625,12 @@ public class TerrainAllocationCoordinator {
                 slot.occupy();
                 slotRepository.saveOnConnection(conn, slot);
 
-                BlockPos homePos = validation.safeSpawn().blockPos();
                 PlayerRegionHome home = new PlayerRegionHome(
                     regionId,
                     lac.getTargetDimension(),
-                    homePos.getX() + 0.5,
-                    homePos.getY(),
-                    homePos.getZ() + 0.5,
+                    platformResult.finalStandPosition().getX() + 0.5,
+                    platformResult.finalStandPosition().getY(),
+                    platformResult.finalStandPosition().getZ() + 0.5,
                     0.0f,
                     0.0f,
                     now,
@@ -626,18 +646,53 @@ public class TerrainAllocationCoordinator {
                 regionCache.add(region);
                 membershipCache.loadFromRegion(region);
 
-                snapshotCreatedTerrain(regionId, bounds, level, homePos, configManager.getConfig().getPlayerLandAllocation().getBorder().isRestoreOnDelete());
-                postRegionCreationSetup(request, bounds, level, homePos);
-                LOGGER.info("[BigBangRegions] Preparation ready request={} duration={}ms.", request.getId(), System.currentTimeMillis() - now);
+                snapshotCreatedTerrain(regionId, bounds, level, platformResult.finalStandPosition(), configManager.getConfig().getPlayerLandAllocation().getBorder().isRestoreOnDelete());
+                postRegionCreationSetup(request, bounds, level, platformResult.finalStandPosition());
+                LOGGER.info("[BigBangRegions] Region created successfully request={} region={} home=(x={}, y={}, z={})",
+                    request.getId(), regionId,
+                    platformResult.finalStandPosition().getX(), platformResult.finalStandPosition().getY(), platformResult.finalStandPosition().getZ());
             } catch (Exception e) {
-                conn.rollback();
-                throw (e instanceof SQLException) ? (SQLException) e : new SQLException(e);
+                try { conn.rollback(); } catch (SQLException ignored) {}
+                LOGGER.error("[BigBangRegions] DB transaction failed during region creation request={}: {}", request.getId(), e.getMessage(), e);
+                pauseForRecovery(request, "Falha na transacao de criacao da regiao: " + e.getMessage(),
+                    "failed_home_persistence");
+                return;
             } finally {
-                conn.setAutoCommit(wasAutoCommit);
+                try { conn.setAutoCommit(wasAutoCommit); } catch (SQLException ignored) {}
             }
         }
 
         cleanupRequestResources(request, PreparationCancelReason.COMPLETED, true);
+    }
+
+    private SpawnPlatformResult buildSpawnPlatform(ServerLevel level, BlockPos homePos) {
+        try {
+            var cobblestone = net.minecraft.world.level.block.Blocks.COBBLESTONE.defaultBlockState();
+            var air = net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+            var glowstone = net.minecraft.world.level.block.Blocks.GLOWSTONE.defaultBlockState();
+
+            int minX = homePos.getX() - 2;
+            int maxX = homePos.getX() + 2;
+            int minZ = homePos.getZ() - 2;
+            int maxZ = homePos.getZ() + 2;
+            int yFloor = homePos.getY() - 1;
+
+            List<String> diagnostics = new ArrayList<>();
+            for (int x = minX; x <= maxX; x++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    BlockPos pos = new BlockPos(x, yFloor, z);
+                    level.setBlock(pos, cobblestone, 2);
+                    level.setBlock(new BlockPos(x, yFloor + 1, z), air, 2);
+                    level.setBlock(new BlockPos(x, yFloor + 2, z), air, 2);
+                }
+            }
+
+            level.setBlock(new BlockPos(homePos.getX(), yFloor, homePos.getZ()), glowstone, 2);
+            return SpawnPlatformResult.success(homePos);
+        } catch (Exception e) {
+            LOGGER.error("[BigBangRegions] Failed to build spawn platform at {}: {}", homePos, e.getMessage(), e);
+            return SpawnPlatformResult.failure(homePos, "Exception: " + e.getMessage());
+        }
     }
 
     public boolean restorePlayerRegionTerrain(Region region, ServerLevel level) {
@@ -687,7 +742,6 @@ public class TerrainAllocationCoordinator {
 
         generateGlassBorder(level, bounds, borderConfig.getMaterial(), borderConfig.isCreateCeiling());
         applyRegionBiome(level, bounds, request.getRequestedBiomeOption());
-        generateSpawnPlatform(level, homePos);
 
         ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
         if (player != null) {
@@ -698,28 +752,9 @@ public class TerrainAllocationCoordinator {
     }
 
     private void generateSpawnPlatform(ServerLevel level, BlockPos homePos) {
-        try {
-            var cobblestone = net.minecraft.world.level.block.Blocks.COBBLESTONE.defaultBlockState();
-            var air = net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
-            var glowstone = net.minecraft.world.level.block.Blocks.GLOWSTONE.defaultBlockState();
-
-            int minX = homePos.getX() - 1;
-            int maxX = homePos.getX() + 2;
-            int minZ = homePos.getZ() - 1;
-            int maxZ = homePos.getZ() + 2;
-            int yFloor = homePos.getY() - 1;
-
-            for (int x = minX; x <= maxX; x++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    level.setBlock(new BlockPos(x, yFloor, z), cobblestone, 2);
-                    level.setBlock(new BlockPos(x, yFloor + 1, z), air, 2);
-                    level.setBlock(new BlockPos(x, yFloor + 2, z), air, 2);
-                }
-            }
-
-            level.setBlock(new BlockPos(homePos.getX(), yFloor, homePos.getZ()), glowstone, 2);
-        } catch (Exception e) {
-            LOGGER.error("Failed to generate spawn platform", e);
+        SpawnPlatformResult result = buildSpawnPlatform(level, homePos);
+        if (!result.success()) {
+            LOGGER.warn("[BigBangRegions] generateSpawnPlatform failed at {}: {}", homePos, String.join("; ", result.diagnostics()));
         }
     }
 
@@ -1152,6 +1187,7 @@ public class TerrainAllocationCoordinator {
         int stepX = Math.max(1, (sectorMaxX - sectorMinX) / (gridSize - 1));
         int stepZ = Math.max(1, (sectorMaxZ - sectorMinZ) / (gridSize - 1));
         long seed = deterministicSectorSeedFromValues(option.getKey(), sector.bandId(), sector.sectorIndex(), sector.sectorX(), sector.sectorZ());
+        List<Integer> sampleYs = context.getEffectiveSampleBlockYs();
 
         for (int gz = 0; gz < gridSize; gz++) {
             for (int gx = 0; gx < gridSize; gx++) {
@@ -1159,10 +1195,12 @@ public class TerrainAllocationCoordinator {
                 int jitterZ = deterministicJitter(seed ^ 0x9E3779B97F4A7C15L, gz, gx, Math.max(1, stepZ / 3));
                 int x = clamp(sectorMinX + (gx * stepX) + jitterX, sectorMinX, sectorMaxX);
                 int z = clamp(sectorMinZ + (gz * stepZ) + jitterZ, sectorMinZ, sectorMaxZ);
-                ResourceKey<net.minecraft.world.level.biome.Biome> key = biomeSearchService.getVirtualSampler()
-                    .sampleAtBlock(context, x, context.sampleBlockY(), z);
-                if (key != null && accepted.contains(key)) {
-                    return true;
+                for (int sampleY : sampleYs) {
+                    ResourceKey<net.minecraft.world.level.biome.Biome> key = biomeSearchService.getVirtualSampler()
+                        .sampleAtBlock(context, x, sampleY, z);
+                    if (key != null && accepted.contains(key)) {
+                        return true;
+                    }
                 }
             }
         }
@@ -1175,10 +1213,12 @@ public class TerrainAllocationCoordinator {
             {sectorMaxX, sectorMaxZ}
         };
         for (int[] point : fallbackPoints) {
-            ResourceKey<net.minecraft.world.level.biome.Biome> key = biomeSearchService.getVirtualSampler()
-                .sampleAtBlock(context, point[0], context.sampleBlockY(), point[1]);
-            if (key != null && accepted.contains(key)) {
-                return true;
+            for (int sampleY : sampleYs) {
+                ResourceKey<net.minecraft.world.level.biome.Biome> key = biomeSearchService.getVirtualSampler()
+                    .sampleAtBlock(context, point[0], sampleY, point[1]);
+                if (key != null && accepted.contains(key)) {
+                    return true;
+                }
             }
         }
         return false;
@@ -1219,7 +1259,8 @@ public class TerrainAllocationCoordinator {
 
         int maxPerTick = Math.max(1, sc.getMaxCandidateEvaluationsPerTick());
         int limit = Math.max(1, Math.min(remaining, maxPerTick));
-        BiomeAnchor anchor = new BiomeAnchor(cursor.getCurrentAnchorX(), cursor.getCurrentAnchorZ(), cursor.getCurrentAnchorBiomeId());
+        int anchorY = cursor.getCurrentAnchorY() != null ? cursor.getCurrentAnchorY() : 64;
+        BiomeAnchor anchor = new BiomeAnchor(cursor.getCurrentAnchorX(), anchorY, cursor.getCurrentAnchorZ(), cursor.getCurrentAnchorBiomeId());
         List<PlotSlotService.PlotSlotCandidate> candidates = localCandidatesNearAnchor(anchor, lac, cursor.getLocalCandidateIndex(), limit);
         WorldgenSearchContext context = biomeSearchService.getContextFactory().getOrCreate(level, configManager.getConfig());
         int processed = 0;
@@ -1232,20 +1273,29 @@ public class TerrainAllocationCoordinator {
             if (!slotWithinBand(candidate, lac.getSlotSize(), sector)) {
                 cursor.setLastRejectionReason("rejected_outside_active_band");
                 AllocationMetrics.increment("rejected_outside_active_band");
+                cursor.incrementRejection("rejected_outside_active_band");
                 continue;
             }
             if (!slotService.isSlotEligible(candidate.minX, candidate.minZ, lac.getSlotSize())) {
                 cursor.setLastRejectionReason("rejected_exclusion_zone");
                 AllocationMetrics.increment("rejected_exclusion_zone");
+                cursor.incrementRejection("rejected_exclusion_zone");
                 continue;
             }
 
             PlotFootprint claimFootprint = buildClaimFootprint(candidate.minX, candidate.minZ, lac);
             BiomeSearchService.MatchResult biomeMatch = biomeSearchService.evaluateBiomeOptionMatching(context, claimFootprint.minX(), claimFootprint.maxX(), claimFootprint.minZ(), claimFootprint.maxZ(), biomeOption);
             cursor.setTotalBiomeSamples(cursor.getTotalBiomeSamples() + 1);
+            if (biomeMatch == BiomeSearchService.MatchResult.PENDING) {
+                cursor.setLastRejectionReason("pending_virtual_validation");
+                AllocationMetrics.increment("pending_virtual_validation");
+                cursor.incrementRejection("pending_virtual_validation");
+                return LocalAnchorSearchResult.CONTINUE;
+            }
             if (biomeMatch != BiomeSearchService.MatchResult.MATCH) {
                 cursor.setLastRejectionReason("rejected_border_mismatch");
                 AllocationMetrics.increment("rejected_border_mismatch");
+                cursor.incrementRejection("rejected_border_mismatch");
                 continue;
             }
 
@@ -1258,6 +1308,7 @@ public class TerrainAllocationCoordinator {
 
             cursor.setLastRejectionReason("rejected_slot_overlap");
             AllocationMetrics.increment("rejected_slot_overlap");
+            cursor.incrementRejection("rejected_slot_overlap");
         }
 
         if (cursor.getLocalCandidateIndex() < maxPerAnchor) {
@@ -1300,6 +1351,8 @@ public class TerrainAllocationCoordinator {
         int slotSize = lac.getSlotSize();
         int anchorGridX = Math.floorDiv(anchor.blockX(), slotSize);
         int anchorGridZ = Math.floorDiv(anchor.blockZ(), slotSize);
+        int anchorBlockX = anchor.blockX();
+        int anchorBlockZ = anchor.blockZ();
         int[][] deltas = new int[][]{
             {0, 0}, {0, -1}, {0, 1}, {1, 0}, {-1, 0},
             {1, -1}, {1, 1}, {-1, -1}, {-1, 1},
@@ -1308,14 +1361,32 @@ public class TerrainAllocationCoordinator {
             {1, -2}, {1, 2}, {-1, -2}, {-1, 2},
             {2, -2}, {2, 2}, {-2, -2}, {-2, 2}
         };
-        List<PlotSlotService.PlotSlotCandidate> list = new ArrayList<>();
-        for (int i = offset; i < deltas.length && list.size() < limit; i++) {
-            int[] delta = deltas[i];
+        List<CandidatePair> list = new ArrayList<>();
+        for (int[] delta : deltas) {
             int gridX = anchorGridX + delta[0];
             int gridZ = anchorGridZ + delta[1];
-            list.add(new PlotSlotService.PlotSlotCandidate(gridX, gridZ, gridX * slotSize, gridZ * slotSize));
+            int minX = gridX * slotSize;
+            int minZ = gridZ * slotSize;
+            int claimSize = Math.min(slotSize, lac.getInitialClaimSize());
+            int claimMinX = minX + lac.getSlotInternalMargin();
+            int claimMinZ = minZ + lac.getSlotInternalMargin();
+            int claimMaxX = claimMinX + claimSize - 1;
+            int claimMaxZ = claimMinZ + claimSize - 1;
+            int claimCenterX = (claimMinX + claimMaxX) / 2;
+            int claimCenterZ = (claimMinZ + claimMaxZ) / 2;
+            double dist = Math.sqrt(Math.pow(anchorBlockX - claimCenterX, 2) + Math.pow(anchorBlockZ - claimCenterZ, 2));
+            PlotSlotService.PlotSlotCandidate candidate = new PlotSlotService.PlotSlotCandidate(gridX, gridZ, minX, minZ);
+            list.add(new CandidatePair(candidate, dist));
         }
-        return list;
+        list.sort(Comparator.comparingDouble(CandidatePair::distance));
+        List<PlotSlotService.PlotSlotCandidate> result = new ArrayList<>();
+        for (int i = offset; i < list.size() && result.size() < limit; i++) {
+            result.add(list.get(i).candidate());
+        }
+        return result;
+    }
+
+    private record CandidatePair(PlotSlotService.PlotSlotCandidate candidate, double distance) {
     }
 
     private boolean slotWithinBand(PlotSlotService.PlotSlotCandidate candidate, int slotSize, AllocationSearchSector sector) {
@@ -1356,9 +1427,11 @@ public class TerrainAllocationCoordinator {
         cursor.setAnchorAttempt(0);
         cursor.setLocalCandidateIndex(0);
         cursor.setCurrentAnchorX(null);
+        cursor.setCurrentAnchorY(null);
         cursor.setCurrentAnchorZ(null);
         cursor.setCurrentAnchorBiomeId(null);
         cursor.setLastRejectionReason(reason);
+        cursor.incrementRejection(reason);
         cursor.setLastProgressAt(System.currentTimeMillis());
         AllocationMetrics.increment(reason);
         cursorRepository.save(cursor);
@@ -1450,7 +1523,12 @@ public class TerrainAllocationCoordinator {
 
         Long lastLog = lastProgressLogs.get(request.getId());
         if (lastLog == null || now - lastLog >= 10_000L) {
-            LOGGER.info("[BigBangRegions] Allocation progress: request={} biome={} state={} elapsed={}s sectors={} anchors={} candidates={} lastRejection={}",
+            String anchorInfo = "";
+            if (cursor.getCurrentAnchorX() != null && cursor.getCurrentAnchorY() != null) {
+                anchorInfo = String.format(" anchor=(%d,%d,%d,biome=%s)",
+                    cursor.getCurrentAnchorX(), cursor.getCurrentAnchorY(), cursor.getCurrentAnchorZ(), cursor.getCurrentAnchorBiomeId());
+            }
+            LOGGER.info("[BigBangRegions] Allocation progress: request={} biome={} state={} elapsed={}s sectors={} anchors={} candidates={} lastRejection={}{}",
                 request.getId().substring(0, 8),
                 request.getRequestedBiomeOption(),
                 request.getState(),
@@ -1458,7 +1536,8 @@ public class TerrainAllocationCoordinator {
                 cursor.getTotalSectorsChecked(),
                 cursor.getAnchorsFound(),
                 cursor.getTotalVirtualCandidatesChecked(),
-                cursor.getLastRejectionReason());
+                cursor.getLastRejectionReason(),
+                anchorInfo);
             lastProgressLogs.put(request.getId(), now);
         }
     }
@@ -1486,6 +1565,7 @@ public class TerrainAllocationCoordinator {
         request.forceTransitionTo(target);
         request.setFailureReason(reason);
         requestRepository.save(request);
+        logRejectionSummary(request);
         cleanupRequestResources(request, PreparationCancelReason.FAILED, false);
         if (level != null && level.getServer() != null && level.getServer().getPlayerList() != null) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
@@ -1501,6 +1581,30 @@ public class TerrainAllocationCoordinator {
         }
     }
 
+    private void logRejectionSummary(AllocationRequest request) {
+        AllocationSearchCursor cursor = cursorRepository.get(request.getId());
+        if (cursor == null) return;
+        long elapsed = (System.currentTimeMillis() - request.getCreatedAt()) / 1000L;
+        Map<String, LongAdder> counts = cursor.getRejectionCounts();
+        if (counts.isEmpty()) {
+            LOGGER.warn("[BigBangRegions] Request FAILED: request={} biome={} elapsed={}s sectors={} anchors={} candidates={} reason={}",
+                request.getId().substring(0, 8), request.getRequestedBiomeOption(), elapsed,
+                cursor.getTotalSectorsChecked(), cursor.getAnchorsFound(),
+                cursor.getTotalVirtualCandidatesChecked(), request.getFailureReason());
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        counts.forEach((k, v) -> sb.append(k).append("=").append(v.sum()).append(", "));
+        String rejectionStr = sb.toString();
+        if (rejectionStr.endsWith(", ")) {
+            rejectionStr = rejectionStr.substring(0, rejectionStr.length() - 2);
+        }
+        LOGGER.warn("[BigBangRegions] Request FAILED: request={} biome={} elapsed={}s sectors={} anchors={} candidates={} rejections={{{}}} reason={}",
+            request.getId().substring(0, 8), request.getRequestedBiomeOption(), elapsed,
+            cursor.getTotalSectorsChecked(), cursor.getAnchorsFound(),
+            cursor.getTotalVirtualCandidatesChecked(), rejectionStr, request.getFailureReason());
+    }
+
     private void resumeSearchAfterCandidateFailure(AllocationRequest request,
                                                    Config.PlayerLandAllocationConfig lac,
                                                    ServerLevel level,
@@ -1514,6 +1618,7 @@ public class TerrainAllocationCoordinator {
         AllocationMetrics.increment(rejectionReason);
         AllocationSearchCursor cursor = loadOrCreateCursor(request, lac);
         cursor.setLastRejectionReason(rejectionReason);
+        cursor.incrementRejection(rejectionReason);
         cursorRepository.save(cursor);
 
         cleanupRequestResources(request, PreparationCancelReason.FAILED, false);
@@ -1587,6 +1692,55 @@ public class TerrainAllocationCoordinator {
         }
     }
 
+    public void recoverOrphanedHomes(ServerLevel level) {
+        List<Region> allRegions = regionCache.getAll().stream()
+            .filter(r -> r.getType() == RegionType.PLAYER_REGION && "ACTIVE".equals(r.getStatus()))
+            .toList();
+        int recovered = 0;
+        for (Region region : allRegions) {
+            PlayerRegionHome existingHome = homeRepository.get(region.getId());
+            if (existingHome != null) {
+                continue;
+            }
+            LOGGER.info("[BigBangRegions] Recovery: region {} has no home entry. Rebuilding...", region.getId());
+            RegionBounds bounds = region.getBounds();
+            int centerX = (bounds.getMinX() + bounds.getMaxX()) / 2;
+            int centerZ = (bounds.getMinZ() + bounds.getMaxZ()) / 2;
+            Set<net.minecraft.world.level.ChunkPos> regionChunks = new HashSet<>();
+            for (int cx = (bounds.getMinX() >> 4); cx <= (bounds.getMaxX() >> 4); cx++) {
+                for (int cz = (bounds.getMinZ() >> 4); cz <= (bounds.getMaxZ() >> 4); cz++) {
+                    regionChunks.add(new net.minecraft.world.level.ChunkPos(cx, cz));
+                }
+            }
+            int minX = bounds.getMinX();
+            int maxX = bounds.getMaxX();
+            int minZ = bounds.getMinZ();
+            int maxZ = bounds.getMaxZ();
+            java.util.Optional<BlockPos> safeSpawn = SafeSpawnFinder.findSafeSpawn(level, minX, maxX, minZ, maxZ, regionChunks);
+            if (safeSpawn.isEmpty()) {
+                safeSpawn = java.util.Optional.of(new BlockPos(centerX, level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, centerX, centerZ), centerZ));
+            }
+            BlockPos homePos = safeSpawn.get();
+            long now = System.currentTimeMillis();
+            PlayerRegionHome home = new PlayerRegionHome(
+                region.getId(),
+                bounds.getDimension(),
+                homePos.getX() + 0.5,
+                homePos.getY(),
+                homePos.getZ() + 0.5,
+                0.0f, 0.0f,
+                now, now
+            );
+            homeRepository.save(home);
+            LOGGER.info("[BigBangRegions] Recovered home for region {} at ({},{},{})",
+                region.getId(), homePos.getX(), homePos.getY(), homePos.getZ());
+            recovered++;
+        }
+        if (recovered > 0) {
+            LOGGER.info("[BigBangRegions] Home recovery complete: {} regions repaired", recovered);
+        }
+    }
+
     private void cleanupRequestResources(AllocationRequest request, PreparationCancelReason reason, boolean deletePreparationRecord) {
         validatedWorlds.remove(request.getId());
         completedPreparations.remove(request.getId());
@@ -1657,8 +1811,12 @@ public class TerrainAllocationCoordinator {
     }
 
     private void teleportPlayerToSpawn(ServerPlayer player, ServerLevel level) {
-        BlockPos spawn = level.getSharedSpawnPos();
-        player.teleportTo(level, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5, player.getYRot(), player.getXRot());
+        BlockPos spawnPos = level.getSharedSpawnPos();
+        int y = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, spawnPos.getX(), spawnPos.getZ());
+        if (y <= level.getMinBuildHeight()) {
+            y = spawnPos.getY();
+        }
+        player.teleportTo(level, spawnPos.getX() + 0.5, y + 1, spawnPos.getZ() + 0.5, player.getYRot(), player.getXRot());
     }
 
     private ServerLevel resolveLevel(MinecraftServer server, String dimensionKey) {

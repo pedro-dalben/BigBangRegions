@@ -8,6 +8,7 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -19,7 +20,9 @@ public final class WorldgenSearchContextFactory {
         Objects.requireNonNull(level, "level");
         Objects.requireNonNull(config, "config");
 
-        int sampleBlockY = config.getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY();
+        Config.WorldgenSearchConfig worldgen = config.getPlayerLandAllocation().getWorldgenSearch();
+        int sampleBlockY = worldgen.getSampleBlockY();
+        List<Integer> sampleBlockYs = worldgen.getSampleBlockYs();
         WorldgenFingerprint fingerprint = WorldgenFingerprint.capture(level, config, sampleBlockY);
         ResourceKey<Level> dimensionKey = level.dimension();
 
@@ -30,7 +33,7 @@ public final class WorldgenSearchContextFactory {
             ChunkGenerator chunkGenerator = level.getChunkSource().getGenerator();
             BiomeSource biomeSource = chunkGenerator.getBiomeSource();
             Climate.Sampler noiseSampler = level.getChunkSource().randomState().sampler();
-            return new WorldgenSearchContext(dimensionKey, level.getSeed(), chunkGenerator, biomeSource, noiseSampler, fingerprint, sampleBlockY);
+            return new WorldgenSearchContext(dimensionKey, level.getSeed(), chunkGenerator, biomeSource, noiseSampler, fingerprint, sampleBlockY, sampleBlockYs);
         });
     }
 

@@ -133,6 +133,20 @@ public class DatabaseManager {
             setSchemaVersion(9);
             LOGGER.info("Migration V9 applied successfully.");
         }
+
+        if (currentVersion < 10) {
+            LOGGER.info("Applying migration V10...");
+            executeMigrationResource("/storage/migrations/V010__region_invites.sql");
+            setSchemaVersion(10);
+            LOGGER.info("Migration V10 applied successfully.");
+        }
+
+        if (currentVersion < 11) {
+            LOGGER.info("Applying migration V11...");
+            executeMigrationResource("/storage/migrations/V011__allocation_search_cursor_y.sql");
+            setSchemaVersion(11);
+            LOGGER.info("Migration V11 applied successfully.");
+        }
     }
 
     private int getCurrentSchemaVersion() {

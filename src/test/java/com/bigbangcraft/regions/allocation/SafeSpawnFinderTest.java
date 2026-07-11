@@ -26,11 +26,7 @@ public class SafeSpawnFinderTest {
         Level level = mock(Level.class);
         when(level.getMinBuildHeight()).thenReturn(0);
         when(level.getMaxBuildHeight()).thenReturn(256);
-        when(level.getHeight(eq(Heightmap.Types.WORLD_SURFACE), anyInt(), anyInt())).thenAnswer(invocation -> {
-            int x = invocation.getArgument(1);
-            int z = invocation.getArgument(2);
-            return (x == 25 && z == 25) ? 65 : 0;
-        });
+        when(level.getHeight(eq(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES), anyInt(), anyInt())).thenReturn(65);
         when(level.canSeeSky(any(BlockPos.class))).thenAnswer(invocation -> {
             BlockPos pos = invocation.getArgument(0);
             return pos.getX() == 25 && pos.getZ() == 25;
@@ -41,12 +37,8 @@ public class SafeSpawnFinderTest {
 
         when(level.getBlockState(any(BlockPos.class))).thenAnswer(invocation -> {
             BlockPos pos = invocation.getArgument(0);
-            if (pos.getX() == 25 && pos.getZ() == 25) {
-                if (pos.getY() == 64) {
-                    return stone;
-                } else if (pos.getY() > 64) {
-                    return air;
-                }
+            if (pos.getY() == 64) {
+                return stone;
             }
             return air;
         });
@@ -63,7 +55,7 @@ public class SafeSpawnFinderTest {
         Level level = mock(Level.class);
         when(level.getMinBuildHeight()).thenReturn(0);
         when(level.getMaxBuildHeight()).thenReturn(256);
-        when(level.getHeight(eq(Heightmap.Types.WORLD_SURFACE), anyInt(), anyInt())).thenReturn(65);
+        when(level.getHeight(eq(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES), anyInt(), anyInt())).thenReturn(65);
         when(level.canSeeSky(any(BlockPos.class))).thenReturn(false);
 
         when(level.getBlockState(any(BlockPos.class))).thenAnswer(invocation -> {

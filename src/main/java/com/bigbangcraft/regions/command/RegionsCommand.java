@@ -389,6 +389,24 @@ public class RegionsCommand {
                     .executes(RegionsCommand::adminAllocationStatus)
                 )
             )
+            .then(Commands.argument("regionId", StringArgumentType.word())
+                .executes(context -> {
+                    CommandSourceStack source = context.getSource();
+                    ServerPlayer player = source.getPlayer();
+                    if (player == null) {
+                        source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+                        return 0;
+                    }
+                    String id = StringArgumentType.getString(context, "regionId");
+                    Region region = regionCache.get(id);
+                    if (region == null) {
+                        source.sendFailure(Component.literal("Região '" + id + "' não encontrada."));
+                        return 0;
+                    }
+                    com.bigbangcraft.regions.gui.RegionGuiHandler.openAdminMenu(player, region);
+                    return 1;
+                })
+            )
             .executes(context -> {
                 CommandSourceStack source = context.getSource();
                 ServerPlayer player = source.getPlayer();
@@ -397,12 +415,14 @@ public class RegionsCommand {
                     return 0;
                 }
 
-                Region current = com.bigbangcraft.regions.gui.RegionGuiHandler.findPlayerRegion(player.getUUID());
+                // 1. Resolve region at player's position first (admin regions)
+                BlockPos pos = player.blockPosition();
+                String dim = player.level().dimension().location().toString();
+                Region current = regionResolver.resolveRegionAt(dim, pos.getX(), pos.getY(), pos.getZ()).orElse(null);
 
+                // 2. Fallback to player's own region
                 if (current == null) {
-                    BlockPos pos = player.blockPosition();
-                    String dim = player.level().dimension().location().toString();
-                    current = regionResolver.resolveRegionAt(dim, pos.getX(), pos.getY(), pos.getZ()).orElse(null);
+                    current = com.bigbangcraft.regions.gui.RegionGuiHandler.findPlayerRegion(player.getUUID());
                 }
 
                 if (current == null) {
@@ -2078,8 +2098,8 @@ public class RegionsCommand {
     }
 
     private static final Set<String> EDITABLE_PLAYER_FLAGS = new HashSet<>(Arrays.asList(
-        "player-build", "player-interact", "container-access", "door-use",
-        "redstone-use", "entity-interact", "pvp", "item-pickup", "item-drop"
+        "visitor-build", "visitor-usage", "visitor-item-frames", "visitor-armor-stands",
+        "pvp", "visitor-pickup-items", "visitor-drop-items", "fall-damage"
     ));
 
     private static int listPlayerFlags(CommandContext<CommandSourceStack> context) {

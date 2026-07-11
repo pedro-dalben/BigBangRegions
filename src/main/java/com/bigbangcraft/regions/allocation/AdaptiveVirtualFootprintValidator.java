@@ -15,11 +15,22 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
     private final BiomeVirtualSampler sampler;
     private final int sampleGridSize;
     private final int minimumMatchPercentage;
+    private final int minimumBorderMatchPercentage;
+    private final boolean requireFullBorderMatch;
 
     public AdaptiveVirtualFootprintValidator(BiomeVirtualSampler sampler, int sampleGridSize, int minimumMatchPercentage) {
+        this(sampler, sampleGridSize, minimumMatchPercentage, 60, false);
+    }
+
+    public AdaptiveVirtualFootprintValidator(BiomeVirtualSampler sampler, int sampleGridSize,
+                                              int minimumMatchPercentage,
+                                              int minimumBorderMatchPercentage,
+                                              boolean requireFullBorderMatch) {
         this.sampler = Objects.requireNonNull(sampler, "sampler");
         this.sampleGridSize = normalizeGridSize(sampleGridSize);
         this.minimumMatchPercentage = Math.max(1, Math.min(100, minimumMatchPercentage));
+        this.minimumBorderMatchPercentage = Math.max(1, Math.min(100, minimumBorderMatchPercentage));
+        this.requireFullBorderMatch = requireFullBorderMatch;
     }
 
     @Override
@@ -45,12 +56,16 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         int uniqueQuartSamples = 0;
         int edgeMatches = 0;
         int edgeMismatches = 0;
+        int edgeSamples = 0;
         int interiorMatches = 0;
         int interiorSamples = 0;
         int totalMatches = 0;
         int totalSamples = 0;
 
-        SampleOutcome corners = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, true, true, false, false);
+        int sampleY = context.sampleBlockY();
+        List<Integer> sampleYs = context.getEffectiveSampleBlockYs();
+
+        SampleOutcome corners = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, true, true, false, false, sampleYs);
         if (corners.failureReason() != ValidationFailureReason.NONE) {
             return corners.result(
                 corners.uniqueSamples(),
@@ -66,10 +81,11 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         uniqueQuartSamples = corners.uniqueSamples();
         edgeMatches += corners.matches();
         edgeMismatches += corners.mismatches();
+        edgeSamples += corners.samples();
         totalMatches += corners.matches();
         totalSamples += corners.samples();
 
-        SampleOutcome edgeMidpoints = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, false, true, true, false);
+        SampleOutcome edgeMidpoints = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, false, true, true, false, sampleYs);
         if (edgeMidpoints.failureReason() != ValidationFailureReason.NONE) {
             return edgeMidpoints.result(
                 edgeMidpoints.uniqueSamples(),
@@ -85,10 +101,11 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         uniqueQuartSamples = edgeMidpoints.uniqueSamples();
         edgeMatches += edgeMidpoints.matches();
         edgeMismatches += edgeMidpoints.mismatches();
+        edgeSamples += edgeMidpoints.samples();
         totalMatches += edgeMidpoints.matches();
         totalSamples += edgeMidpoints.samples();
 
-        SampleOutcome border = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, false, true, false, false);
+        SampleOutcome border = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, false, true, false, false, sampleYs);
         if (border.failureReason() != ValidationFailureReason.NONE) {
             return border.result(
                 border.uniqueSamples(),
@@ -104,10 +121,36 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         uniqueQuartSamples = border.uniqueSamples();
         edgeMatches += border.matches();
         edgeMismatches += border.mismatches();
+        edgeSamples += border.samples();
         totalMatches += border.matches();
         totalSamples += border.samples();
 
-        SampleOutcome center = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, false, false, false, true);
+        int edgeTotalSamples = edgeSamples;
+        double edgeScore = edgeTotalSamples == 0 ? 100.0 : ((double) edgeMatches / (double) edgeTotalSamples) * 100.0;
+        if (requireFullBorderMatch && edgeMismatches > 0) {
+            return VirtualBiomeValidationResult.rejected(
+                edgeScore,
+                uniqueQuartSamples,
+                edgeMatches,
+                edgeMismatches,
+                interiorMatches,
+                interiorSamples,
+                ValidationFailureReason.BORDER_MISMATCH
+            );
+        }
+        if (edgeScore < minimumBorderMatchPercentage) {
+            return VirtualBiomeValidationResult.rejected(
+                edgeScore,
+                uniqueQuartSamples,
+                edgeMatches,
+                edgeMismatches,
+                interiorMatches,
+                interiorSamples,
+                ValidationFailureReason.BORDER_MISMATCH
+            );
+        }
+
+        SampleOutcome center = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, false, false, false, true, sampleYs);
         if (center.failureReason() != ValidationFailureReason.NONE) {
             return center.result(
                 center.uniqueSamples(),
@@ -119,6 +162,17 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
                 totalMatches + center.matches()
             );
         }
+        if (center.matches() == 0 && center.samples() > 0) {
+            return VirtualBiomeValidationResult.rejected(
+                0.0,
+                center.uniqueSamples(),
+                edgeMatches,
+                edgeMismatches,
+                interiorMatches,
+                interiorSamples,
+                ValidationFailureReason.BORDER_MISMATCH
+            );
+        }
         remainingSamples = center.remainingSamples();
         uniqueQuartSamples = center.uniqueSamples();
         interiorMatches += center.matches();
@@ -126,7 +180,7 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         totalMatches += center.matches();
         totalSamples += center.samples();
 
-        SampleOutcome interior = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, false, false, false, false);
+        SampleOutcome interior = samplePhase(context, acceptedKeys, sampleXs, sampleZs, seenQuartPositions, remainingSamples, false, false, false, false, sampleYs);
         if (interior.failureReason() != ValidationFailureReason.NONE) {
             return interior.result(
                 interior.uniqueSamples(),
@@ -171,7 +225,8 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         boolean cornersOnly,
         boolean borderOnly,
         boolean midpointsOnly,
-        boolean centerOnly
+        boolean centerOnly,
+        List<Integer> sampleYs
     ) {
         int samples = 0;
         int matches = 0;
@@ -179,27 +234,39 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
 
         List<Point> orderedPoints = orderedPoints(sampleXs, sampleZs, cornersOnly, borderOnly, midpointsOnly, centerOnly);
         for (Point point : orderedPoints) {
-            long packedQuart = BiomeCoordinateMath.packQuart(
-                BiomeCoordinateMath.blockToQuart(point.x()),
-                BiomeCoordinateMath.blockToQuart(context.sampleBlockY()),
-                BiomeCoordinateMath.blockToQuart(point.z())
-            );
-            if (!seenQuartPositions.add(packedQuart)) {
-                continue;
-            }
-            if (remainingSamples <= 0L) {
-                return SampleOutcome.exhausted(seenQuartPositions.size(), matches, mismatches, samples);
+            boolean anyYMatch = false;
+            boolean anyNewSample = false;
+
+            for (int sampleY : sampleYs) {
+                long packedQuart = BiomeCoordinateMath.packQuart(
+                    BiomeCoordinateMath.blockToQuart(point.x()),
+                    BiomeCoordinateMath.blockToQuart(sampleY),
+                    BiomeCoordinateMath.blockToQuart(point.z())
+                );
+                if (!seenQuartPositions.add(packedQuart)) {
+                    continue;
+                }
+                anyNewSample = true;
+                if (remainingSamples <= 0L) {
+                    return SampleOutcome.exhausted(seenQuartPositions.size(), matches, mismatches, samples);
+                }
+
+                remainingSamples--;
+                samples++;
+                ResourceKey<Biome> sampled = sampler.sampleAtBlock(context, point.x(), sampleY, point.z());
+                if (sampled != null && acceptedKeys.contains(sampled)) {
+                    anyYMatch = true;
+                }
             }
 
-            remainingSamples--;
-            samples++;
-            ResourceKey<Biome> sampled = sampler.sampleAtBlock(context, point.x(), context.sampleBlockY(), point.z());
-            boolean match = sampled != null && acceptedKeys.contains(sampled);
-            if (match) {
+            if (!anyNewSample) {
+                continue;
+            }
+
+            if (anyYMatch) {
                 matches++;
-            } else if (borderOnly || cornersOnly || midpointsOnly) {
+            } else if (borderOnly || cornersOnly || midpointsOnly || centerOnly) {
                 mismatches++;
-                return SampleOutcome.borderMismatch(seenQuartPositions.size(), matches, mismatches, samples, remainingSamples);
             }
         }
 
@@ -281,7 +348,6 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
                 ResourceLocation location = ResourceLocation.parse(biomeId);
                 keys.add(ResourceKey.create(Registries.BIOME, location));
             } catch (Exception ignored) {
-                // Invalid biome ids are treated as non-matches.
             }
         }
         return keys;

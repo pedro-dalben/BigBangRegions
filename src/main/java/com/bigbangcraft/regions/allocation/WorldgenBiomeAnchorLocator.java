@@ -11,6 +11,7 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Climate;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -41,31 +42,46 @@ public class WorldgenBiomeAnchorLocator implements BiomeAnchorLocator {
         Climate.Sampler sampler = context.noiseSampler();
         Predicate<Holder<Biome>> predicate = holder -> holder.unwrapKey().map(accepted::contains).orElse(false);
         RandomSource random = RandomSource.create(deterministicSeed(context, biomeOption, cursor));
-        Pair<BlockPos, Holder<Biome>> found = context.biomeSource().findBiomeHorizontal(
-            centerX,
-            context.sampleBlockY(),
-            centerZ,
-            searchRadius,
-            interval,
-            predicate,
-            random,
-            true,
-            sampler
-        );
+
         cursor.setLocateCallsUsed(cursor.getLocateCallsUsed() + 1);
-        if (found == null) {
+
+        List<Integer> searchYs = context.getEffectiveSampleBlockYs();
+        Pair<BlockPos, Holder<Biome>> bestFound = null;
+        int foundY = 64;
+
+        for (int searchY : searchYs) {
+            Pair<BlockPos, Holder<Biome>> found = context.biomeSource().findBiomeHorizontal(
+                centerX,
+                searchY,
+                centerZ,
+                searchRadius,
+                interval,
+                predicate,
+                random,
+                true,
+                sampler
+            );
+            if (found != null) {
+                bestFound = found;
+                foundY = searchY;
+                break;
+            }
+        }
+
+        if (bestFound == null) {
             return new BiomeAnchorSearchStepResult.Continue(cursor, new AnchorSearchProgress(0, 1, "anchor_not_found"));
         }
 
-        BlockPos pos = found.getFirst();
-        String biomeId = found.getSecond().unwrapKey()
+        BlockPos pos = bestFound.getFirst();
+        String biomeId = bestFound.getSecond().unwrapKey()
             .map(ResourceKey::location)
             .map(ResourceLocation::toString)
             .orElse("unknown");
         cursor.setCurrentAnchorX(pos.getX());
+        cursor.setCurrentAnchorY(foundY);
         cursor.setCurrentAnchorZ(pos.getZ());
         cursor.setCurrentAnchorBiomeId(biomeId);
-        return new BiomeAnchorSearchStepResult.Found(new BiomeAnchor(pos.getX(), pos.getZ(), biomeId), cursor);
+        return new BiomeAnchorSearchStepResult.Found(new BiomeAnchor(pos.getX(), foundY, pos.getZ(), biomeId), cursor);
     }
 
     private static long deterministicSeed(WorldgenSearchContext context, BiomeOption biomeOption, AllocationSearchCursor cursor) {

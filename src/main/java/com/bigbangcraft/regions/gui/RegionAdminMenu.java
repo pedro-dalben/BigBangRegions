@@ -68,6 +68,7 @@ public class RegionAdminMenu extends ChestMenu {
             serverPlayer.closeContainer();
             serverPlayer.sendSystemMessage(Component.literal("§eRegiao: " + region));
         } else if (slotId == 11) {
+            serverPlayer.closeContainer();
             try {
                 BigBangRegions.getAllocationCoordinator().teleportToHome(serverPlayer);
             } catch (Exception e) {
@@ -85,7 +86,6 @@ public class RegionAdminMenu extends ChestMenu {
             serverPlayer.sendSystemMessage(Component.literal("§cUse o comando ou a acao confirmada de exclusao."));
         } else if (slotId == 20) {
             serverPlayer.sendSystemMessage(Component.literal("§aSincronizando mapa..."));
-            BigBangRegions.getAllocationCoordinator(); // just to verify loaded
             serverPlayer.sendSystemMessage(Component.literal("§7Reabra o JourneyMap para ver as alterações."));
         } else if (slotId == 22) {
             serverPlayer.sendSystemMessage(Component.literal("§7Auditoria ainda depende do painel de logs."));

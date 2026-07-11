@@ -88,7 +88,7 @@ public class Config {
         ));
         biomeOptions.put("cerejeira", new BiomeOptionConfig("Cerejeira",
             Arrays.asList("cherry", "cerejeira", "cereja", "cherry_grove"),
-            Arrays.asList("minecraft:cherry_grove", "minecraft:meadow"),
+            Arrays.asList("minecraft:cherry_grove"),
             "minecraft:cherry_sapling"
         ));
         biomeOptions.put("cogumelo", new BiomeOptionConfig("Cogumelo",
@@ -136,13 +136,7 @@ public class Config {
         public Defaults() {
             // Global default policies
             global.put("visitor-build", "ALLOW");
-            global.put("visitor-interact", "ALLOW");
-            global.put("visitor-containers", "ALLOW");
-            global.put("visitor-pcs", "ALLOW");
-            global.put("visitor-doors", "ALLOW");
-            global.put("visitor-buttons", "ALLOW");
-            global.put("visitor-levers", "ALLOW");
-            global.put("visitor-redstone", "ALLOW");
+            global.put("visitor-usage", "ALLOW");
             global.put("visitor-item-frames", "ALLOW");
             global.put("visitor-armor-stands", "ALLOW");
             global.put("pvp", "ALLOW");
@@ -153,18 +147,13 @@ public class Config {
             global.put("explosion-block-damage", "ALLOW");
             global.put("piston-move", "ALLOW");
             global.put("mob-griefing", "ALLOW");
+            global.put("fall-damage", "ALLOW");
             global.put("visitor-pickup-items", "ALLOW");
             global.put("visitor-drop-items", "ALLOW");
 
             // Admin Region default policies
             adminRegion.put("visitor-build", "DENY");
-            adminRegion.put("visitor-interact", "DENY");
-            adminRegion.put("visitor-containers", "DENY");
-            adminRegion.put("visitor-pcs", "DENY");
-            adminRegion.put("visitor-doors", "DENY");
-            adminRegion.put("visitor-buttons", "DENY");
-            adminRegion.put("visitor-levers", "DENY");
-            adminRegion.put("visitor-redstone", "DENY");
+            adminRegion.put("visitor-usage", "DENY");
             adminRegion.put("visitor-item-frames", "DENY");
             adminRegion.put("visitor-armor-stands", "DENY");
             adminRegion.put("pvp", "DENY");
@@ -175,18 +164,13 @@ public class Config {
             adminRegion.put("explosion-block-damage", "DENY");
             adminRegion.put("piston-move", "DENY");
             adminRegion.put("mob-griefing", "DENY");
+            adminRegion.put("fall-damage", "DENY");
             adminRegion.put("visitor-pickup-items", "ALLOW");
             adminRegion.put("visitor-drop-items", "ALLOW");
 
             // Player Region default policies
             playerRegion.put("visitor-build", "ALLOW");
-            playerRegion.put("visitor-interact", "ALLOW");
-            playerRegion.put("visitor-containers", "ALLOW");
-            playerRegion.put("visitor-pcs", "ALLOW");
-            playerRegion.put("visitor-doors", "ALLOW");
-            playerRegion.put("visitor-buttons", "ALLOW");
-            playerRegion.put("visitor-levers", "ALLOW");
-            playerRegion.put("visitor-redstone", "ALLOW");
+            playerRegion.put("visitor-usage", "ALLOW");
             playerRegion.put("visitor-item-frames", "ALLOW");
             playerRegion.put("visitor-armor-stands", "ALLOW");
             playerRegion.put("pvp", "DENY");
@@ -197,6 +181,7 @@ public class Config {
             playerRegion.put("explosion-block-damage", "DENY");
             playerRegion.put("piston-move", "DENY");
             playerRegion.put("mob-griefing", "DENY");
+            playerRegion.put("fall-damage", "DENY");
             playerRegion.put("visitor-pickup-items", "ALLOW");
             playerRegion.put("visitor-drop-items", "ALLOW");
         }
@@ -392,20 +377,30 @@ public class Config {
         private int sampleGridSize = 5;
         private int maximumCandidateSlots = 100;
         private int maximumSearchRadiusBlocks = 120000;
+        private boolean requireFullBorderMatch = false;
+        private int minimumBorderMatchPercentage = 60;
 
         public int getMinimumMatchPercentage() { return minimumMatchPercentage; }
         public int getSampleGridSize() { return sampleGridSize; }
         public int getMaximumCandidateSlots() { return maximumCandidateSlots; }
         public int getMaximumSearchRadiusBlocks() { return maximumSearchRadiusBlocks; }
+        public boolean isRequireFullBorderMatch() { return requireFullBorderMatch; }
+        public int getMinimumBorderMatchPercentage() { return minimumBorderMatchPercentage; }
 
         public void setMinimumMatchPercentage(int minimumMatchPercentage) { this.minimumMatchPercentage = minimumMatchPercentage; }
         public void setSampleGridSize(int sampleGridSize) { this.sampleGridSize = sampleGridSize; }
         public void setMaximumCandidateSlots(int maximumCandidateSlots) { this.maximumCandidateSlots = maximumCandidateSlots; }
         public void setMaximumSearchRadiusBlocks(int maximumSearchRadiusBlocks) { this.maximumSearchRadiusBlocks = maximumSearchRadiusBlocks; }
+        public void setRequireFullBorderMatch(boolean requireFullBorderMatch) { this.requireFullBorderMatch = requireFullBorderMatch; }
+        public void setMinimumBorderMatchPercentage(int minimumBorderMatchPercentage) { this.minimumBorderMatchPercentage = minimumBorderMatchPercentage; }
     }
 
     public static class WorldgenSearchConfig {
         private int sampleBlockY = 64;
+        private List<Integer> sampleBlockYs = List.of();
+        private Integer minSampleY;
+        private Integer maxSampleY;
+        private int verticalCheckInterval = 0;
         private int virtualBiomeCacheMaxEntries = 50000;
         private int virtualBiomeCacheTtlSeconds = 300;
         private int sectorSizeBlocks = 2048;
@@ -424,6 +419,26 @@ public class Config {
         );
 
         public int getSampleBlockY() { return sampleBlockY == 0 ? 64 : sampleBlockY; }
+        public List<Integer> getSampleBlockYs() {
+            if (sampleBlockYs != null && !sampleBlockYs.isEmpty()) {
+                return sampleBlockYs;
+            }
+            if (minSampleY != null && maxSampleY != null && minSampleY <= maxSampleY) {
+                int interval = verticalCheckInterval > 0 ? verticalCheckInterval : Math.max(1, (maxSampleY - minSampleY) / 4);
+                List<Integer> ys = new java.util.ArrayList<>();
+                for (int y = minSampleY; y <= maxSampleY; y += interval) {
+                    ys.add(y);
+                }
+                if (ys.isEmpty() || ys.getLast() < maxSampleY) {
+                    ys.add(maxSampleY);
+                }
+                return ys;
+            }
+            return java.util.List.of(getSampleBlockY());
+        }
+        public Integer getMinSampleY() { return minSampleY; }
+        public Integer getMaxSampleY() { return maxSampleY; }
+        public int getVerticalCheckInterval() { return verticalCheckInterval; }
         public int getVirtualBiomeCacheMaxEntries() { return virtualBiomeCacheMaxEntries <= 0 ? 50000 : virtualBiomeCacheMaxEntries; }
         public int getVirtualBiomeCacheTtlSeconds() { return virtualBiomeCacheTtlSeconds <= 0 ? 300 : virtualBiomeCacheTtlSeconds; }
         public int getSectorSizeBlocks() { return sectorSizeBlocks <= 0 ? 2048 : sectorSizeBlocks; }
@@ -445,6 +460,10 @@ public class Config {
         }
 
         public void setSampleBlockY(int sampleBlockY) { this.sampleBlockY = sampleBlockY; }
+        public void setSampleBlockYs(List<Integer> sampleBlockYs) { this.sampleBlockYs = sampleBlockYs; }
+        public void setMinSampleY(Integer minSampleY) { this.minSampleY = minSampleY; }
+        public void setMaxSampleY(Integer maxSampleY) { this.maxSampleY = maxSampleY; }
+        public void setVerticalCheckInterval(int verticalCheckInterval) { this.verticalCheckInterval = verticalCheckInterval; }
         public void setVirtualBiomeCacheMaxEntries(int virtualBiomeCacheMaxEntries) { this.virtualBiomeCacheMaxEntries = virtualBiomeCacheMaxEntries; }
         public void setVirtualBiomeCacheTtlSeconds(int virtualBiomeCacheTtlSeconds) { this.virtualBiomeCacheTtlSeconds = virtualBiomeCacheTtlSeconds; }
         public void setSectorSizeBlocks(int sectorSizeBlocks) { this.sectorSizeBlocks = sectorSizeBlocks; }

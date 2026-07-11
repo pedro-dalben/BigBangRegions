@@ -163,7 +163,7 @@ public class BiomeSearchServiceTest {
             "biomeReplacer",
             Config.BIOME_SEARCH_VALIDATION_SCHEMA_VERSION
         );
-        return new WorldgenSearchContext(dimensionKey, 1234L, chunkGenerator, biomeSource, Climate.empty(), fingerprint, 64);
+        return new WorldgenSearchContext(dimensionKey, 1234L, chunkGenerator, biomeSource, Climate.empty(), fingerprint, 64, java.util.List.of(64));
     }
 
     private static BiomeOption biomeOption(String key, List<String> acceptedBiomeIds) {

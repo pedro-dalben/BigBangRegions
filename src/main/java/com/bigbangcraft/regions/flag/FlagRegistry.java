@@ -4,20 +4,19 @@ import java.util.*;
 
 public class FlagRegistry {
     private static final Map<String, RegionFlag> flags = new LinkedHashMap<>();
-    private static final Map<String, String> FLAG_ALIASES = Map.of(
-            "piston-movement", "piston-move"
+    private static final Map<String, String> FLAG_ALIASES = Map.ofEntries(
+            java.util.Map.entry("piston-movement", "piston-move"),
+            java.util.Map.entry("visitor-pcs", "visitor-usage"),
+            java.util.Map.entry("visitor-containers", "visitor-usage"),
+            java.util.Map.entry("visitor-buttons", "visitor-usage"),
+            java.util.Map.entry("visitor-levers", "visitor-usage"),
+            java.util.Map.entry("visitor-redstone", "visitor-usage")
     );
 
     static {
         // Supported flags (new visitor-* flags from RegionFlagRegistry)
         register(new RegionFlag("visitor-build", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to build (break/place blocks).", "protection", true));
-        register(new RegionFlag("visitor-interact", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows basic interaction by visitors.", "protection", true));
-        register(new RegionFlag("visitor-containers", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to access containers and machines.", "protection", true));
-        register(new RegionFlag("visitor-pcs", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use Cobblemon PCs.", "protection", true));
-        register(new RegionFlag("visitor-doors", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use doors, trapdoors, gates.", "protection", true));
-        register(new RegionFlag("visitor-buttons", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use buttons.", "protection", true));
-        register(new RegionFlag("visitor-levers", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use levers.", "protection", true));
-        register(new RegionFlag("visitor-redstone", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to use redstone components.", "protection", true));
+        register(new RegionFlag("visitor-usage", "BOOLEAN", FlagPolicy.DENY, true, true, "Unified flag: containers, doors, redstone, interact.", "protection", true));
         register(new RegionFlag("visitor-item-frames", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to interact with item frames.", "protection", true));
         register(new RegionFlag("visitor-armor-stands", "BOOLEAN", FlagPolicy.DENY, true, true, "Allows visitors to interact with armor stands.", "protection", true));
         register(new RegionFlag("visitor-pickup-items", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows visitors to pick up items.", "utility", true));
@@ -35,7 +34,9 @@ public class FlagRegistry {
         register(new RegionFlag("piston-move", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows pistons to push/pull blocks.", "environment", true));
         register(new RegionFlag("projectile-use", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows launching projectiles. (Planned)", "combat", false));
         register(new RegionFlag("mob-griefing", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows mobs to grief blocks (e.g. Endermen).", "environment", true));
+        register(new RegionFlag("fall-damage", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows fall damage to players.", "combat", true));
         register(new RegionFlag("crop-trample", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows players/entities to trample crops. (Planned)", "environment", false));
+        register(new RegionFlag("enter", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows visitors to enter and stay in the region.", "access", true));
         register(new RegionFlag("teleport-in", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows teleporting into the region. (Planned)", "movement", false));
         register(new RegionFlag("teleport-out", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows teleporting out of the region. (Planned)", "movement", false));
     }

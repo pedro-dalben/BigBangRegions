@@ -49,6 +49,11 @@ public record WorldgenFingerprint(
         String datapackFingerprint = digest(joinSelectedPackIds(level));
         String biomeReplacerFingerprint = digest(canonicalBiomeOptions(config));
 
+        Config.WorldgenSearchConfig wg = config.getPlayerLandAllocation().getWorldgenSearch();
+        Config.BiomeSearchConfig bs = config.getPlayerLandAllocation().getBiomeSearch();
+        String sampleBlockYsStr = wg.getSampleBlockYs().stream()
+            .map(String::valueOf)
+            .collect(java.util.stream.Collectors.joining(","));
         String stablePayload = new StringJoiner("\n")
             .add("dimension=" + dimensionId)
             .add("seed=" + worldSeed)
@@ -57,21 +62,27 @@ public record WorldgenFingerprint(
             .add("datapacks=" + datapackFingerprint)
             .add("biomeReplacer=" + biomeReplacerFingerprint)
             .add("sampleBlockY=" + sampleBlockY)
+            .add("sampleBlockYs=" + sampleBlockYsStr)
+            .add("minSampleY=" + (wg.getMinSampleY() == null ? "" : wg.getMinSampleY()))
+            .add("maxSampleY=" + (wg.getMaxSampleY() == null ? "" : wg.getMaxSampleY()))
+            .add("verticalCheckInterval=" + wg.getVerticalCheckInterval())
             .add("initialClaimSize=" + config.getPlayerLandAllocation().getInitialClaimSize())
             .add("slotSize=" + config.getPlayerLandAllocation().getSlotSize())
             .add("futureMaximumClaimSize=" + config.getPlayerLandAllocation().getFutureMaximumClaimSize())
             .add("slotInternalMargin=" + config.getPlayerLandAllocation().getSlotInternalMargin())
-            .add("minimumMatchPercentage=" + config.getPlayerLandAllocation().getBiomeSearch().getMinimumMatchPercentage())
-            .add("sampleGridSize=" + config.getPlayerLandAllocation().getBiomeSearch().getSampleGridSize())
-            .add("maximumCandidateSlots=" + config.getPlayerLandAllocation().getBiomeSearch().getMaximumCandidateSlots())
-            .add("maximumSearchRadiusBlocks=" + config.getPlayerLandAllocation().getBiomeSearch().getMaximumSearchRadiusBlocks())
-            .add("worldgenSampleBlockY=" + config.getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY())
-            .add("virtualBiomeCacheMaxEntries=" + config.getPlayerLandAllocation().getWorldgenSearch().getVirtualBiomeCacheMaxEntries())
-            .add("virtualBiomeCacheTtlSeconds=" + config.getPlayerLandAllocation().getWorldgenSearch().getVirtualBiomeCacheTtlSeconds())
-            .add("locateRadiusBlocks=" + config.getPlayerLandAllocation().getWorldgenSearch().getLocateRadiusBlocks())
-            .add("blockCheckInterval=" + config.getPlayerLandAllocation().getWorldgenSearch().getBlockCheckInterval())
-            .add("maxLocateCallsPerSearchStep=" + config.getPlayerLandAllocation().getWorldgenSearch().getMaxLocateCallsPerSearchStep())
-            .add("maxLocateCallsPerTick=" + config.getPlayerLandAllocation().getWorldgenSearch().getMaxLocateCallsPerTick())
+            .add("minimumMatchPercentage=" + bs.getMinimumMatchPercentage())
+            .add("sampleGridSize=" + bs.getSampleGridSize())
+            .add("maximumCandidateSlots=" + bs.getMaximumCandidateSlots())
+            .add("maximumSearchRadiusBlocks=" + bs.getMaximumSearchRadiusBlocks())
+            .add("requireFullBorderMatch=" + bs.isRequireFullBorderMatch())
+            .add("minimumBorderMatchPercentage=" + bs.getMinimumBorderMatchPercentage())
+            .add("worldgenSampleBlockY=" + wg.getSampleBlockY())
+            .add("virtualBiomeCacheMaxEntries=" + wg.getVirtualBiomeCacheMaxEntries())
+            .add("virtualBiomeCacheTtlSeconds=" + wg.getVirtualBiomeCacheTtlSeconds())
+            .add("locateRadiusBlocks=" + wg.getLocateRadiusBlocks())
+            .add("blockCheckInterval=" + wg.getBlockCheckInterval())
+            .add("maxLocateCallsPerSearchStep=" + wg.getMaxLocateCallsPerSearchStep())
+            .add("maxLocateCallsPerTick=" + wg.getMaxLocateCallsPerTick())
             .add("validationSchemaVersion=" + Config.BIOME_SEARCH_VALIDATION_SCHEMA_VERSION)
             .toString();
 

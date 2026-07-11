@@ -32,9 +32,9 @@ public class AllocationSearchCursorRepository {
         String sql = "INSERT OR REPLACE INTO allocation_search_cursor (" +
             "request_id, current_band_id, current_sector_index, sector_x, sector_z, anchor_attempt, " +
             "local_candidate_index, total_sectors_checked, total_virtual_candidates_checked, total_biome_samples, " +
-            "sectors_discarded, anchors_found, locate_calls_used, current_anchor_x, current_anchor_z, " +
+            "sectors_discarded, anchors_found, locate_calls_used, current_anchor_x, current_anchor_y, current_anchor_z, " +
             "current_anchor_biome_id, last_progress_at, last_rejection_reason, fallback_mode" +
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, cursor.getRequestId());
             pstmt.setString(2, cursor.getCurrentBandId());
@@ -50,11 +50,12 @@ public class AllocationSearchCursorRepository {
             pstmt.setInt(12, cursor.getAnchorsFound());
             pstmt.setInt(13, cursor.getLocateCallsUsed());
             pstmt.setObject(14, cursor.getCurrentAnchorX());
-            pstmt.setObject(15, cursor.getCurrentAnchorZ());
-            pstmt.setString(16, cursor.getCurrentAnchorBiomeId());
-            pstmt.setLong(17, cursor.getLastProgressAt());
-            pstmt.setString(18, cursor.getLastRejectionReason());
-            pstmt.setString(19, cursor.getFallbackMode());
+            pstmt.setObject(15, cursor.getCurrentAnchorY());
+            pstmt.setObject(16, cursor.getCurrentAnchorZ());
+            pstmt.setString(17, cursor.getCurrentAnchorBiomeId());
+            pstmt.setLong(18, cursor.getLastProgressAt());
+            pstmt.setString(19, cursor.getLastRejectionReason());
+            pstmt.setString(20, cursor.getFallbackMode());
             pstmt.executeUpdate();
         }
     }
@@ -81,6 +82,7 @@ public class AllocationSearchCursorRepository {
                         cursor.setAnchorsFound(rs.getInt("anchors_found"));
                         cursor.setLocateCallsUsed(rs.getInt("locate_calls_used"));
                         cursor.setCurrentAnchorX(rs.getObject("current_anchor_x") != null ? rs.getInt("current_anchor_x") : null);
+                        cursor.setCurrentAnchorY(rs.getObject("current_anchor_y") != null ? rs.getInt("current_anchor_y") : null);
                         cursor.setCurrentAnchorZ(rs.getObject("current_anchor_z") != null ? rs.getInt("current_anchor_z") : null);
                         cursor.setCurrentAnchorBiomeId(rs.getString("current_anchor_biome_id"));
                         cursor.setLastProgressAt(rs.getLong("last_progress_at"));

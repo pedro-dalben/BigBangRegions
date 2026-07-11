@@ -159,10 +159,10 @@ public class PlayerRegionMigrationTest {
         try (Connection conn = dbManager.getConnection();
              Statement stmt = conn.createStatement()) {
 
-            // Check schema version is 9 (V1+...+V9)
+            // Check schema version is 11 (V1+...+V11)
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(9, rs.getInt(1));
+                assertEquals(11, rs.getInt(1));
             }
 
             // Verify V3 tables exist
@@ -205,6 +205,8 @@ public class PlayerRegionMigrationTest {
             }
             assertTrue(cursorColumns.contains("current_band_id"));
             assertTrue(cursorColumns.contains("current_sector_index"));
+            assertTrue(cursorColumns.contains("last_rejection_reason"));
+            assertTrue(cursorColumns.contains("current_anchor_y"));
 
             // Verify dummy V1 data is preserved and new fields have default values / are readable
             try (ResultSet rs = stmt.executeQuery("SELECT regionId, uuid, role, addedByUuid, createdAt, updatedAt FROM region_members WHERE regionId = 'r1';")) {

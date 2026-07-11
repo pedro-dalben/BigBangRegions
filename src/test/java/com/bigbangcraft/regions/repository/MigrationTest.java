@@ -46,10 +46,10 @@ public class MigrationTest {
             assertTrue(tables.contains("allocation_request_preparation"));
             assertTrue(tables.contains("allocation_search_cursor"));
 
-            // 2. Verify schema version is marked as 9
+            // 2. Verify schema version is marked as 11
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(9, rs.getInt(1));
+                assertEquals(11, rs.getInt(1));
             }
 
             // Verify columns added in V2
@@ -95,6 +95,7 @@ public class MigrationTest {
             assertTrue(cursorColumns.contains("current_band_id"));
             assertTrue(cursorColumns.contains("current_sector_index"));
             assertTrue(cursorColumns.contains("last_rejection_reason"));
+            assertTrue(cursorColumns.contains("current_anchor_y"));
         } finally {
             dbManager.close();
         }

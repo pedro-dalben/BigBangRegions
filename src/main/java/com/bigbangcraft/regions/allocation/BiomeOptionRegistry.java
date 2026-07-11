@@ -2,6 +2,8 @@ package com.bigbangcraft.regions.allocation;
 
 import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.config.ConfigManager;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,11 +45,33 @@ public class BiomeOptionRegistry {
                 continue;
             }
 
+            List<String> validIds = new ArrayList<>();
+            List<String> invalidIds = new ArrayList<>();
+            for (String biomeId : optionConfig.getAcceptedBiomeIds()) {
+                try {
+                    ResourceLocation.parse(biomeId);
+                    validIds.add(biomeId);
+                } catch (Exception e) {
+                    invalidIds.add(biomeId);
+                    LOGGER.warn("Biome option '{}': invalid biome ID '{}' discarded: {}", key, biomeId, e.getMessage());
+                }
+            }
+            if (validIds.isEmpty()) {
+                LOGGER.error("Biome option '{}' disabled: no valid biome IDs. configured={} resolved=[] invalid={}",
+                    key, optionConfig.getAcceptedBiomeIds(), invalidIds);
+                continue;
+            }
+            if (!invalidIds.isEmpty()) {
+                LOGGER.info("Biome option '{}': resolved={} invalid={}", key, validIds, invalidIds);
+            } else {
+                LOGGER.info("Biome option '{}': resolved={}", key, validIds);
+            }
+
             BiomeOption option = new BiomeOption(
                     key,
                     optionConfig.getDisplayName(),
                     optionConfig.getAliases() != null ? optionConfig.getAliases() : Collections.emptyList(),
-                    optionConfig.getAcceptedBiomeIds(),
+                    validIds,
                     optionConfig.getIcon()
             );
             options.put(key, option);

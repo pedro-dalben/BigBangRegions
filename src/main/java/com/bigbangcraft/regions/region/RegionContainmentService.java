@@ -7,7 +7,6 @@ import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.domain.RegionType;
 import com.bigbangcraft.regions.allocation.PlayerRegionHome;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
@@ -40,17 +39,10 @@ public class RegionContainmentService {
                 hasBypass = me.lucko.fabric.api.permissions.v0.Permissions.check(player, "bigbangregions.bypass", false);
             }
         } catch (Throwable t) {
-            // fallback to OP
             hasBypass = player.hasPermissions(2);
         }
 
         if (hasBypass) {
-            return;
-        }
-
-        // Find associated region
-        Region playerRegion = resolvePlayerRegion(uuid);
-        if (playerRegion == null) {
             return;
         }
 
@@ -62,15 +54,49 @@ public class RegionContainmentService {
         }
 
         Vec3 pos = player.position();
-        RegionBounds bounds = playerRegion.getBounds();
+        int bx = (int) pos.x;
+        int by = (int) pos.y;
+        int bz = (int) pos.z;
 
-        boolean inRegion = bounds.contains(currentDim, (int) pos.x, (int) pos.y, (int) pos.z);
-        boolean inExploration = false;
-        if (BigBangRegions.getExplorationZoneService() != null) {
-            inExploration = BigBangRegions.getExplorationZoneService().isInsideExplorationZone(currentDim, (int) pos.x, (int) pos.z);
+        // Check if player is inside any region they belong to (own region, member of another's, admin region)
+        var cache = BigBangRegions.getRegionCache();
+        if (cache != null) {
+            var regionsAt = cache.getRegionsAt(currentDim, bx, by, bz);
+            for (Region r : regionsAt) {
+                if (r.getType() == RegionType.ADMIN_REGION || r.getType() == RegionType.SYSTEM_REGION) {
+                    return; // public area, no containment
+                }
+                if (r.getType() == RegionType.PLAYER_REGION) {
+                    var role = BigBangRegions.getRoleResolver().resolveRole(r, uuid);
+                    if (role != RegionRole.VISITOR) {
+                        return; // inside own region or region where they're a member
+                    }
+                    // Allow visitor stay if region has enter=ALLOW
+                    if (BigBangRegions.isRegionFlagAllowed(r, "enter")) {
+                        return;
+                    }
+                }
+            }
         }
 
-        if (inRegion || inExploration) {
+        // Check if inside exploration zone
+        if (BigBangRegions.getExplorationZoneService() != null) {
+            if (BigBangRegions.getExplorationZoneService().isInsideExplorationZone(currentDim, bx, bz)) {
+                lastSafePositions.put(uuid, pos);
+                return;
+            }
+        }
+
+        // Find player's own region for containment
+        Region playerRegion = resolvePlayerRegion(uuid);
+        if (playerRegion == null) {
+            return;
+        }
+
+        RegionBounds bounds = playerRegion.getBounds();
+        boolean inRegion = bounds.contains(currentDim, bx, by, bz);
+
+        if (inRegion) {
             lastSafePositions.put(uuid, pos);
         } else {
             Vec3 safePos = lastSafePositions.get(uuid);
@@ -78,7 +104,6 @@ public class RegionContainmentService {
                 safePos = getRegionHomePosition(playerRegion.getId(), player);
             }
 
-            // Correct position, reset velocity, and stop momentum
             player.teleportTo(player.serverLevel(), safePos.x, safePos.y, safePos.z, player.getYRot(), player.getXRot());
             player.setDeltaMovement(Vec3.ZERO);
 
@@ -93,27 +118,50 @@ public class RegionContainmentService {
 
     public void onPlayerJoin(ServerPlayer player) {
         UUID uuid = player.getUUID();
+        String targetDim = configManager.getConfig().getPlayerLandAllocation().getTargetDimension();
+        String currentDim = player.level().dimension().location().toString();
+        if (!currentDim.equals(targetDim)) return;
+
+        Vec3 pos = player.position();
+        int bx = (int) pos.x;
+        int by = (int) pos.y;
+        int bz = (int) pos.z;
+
+        // Allow if inside any admin/system region or another player's region
+        var cache = BigBangRegions.getRegionCache();
+        if (cache != null) {
+            var regionsAt = cache.getRegionsAt(currentDim, bx, by, bz);
+            for (Region r : regionsAt) {
+                if (r.getType() == RegionType.ADMIN_REGION || r.getType() == RegionType.SYSTEM_REGION) {
+                    return;
+                }
+                if (r.getType() == RegionType.PLAYER_REGION) {
+                    var role = BigBangRegions.getRoleResolver().resolveRole(r, uuid);
+                    if (role != RegionRole.VISITOR) {
+                        return;
+                    }
+                    if (BigBangRegions.isRegionFlagAllowed(r, "enter")) {
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (BigBangRegions.getExplorationZoneService() != null) {
+            if (BigBangRegions.getExplorationZoneService().isInsideExplorationZone(currentDim, bx, bz)) {
+                return;
+            }
+        }
+
         Region playerRegion = resolvePlayerRegion(uuid);
         if (playerRegion == null) return;
 
-        String targetDim = configManager.getConfig().getPlayerLandAllocation().getTargetDimension();
-        String currentDim = player.level().dimension().location().toString();
-
-        if (currentDim.equals(targetDim)) {
-            Vec3 pos = player.position();
-            RegionBounds bounds = playerRegion.getBounds();
-            boolean inRegion = bounds.contains(currentDim, (int) pos.x, (int) pos.y, (int) pos.z);
-            boolean inExploration = false;
-            if (BigBangRegions.getExplorationZoneService() != null) {
-                inExploration = BigBangRegions.getExplorationZoneService().isInsideExplorationZone(currentDim, (int) pos.x, (int) pos.z);
-            }
-
-            if (!inRegion && !inExploration) {
-                Vec3 safePos = getRegionHomePosition(playerRegion.getId(), player);
-                player.teleportTo(player.serverLevel(), safePos.x, safePos.y, safePos.z, player.getYRot(), player.getXRot());
-                player.setDeltaMovement(Vec3.ZERO);
-                player.sendSystemMessage(Component.literal("§aVocê foi reposicionado para o spawn do seu terreno."));
-            }
+        RegionBounds bounds = playerRegion.getBounds();
+        if (!bounds.contains(currentDim, bx, by, bz)) {
+            Vec3 safePos = getRegionHomePosition(playerRegion.getId(), player);
+            player.teleportTo(player.serverLevel(), safePos.x, safePos.y, safePos.z, player.getYRot(), player.getXRot());
+            player.setDeltaMovement(Vec3.ZERO);
+            player.sendSystemMessage(Component.literal("§aVocê foi reposicionado para o spawn do seu terreno."));
         }
     }
 

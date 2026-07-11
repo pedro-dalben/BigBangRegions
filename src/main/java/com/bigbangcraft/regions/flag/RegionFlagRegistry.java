@@ -16,8 +16,7 @@ public final class RegionFlagRegistry {
 
     static {
         register("enter", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "ALLOW", "Permite entrar na regiao", "OWNER,LEADER,MANAGER");
-        register("visitor-interact", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem interagir", "OWNER,LEADER,MANAGER");
-        register("visitor-doors", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem usar portas", "OWNER,LEADER,MANAGER");
+        register("visitor-usage", CATEGORY_ACCESS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem usar portas, containers, redstone e interagir", "OWNER,LEADER,MANAGER");
         register("visitor-build", CATEGORY_BUILD, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem construir", "OWNER,LEADER");
         register("visitor-containers", CATEGORY_CONTAINERS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem acessar containers e maquinas", "OWNER,LEADER,MANAGER");
         register("visitor-pcs", CATEGORY_CONTAINERS, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem usar PCs (Cobblemon)", "OWNER,LEADER,MANAGER");
@@ -35,6 +34,7 @@ public final class RegionFlagRegistry {
         register("visitor-damage-hostiles", CATEGORY_COMBAT, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem ferir hostis", "OWNER,LEADER");
         register("visitor-projectiles", CATEGORY_COMBAT, RegionFlagValueType.BOOLEAN, "DENY", "Visitantes podem usar projeteis", "OWNER,LEADER");
         register("mob-griefing", CATEGORY_COMBAT, RegionFlagValueType.BOOLEAN, "DENY", "Mobs podem alterar blocos", "OWNER,LEADER");
+        register("fall-damage", CATEGORY_COMBAT, RegionFlagValueType.BOOLEAN, "ALLOW", "Dano de queda", "OWNER,LEADER,MANAGER");
         register("spawn-monsters", CATEGORY_COMBAT, RegionFlagValueType.BOOLEAN, "ALLOW", "Monstros podem spawnar", "OWNER,LEADER");
         register("spawn-animals", CATEGORY_COMBAT, RegionFlagValueType.BOOLEAN, "ALLOW", "Animais podem spawnar", "OWNER,LEADER");
         register("spawn-spawners", CATEGORY_COMBAT, RegionFlagValueType.BOOLEAN, "ALLOW", "Spawners podem spawnar", "OWNER,LEADER");

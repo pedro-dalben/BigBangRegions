@@ -3,8 +3,13 @@ package com.bigbangcraft.regions.domain;
 import java.util.*;
 
 public class Region {
-    private static final Map<String, String> FLAG_ALIASES = Map.of(
-            "piston-movement", "piston-move"
+    private static final Map<String, String> FLAG_ALIASES = Map.ofEntries(
+            Map.entry("piston-movement", "piston-move"),
+            Map.entry("visitor-pcs", "visitor-usage"),
+            Map.entry("visitor-containers", "visitor-usage"),
+            Map.entry("visitor-buttons", "visitor-usage"),
+            Map.entry("visitor-levers", "visitor-usage"),
+            Map.entry("visitor-redstone", "visitor-usage")
     );
 
     private final String id;

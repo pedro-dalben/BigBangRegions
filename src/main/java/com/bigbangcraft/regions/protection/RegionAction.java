@@ -3,10 +3,10 @@ package com.bigbangcraft.regions.protection;
 public enum RegionAction {
     BLOCK_BREAK("visitor-build"),
     BLOCK_PLACE("visitor-build"),
-    INTERACT("visitor-interact"),
-    CONTAINER("visitor-containers"),
-    DOOR("visitor-doors"),
-    REDSTONE("visitor-redstone"),
+    INTERACT("visitor-usage"),
+    CONTAINER("visitor-usage"),
+    DOOR("visitor-usage"),
+    REDSTONE("visitor-usage"),
     ENTITY_INTERACT("visitor-item-frames"),
     PVP("pvp"),
     FIRE_SPREAD("fire-spread"),
@@ -17,7 +17,8 @@ public enum RegionAction {
     PISTON_MOVE("piston-move"),
     MOB_GRIEFING("mob-griefing"),
     ITEM_PICKUP("visitor-pickup-items"),
-    ITEM_DROP("visitor-drop-items");
+    ITEM_DROP("visitor-drop-items"),
+    FALL_DAMAGE("fall-damage");
 
     private final String flagId;
 

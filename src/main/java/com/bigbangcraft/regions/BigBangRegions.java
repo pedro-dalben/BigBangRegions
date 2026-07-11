@@ -97,6 +97,7 @@ public class BigBangRegions implements ModInitializer {
     private static RegionExpansionRecoveryService expansionRecoveryService;
     private static PermissionManager permissionManager;
     private static RegionMapIntegration regionMapIntegration;
+    private static RegionFlagResolver flagResolver;
 
     public static PermissionManager getPermissionManager() {
         return permissionManager;
@@ -206,7 +207,7 @@ public class BigBangRegions implements ModInitializer {
         // 4. Cache and Resolver
         regionCache = new RegionCache();
         RegionResolver regionResolver = new RegionResolver(regionCache);
-        RegionFlagResolver flagResolver = new RegionFlagResolver();
+        flagResolver = new RegionFlagResolver();
         membershipCache = new RegionMembershipCache();
 
         // Load all regions into cache
@@ -403,6 +404,21 @@ public class BigBangRegions implements ModInitializer {
                 .player(player)
                 .build();
         ProtectionResult result = protectionService.check(context);
+
+        if (result.getDecision() == ProtectionDecision.NO_REGION) {
+            if (dimension.equals("minecraft:overworld")) {
+                if (action == RegionAction.BLOCK_PLACE) {
+                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cPara construir digite /region e escolha um terreno"));
+                    return false;
+                }
+                if (action == RegionAction.BLOCK_BREAK) {
+                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cPara minerar digite /minerar"));
+                    return false;
+                }
+            }
+            return true;
+        }
+
         if (!result.isAllowed()) {
             MessageHelper.sendDenial(player, action, result.getRegion());
             return false;
@@ -572,6 +588,11 @@ public class BigBangRegions implements ModInitializer {
                entity instanceof ItemFrame ||
                entity instanceof Boat ||
                entity instanceof AbstractMinecart;
+    }
+
+    public static boolean isRegionFlagAllowed(Region region, String flagId) {
+        if (flagResolver == null || configManager == null) return false;
+        return flagResolver.resolve(region, flagId, configManager.getConfig()).isAllowed();
     }
 
     public static boolean isBoundaryBlock(String dimension, BlockPos pos) {
