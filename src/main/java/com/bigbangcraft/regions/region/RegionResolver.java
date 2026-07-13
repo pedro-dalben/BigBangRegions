@@ -7,6 +7,7 @@ import com.bigbangcraft.regions.domain.RegionBounds;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public class RegionResolver {
     private final RegionCache regionCache;
@@ -49,6 +50,33 @@ public class RegionResolver {
         }
 
         // Return the first element after sorting by priority rules
+        candidates.sort(REGION_PRIORITY_COMPARATOR);
+        return Optional.of(candidates.get(0));
+    }
+
+    /**
+     * Resolves an action for a player. A player's own/member region is the
+     * effective region when stale or accidental admin overlap exists; without
+     * this, the player is incorrectly treated as being in spawn.
+     */
+    public Optional<Region> resolveRegionAtForPlayer(String dimension, int x, int y, int z,
+                                                     UUID playerUuid, RegionRoleResolver roleResolver) {
+        List<Region> candidates = regionCache.getRegionsAt(dimension, x, y, z);
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        if (playerUuid != null && roleResolver != null) {
+            Optional<Region> playerRegion = candidates.stream()
+                .filter(region -> region.getType() == com.bigbangcraft.regions.domain.RegionType.PLAYER_REGION)
+                .filter(region -> roleResolver.resolveRole(region, playerUuid) != com.bigbangcraft.regions.domain.RegionRole.VISITOR)
+                .sorted(REGION_PRIORITY_COMPARATOR)
+                .findFirst();
+            if (playerRegion.isPresent()) {
+                return playerRegion;
+            }
+        }
+
         candidates.sort(REGION_PRIORITY_COMPARATOR);
         return Optional.of(candidates.get(0));
     }

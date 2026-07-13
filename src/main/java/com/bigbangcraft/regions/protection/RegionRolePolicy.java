@@ -36,6 +36,14 @@ public class RegionRolePolicy {
             // Mob griefing is decided by region flags, not by membership role.
             return true;
         }
+        if (action == RegionAction.LEAF_DECAY) {
+            // Leaf decay is decided by region flags, not by membership role.
+            return true;
+        }
+        if (action == RegionAction.ICE_MELT) {
+            // Ice melt is decided by region flags, not by membership role.
+            return true;
+        }
         return role != null && role.isAtLeast(RegionRole.MEMBER);
     }
 }

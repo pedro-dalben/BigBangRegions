@@ -21,8 +21,8 @@ public class RegionGuiHandler {
             // Check if they have an active request in progress
             var request = BigBangRegions.getAllocationCoordinator().getActiveRequest(uuid);
             if (request != null && request.getState().isPreRegionCreation()) {
-                player.sendSystemMessage(Component.literal("§eVocê já possui uma solicitação de terreno em andamento (Status: " + request.getState() + ")."));
-                player.sendSystemMessage(Component.literal("§7Use §f/regions criar status§7 para ver o progresso ou §f/regions criar cancelar§7 para cancelar."));
+                player.sendSystemMessage(Component.literal("§eSolicitação em andamento (Status: " + request.getState() + ")."));
+                player.sendSystemMessage(Component.literal("§7Use §f/region status§7 para ver o progresso ou §f/region cancelar§7 para cancelar."));
                 return;
             }
 

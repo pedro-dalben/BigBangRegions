@@ -19,6 +19,8 @@
 | `/regions player allocate <player> <bioma>` | Aloca terreno para jogador | `bigbangregions.admin.player.allocate` |
 | `/regions player allocation <player>` | Ver status de alocação | `bigbangregions.admin.player.allocation.inspect` |
 | `/regions player allocation <player> cancel` | Cancela alocação | `bigbangregions.admin.player.allocation.cancel` |
+| `/regions admin tp <player>` | Teleporta o administrador para a home da região do jogador | `bigbangregions.admin.player.teleport` |
+| `/regions admin repairhome <player>` | Recria a plataforma e corrige a home da região do jogador | `bigbangregions.admin.player.repairhome` |
 | `/regions player recycle <slotId>` | Recicla slot RETIRED → RELEASED | `bigbangregions.admin.slot.recycle` |
 
 ## Membros (Admin)
@@ -54,6 +56,8 @@ bigbangregions.admin.player.members   - Gerenciar membros (admin)
 bigbangregions.admin.player.allocate  - Alocar para jogador
 bigbangregions.admin.player.allocation.inspect - Ver status alocação
 bigbangregions.admin.player.allocation.cancel  - Cancelar alocação
+bigbangregions.admin.player.teleport - Teleportar para a região de um jogador
+bigbangregions.admin.player.repairhome - Reparar plataforma e home de um jogador
 bigbangregions.admin.slot.recycle     - Reciclar slot
 bigbangregions.inspect                - Inspecionar regiões (/regions info)
 bigbangregions.bypass                 - Bypass geral de proteção

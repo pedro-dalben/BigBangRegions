@@ -18,7 +18,9 @@ public class RegionRolePolicyTest {
                 action == RegionAction.LAVA_FLOW ||
                 action == RegionAction.EXPLOSION_BLOCK_DAMAGE ||
                 action == RegionAction.PISTON_MOVE ||
-                action == RegionAction.MOB_GRIEFING) {
+                action == RegionAction.MOB_GRIEFING ||
+                action == RegionAction.LEAF_DECAY ||
+                action == RegionAction.ICE_MELT) {
                 assertTrue(RegionRolePolicy.isAllowed(RegionRole.VISITOR, action));
                 assertTrue(RegionRolePolicy.isAllowed(RegionRole.MEMBER, action));
                 assertTrue(RegionRolePolicy.isAllowed(RegionRole.LEADER, action));

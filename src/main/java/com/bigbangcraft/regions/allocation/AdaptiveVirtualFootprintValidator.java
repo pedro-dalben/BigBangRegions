@@ -228,14 +228,15 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         boolean centerOnly,
         List<Integer> sampleYs
     ) {
-        int samples = 0;
-        int matches = 0;
-        int mismatches = 0;
+        int columnSamples = 0;
+        int columnMatches = 0;
+        int columnMismatches = 0;
+        int biomeLookups = 0;
 
         List<Point> orderedPoints = orderedPoints(sampleXs, sampleZs, cornersOnly, borderOnly, midpointsOnly, centerOnly);
         for (Point point : orderedPoints) {
             boolean anyYMatch = false;
-            boolean anyNewSample = false;
+            boolean columnChecked = false;
 
             for (int sampleY : sampleYs) {
                 long packedQuart = BiomeCoordinateMath.packQuart(
@@ -246,31 +247,32 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
                 if (!seenQuartPositions.add(packedQuart)) {
                     continue;
                 }
-                anyNewSample = true;
                 if (remainingSamples <= 0L) {
-                    return SampleOutcome.exhausted(seenQuartPositions.size(), matches, mismatches, samples);
+                    return SampleOutcome.exhausted(seenQuartPositions.size(), columnMatches, columnMismatches, columnSamples, biomeLookups);
                 }
 
                 remainingSamples--;
-                samples++;
+                biomeLookups++;
+                columnChecked = true;
                 ResourceKey<Biome> sampled = sampler.sampleAtBlock(context, point.x(), sampleY, point.z());
                 if (sampled != null && acceptedKeys.contains(sampled)) {
                     anyYMatch = true;
                 }
             }
 
-            if (!anyNewSample) {
+            if (!columnChecked) {
                 continue;
             }
 
+            columnSamples++;
             if (anyYMatch) {
-                matches++;
+                columnMatches++;
             } else if (borderOnly || cornersOnly || midpointsOnly || centerOnly) {
-                mismatches++;
+                columnMismatches++;
             }
         }
 
-        return SampleOutcome.success(seenQuartPositions.size(), matches, mismatches, samples, remainingSamples);
+        return SampleOutcome.success(seenQuartPositions.size(), columnMatches, columnMismatches, columnSamples, remainingSamples, biomeLookups);
     }
 
     private static List<Point> orderedPoints(int[] sampleXs, int[] sampleZs, boolean cornersOnly, boolean borderOnly, boolean midpointsOnly, boolean centerOnly) {
@@ -362,18 +364,19 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         int matches,
         int mismatches,
         int samples,
-        long remainingSamples
+        long remainingSamples,
+        int biomeLookups
     ) {
-        private static SampleOutcome success(int uniqueSamples, int matches, int mismatches, int samples, long remainingSamples) {
-            return new SampleOutcome(ValidationFailureReason.NONE, uniqueSamples, matches, mismatches, samples, remainingSamples);
+        private static SampleOutcome success(int uniqueSamples, int matches, int mismatches, int samples, long remainingSamples, int biomeLookups) {
+            return new SampleOutcome(ValidationFailureReason.NONE, uniqueSamples, matches, mismatches, samples, remainingSamples, biomeLookups);
         }
 
         private static SampleOutcome borderMismatch(int uniqueSamples, int matches, int mismatches, int samples, long remainingSamples) {
-            return new SampleOutcome(ValidationFailureReason.BORDER_MISMATCH, uniqueSamples, matches, mismatches, samples, remainingSamples);
+            return new SampleOutcome(ValidationFailureReason.BORDER_MISMATCH, uniqueSamples, matches, mismatches, samples, remainingSamples, 0);
         }
 
-        private static SampleOutcome exhausted(int uniqueSamples, int matches, int mismatches, int samples) {
-            return new SampleOutcome(ValidationFailureReason.BUDGET_EXHAUSTED, uniqueSamples, matches, mismatches, samples, 0L);
+        private static SampleOutcome exhausted(int uniqueSamples, int matches, int mismatches, int samples, int biomeLookups) {
+            return new SampleOutcome(ValidationFailureReason.BUDGET_EXHAUSTED, uniqueSamples, matches, mismatches, samples, 0L, biomeLookups);
         }
 
         private VirtualBiomeValidationResult result(

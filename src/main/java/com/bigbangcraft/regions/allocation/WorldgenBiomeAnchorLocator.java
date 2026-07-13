@@ -37,7 +37,12 @@ public class WorldgenBiomeAnchorLocator implements BiomeAnchorLocator {
 
         int centerX = cursor.getSectorX();
         int centerZ = cursor.getSectorZ();
-        int searchRadius = Math.max(1, cursor.getAnchorAttempt());
+        // BiomeSource converts the block centre to quart coordinates internally,
+        // but its search radius and skip values are already expressed in quart
+        // cells. Passing the configured block radius directly makes the search
+        // four times larger than intended and frequently returns an anchor from
+        // another sector (especially for sparse biomes such as cherry groves).
+        int searchRadius = Math.max(1, BiomeCoordinateMath.blockToQuart(Math.max(4, cursor.getAnchorAttempt())));
         int interval = Math.max(1, BiomeCoordinateMath.blockToQuart(Math.max(4, budget.maxSamples())));
         Climate.Sampler sampler = context.noiseSampler();
         Predicate<Holder<Biome>> predicate = holder -> holder.unwrapKey().map(accepted::contains).orElse(false);
@@ -69,7 +74,7 @@ public class WorldgenBiomeAnchorLocator implements BiomeAnchorLocator {
         }
 
         if (bestFound == null) {
-            return new BiomeAnchorSearchStepResult.Continue(cursor, new AnchorSearchProgress(0, 1, "anchor_not_found"));
+            return new BiomeAnchorSearchStepResult.Exhausted(cursor, new AnchorSearchProgress(0, 1, "anchor_not_found"));
         }
 
         BlockPos pos = bestFound.getFirst();

@@ -152,7 +152,22 @@ public class RegionsCommand {
                 )
             )
             .then(Commands.literal("admin")
-                .requires(source -> checkPermission(source, "bigbangregions.admin.create"))
+                .requires(source -> checkPermission(source, "bigbangregions.admin.create")
+                    || checkPermission(source, "bigbangregions.admin.player.teleport")
+                    || checkPermission(source, "bigbangregions.admin.player.repairhome")
+                    || checkPermission(source, "bigbangregions.admin.expansion"))
+                .then(Commands.literal("tp")
+                    .requires(source -> checkPermission(source, "bigbangregions.admin.player.teleport"))
+                    .then(Commands.argument("player", StringArgumentType.word())
+                        .executes(RegionsCommand::adminTeleportToPlayerRegion)
+                    )
+                )
+                .then(Commands.literal("repairhome")
+                    .requires(source -> checkPermission(source, "bigbangregions.admin.player.repairhome"))
+                    .then(Commands.argument("player", StringArgumentType.word())
+                        .executes(RegionsCommand::adminRepairPlayerRegionHome)
+                    )
+                )
                 .then(Commands.literal("create")
                     .then(Commands.argument("sizeX", IntegerArgumentType.integer(1))
                         .then(Commands.argument("sizeZ", IntegerArgumentType.integer(1))
@@ -370,6 +385,39 @@ public class RegionsCommand {
         dispatcher.register(Commands.literal("regioes").redirect(mainNode));
 
         dispatcher.register(Commands.literal("region")
+            .then(Commands.literal("cancelar")
+                .executes(context -> {
+                    CommandSourceStack source = context.getSource();
+                    ServerPlayer player = source.getPlayer();
+                    if (player == null) {
+                        source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+                        return 0;
+                    }
+                    return cancelAllocation(context);
+                })
+            )
+            .then(Commands.literal("cancel")
+                .executes(context -> {
+                    CommandSourceStack source = context.getSource();
+                    ServerPlayer player = source.getPlayer();
+                    if (player == null) {
+                        source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+                        return 0;
+                    }
+                    return cancelAllocation(context);
+                })
+            )
+            .then(Commands.literal("status")
+                .executes(context -> {
+                    CommandSourceStack source = context.getSource();
+                    ServerPlayer player = source.getPlayer();
+                    if (player == null) {
+                        source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+                        return 0;
+                    }
+                    return allocationStatus(context);
+                })
+            )
             .executes(context -> {
                 CommandSourceStack source = context.getSource();
                 ServerPlayer player = source.getPlayer();
@@ -386,6 +434,9 @@ public class RegionsCommand {
             .requires(source -> checkPermission(source, "bigbangregions.admin.panel"))
             .then(Commands.literal("allocation")
                 .then(Commands.argument("player", StringArgumentType.word())
+                    .then(Commands.literal("cancel")
+                        .executes(RegionsCommand::adminCancelAllocation)
+                    )
                     .executes(RegionsCommand::adminAllocationStatus)
                 )
             )
@@ -1045,6 +1096,66 @@ public class RegionsCommand {
             if (success) {
                 source.sendSuccess(() -> Component.literal("§aTeleportado para sua casa na região!").withStyle(ChatFormatting.GREEN), false);
             }
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int adminTeleportToPlayerRegion(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer admin = source.getPlayer();
+        if (admin == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.admin.player.teleport")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+
+        String targetName = StringArgumentType.getString(context, "player");
+        Optional<GameProfile> profile = lookupProfile(source, targetName);
+        if (profile.isEmpty()) {
+            source.sendFailure(Component.literal("Jogador não encontrado: " + targetName));
+            return 0;
+        }
+
+        try {
+            BigBangRegions.getAllocationCoordinator().teleportToPlayerRegionHome(admin, profile.get().getId());
+            source.sendSuccess(() -> Component.literal("§aTeleportado para a região de " + profile.get().getName() + ".")
+                .withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int adminRepairPlayerRegionHome(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer admin = source.getPlayer();
+        if (admin == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.admin.player.repairhome")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+
+        String targetName = StringArgumentType.getString(context, "player");
+        Optional<GameProfile> profile = lookupProfile(source, targetName);
+        if (profile.isEmpty()) {
+            source.sendFailure(Component.literal("Jogador não encontrado: " + targetName));
+            return 0;
+        }
+
+        try {
+            BigBangRegions.getAllocationCoordinator().repairPlayerRegionHome(admin, profile.get().getId());
+            source.sendSuccess(() -> Component.literal("§aHome da região de " + profile.get().getName() + " reparada com sucesso.")
+                .withStyle(ChatFormatting.GREEN), false);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));

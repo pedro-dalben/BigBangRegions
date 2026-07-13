@@ -35,6 +35,8 @@ public class FlagRegistry {
         register(new RegionFlag("projectile-use", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows launching projectiles. (Planned)", "combat", false));
         register(new RegionFlag("mob-griefing", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows mobs to grief blocks (e.g. Endermen).", "environment", true));
         register(new RegionFlag("fall-damage", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows fall damage to players.", "combat", true));
+        register(new RegionFlag("leaf-decay", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows leaves to decay.", "environment", true));
+        register(new RegionFlag("ice-melt", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows ice to melt.", "environment", true));
         register(new RegionFlag("crop-trample", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows players/entities to trample crops. (Planned)", "environment", false));
         register(new RegionFlag("enter", "BOOLEAN", FlagPolicy.ALLOW, true, true, "Allows visitors to enter and stay in the region.", "access", true));
         register(new RegionFlag("teleport-in", "BOOLEAN", FlagPolicy.ALLOW, false, true, "Allows teleporting into the region. (Planned)", "movement", false));

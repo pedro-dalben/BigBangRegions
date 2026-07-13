@@ -13,7 +13,9 @@
 		"FlowingFluidMixin",
 		"PlayerMixin",
 		"ExplosionMixin",
-		"PistonStructureResolverMixin"
+		"PistonStructureResolverMixin",
+		"LeavesBlockMixin",
+		"IceBlockMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

@@ -148,6 +148,8 @@ public class Config {
             global.put("piston-move", "ALLOW");
             global.put("mob-griefing", "ALLOW");
             global.put("fall-damage", "ALLOW");
+            global.put("leaf-decay", "ALLOW");
+            global.put("ice-melt", "ALLOW");
             global.put("visitor-pickup-items", "ALLOW");
             global.put("visitor-drop-items", "ALLOW");
 
@@ -165,6 +167,8 @@ public class Config {
             adminRegion.put("piston-move", "DENY");
             adminRegion.put("mob-griefing", "DENY");
             adminRegion.put("fall-damage", "DENY");
+            adminRegion.put("leaf-decay", "DENY");
+            adminRegion.put("ice-melt", "DENY");
             adminRegion.put("visitor-pickup-items", "ALLOW");
             adminRegion.put("visitor-drop-items", "ALLOW");
 
@@ -182,6 +186,8 @@ public class Config {
             playerRegion.put("piston-move", "DENY");
             playerRegion.put("mob-griefing", "DENY");
             playerRegion.put("fall-damage", "DENY");
+            playerRegion.put("leaf-decay", "ALLOW");
+            playerRegion.put("ice-melt", "ALLOW");
             playerRegion.put("visitor-pickup-items", "ALLOW");
             playerRegion.put("visitor-drop-items", "ALLOW");
         }

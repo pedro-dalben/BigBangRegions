@@ -57,6 +57,9 @@ public class TerrainAllocationCoordinator {
     private final Map<String, Long> lastProgressNotifications = new ConcurrentHashMap<>();
     private final Map<String, Long> lastProgressLogs = new ConcurrentHashMap<>();
     private final Map<String, List<int[]>> sectorSequenceCache = new ConcurrentHashMap<>();
+    private final Map<String, String> lastProgressSignatures = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastSignatureChangedAt = new ConcurrentHashMap<>();
+    private static final long PROGRESS_STAGNATION_WARN_MS = 5_000L;
 
     private final ConfigManager configManager;
     private final DatabaseManager databaseManager;
@@ -214,8 +217,10 @@ public class TerrainAllocationCoordinator {
         request.forceTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION);
         requestRepository.save(request);
 
+        tryReleaseSlot(request);
         cleanupRequestResources(request, PreparationCancelReason.CANCELLED, false);
-        LOGGER.info("Allocation request cancelled: id={}, owner={}", request.getId(), ownerUuid);
+        creationCooldowns.remove(ownerUuid);
+        LOGGER.info("Allocation request cancelled: id={}, owner={}, state={}", request.getId(), ownerUuid, request.getState());
     }
 
     public int processNextRequest(MinecraftServer server) {
@@ -463,6 +468,7 @@ public class TerrainAllocationCoordinator {
                 anchorCursorForSector(cursor, sector, worldgen),
                 new SearchBudget(worldgen.getBlockCheckInterval(), worldgen.getMaxLocateCallsPerSearchStep())
             );
+
             if (anchorResult instanceof BiomeAnchorSearchStepResult.Found found) {
                 cursor = found.nextCursor();
                 cursor.setAnchorsFound(cursor.getAnchorsFound() + 1);
@@ -479,21 +485,15 @@ public class TerrainAllocationCoordinator {
                 continue;
             }
 
-            if (!probableBiome && anchorResult instanceof BiomeAnchorSearchStepResult.Continue) {
-                if (cursor.getAnchorAttempt() >= worldgen.getLocateRadiusBlocks()) {
-                    cursor.setLastRejectionReason("rejected_no_biome_in_sector");
-                    markSectorRejected(cursor, sector, "rejected_no_biome_in_sector");
-                    progressed = true;
-                    continue;
-                }
-            }
-
-            cursor.setLastRejectionReason(cursor.getLastRejectionReason() == null ? "rejected_anchor_not_found" : cursor.getLastRejectionReason());
-            if (cursor.getAnchorAttempt() >= worldgen.getLocateRadiusBlocks()) {
+            if (anchorResult instanceof BiomeAnchorSearchStepResult.Exhausted exhausted) {
+                cursor = exhausted.nextCursor();
+                cursor.setLastRejectionReason("rejected_anchor_not_found");
                 markSectorRejected(cursor, sector, "rejected_anchor_not_found");
                 progressed = true;
                 continue;
             }
+
+            cursor.setLastRejectionReason(cursor.getLastRejectionReason() == null ? "rejected_anchor_not_found" : cursor.getLastRejectionReason());
             progressed = true;
             break;
         }
@@ -667,7 +667,7 @@ public class TerrainAllocationCoordinator {
 
     private SpawnPlatformResult buildSpawnPlatform(ServerLevel level, BlockPos homePos) {
         try {
-            var cobblestone = net.minecraft.world.level.block.Blocks.COBBLESTONE.defaultBlockState();
+            var stone = net.minecraft.world.level.block.Blocks.STONE.defaultBlockState();
             var air = net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
             var glowstone = net.minecraft.world.level.block.Blocks.GLOWSTONE.defaultBlockState();
 
@@ -675,20 +675,31 @@ public class TerrainAllocationCoordinator {
             int maxX = homePos.getX() + 2;
             int minZ = homePos.getZ() - 2;
             int maxZ = homePos.getZ() + 2;
+            // Use the highest surface in the 5x5 footprint as the platform
+            // floor. Lower columns are filled up to it, so the base cannot
+            // float over a slope or leave the saved home unsupported.
             int yFloor = homePos.getY() - 1;
+            for (int x = minX; x <= maxX; x++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    int surface = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+                    yFloor = Math.max(yFloor, surface - 1);
+                }
+            }
 
             List<String> diagnostics = new ArrayList<>();
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
-                    BlockPos pos = new BlockPos(x, yFloor, z);
-                    level.setBlock(pos, cobblestone, 2);
+                    int surface = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+                    for (int y = surface - 1; y <= yFloor; y++) {
+                        level.setBlock(new BlockPos(x, y, z), stone, 2);
+                    }
                     level.setBlock(new BlockPos(x, yFloor + 1, z), air, 2);
                     level.setBlock(new BlockPos(x, yFloor + 2, z), air, 2);
                 }
             }
 
             level.setBlock(new BlockPos(homePos.getX(), yFloor, homePos.getZ()), glowstone, 2);
-            return SpawnPlatformResult.success(homePos);
+            return SpawnPlatformResult.success(new BlockPos(homePos.getX(), yFloor + 1, homePos.getZ()));
         } catch (Exception e) {
             LOGGER.error("[BigBangRegions] Failed to build spawn platform at {}: {}", homePos, e.getMessage(), e);
             return SpawnPlatformResult.failure(homePos, "Exception: " + e.getMessage());
@@ -884,6 +895,99 @@ public class TerrainAllocationCoordinator {
         return true;
     }
 
+    public boolean teleportToPlayerRegionHome(ServerPlayer admin, UUID ownerUuid) {
+        if (admin == null || ownerUuid == null) {
+            throw new IllegalArgumentException("Jogador ou dono da região inválido");
+        }
+
+        Optional<Region> playerRegion = regionCache.getAll().stream()
+            .filter(r -> r.getType() == RegionType.PLAYER_REGION)
+            .filter(r -> ownerUuid.equals(r.getOwnerUuid()))
+            .filter(r -> "ACTIVE".equals(r.getStatus()))
+            .findFirst();
+        if (playerRegion.isEmpty()) {
+            throw new IllegalStateException("O jogador não possui uma região de jogador ativa");
+        }
+
+        PlayerRegionHome home = homeRepository.get(playerRegion.get().getId());
+        if (home == null) {
+            throw new IllegalStateException("A região do jogador não possui uma casa definida");
+        }
+
+        ResourceKey<Level> dimensionKey = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(home.getDimensionKey()));
+        ServerLevel targetLevel = admin.getServer().getLevel(dimensionKey);
+        if (targetLevel == null) {
+            throw new IllegalStateException("Dimensão inválida: " + home.getDimensionKey());
+        }
+
+        admin.teleportTo(targetLevel, home.getX(), home.getY(), home.getZ(), home.getYaw(), home.getPitch());
+        admin.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+        return true;
+    }
+
+    public boolean repairPlayerRegionHome(ServerPlayer admin, UUID ownerUuid) {
+        if (admin == null || ownerUuid == null) {
+            throw new IllegalArgumentException("Jogador ou dono da região inválido");
+        }
+
+        Region region = regionCache.getAll().stream()
+            .filter(r -> r.getType() == RegionType.PLAYER_REGION)
+            .filter(r -> ownerUuid.equals(r.getOwnerUuid()))
+            .filter(r -> "ACTIVE".equals(r.getStatus()))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("O jogador não possui uma região de jogador ativa"));
+
+        ResourceKey<Level> dimensionKey = ResourceKey.create(
+            Registries.DIMENSION, ResourceLocation.parse(region.getBounds().getDimension()));
+        ServerLevel level = admin.getServer().getLevel(dimensionKey);
+        if (level == null) {
+            throw new IllegalStateException("Dimensão da região não está disponível: " + region.getBounds().getDimension());
+        }
+
+        RegionBounds bounds = region.getBounds();
+        Set<net.minecraft.world.level.ChunkPos> regionChunks = new HashSet<>();
+        for (int cx = bounds.getMinX() >> 4; cx <= bounds.getMaxX() >> 4; cx++) {
+            for (int cz = bounds.getMinZ() >> 4; cz <= bounds.getMaxZ() >> 4; cz++) {
+                regionChunks.add(new net.minecraft.world.level.ChunkPos(cx, cz));
+            }
+        }
+
+        int centerX = (bounds.getMinX() + bounds.getMaxX()) / 2;
+        int centerZ = (bounds.getMinZ() + bounds.getMaxZ()) / 2;
+        BlockPos homePos = SafeSpawnFinder.findSafeSpawn(
+            level, bounds.getMinX(), bounds.getMaxX(), bounds.getMinZ(), bounds.getMaxZ(), regionChunks
+        ).orElseGet(() -> new BlockPos(
+            centerX,
+            level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, centerX, centerZ),
+            centerZ
+        ));
+
+        SpawnPlatformResult platform = buildSpawnPlatform(level, homePos);
+        if (!platform.success()) {
+            throw new IllegalStateException("Não foi possível reconstruir a plataforma: "
+                + String.join("; ", platform.diagnostics()));
+        }
+
+        PlayerRegionHome previous = homeRepository.get(region.getId());
+        long now = System.currentTimeMillis();
+        PlayerRegionHome repaired = new PlayerRegionHome(
+            region.getId(),
+            bounds.getDimension(),
+            platform.finalStandPosition().getX() + 0.5,
+            platform.finalStandPosition().getY(),
+            platform.finalStandPosition().getZ() + 0.5,
+            previous == null ? 0.0f : previous.getYaw(),
+            previous == null ? 0.0f : previous.getPitch(),
+            previous == null ? now : previous.getCreatedAt(),
+            now
+        );
+        homeRepository.save(repaired);
+        LOGGER.info("[BigBangRegions] Repaired home for region {} at ({},{},{})",
+            region.getId(), platform.finalStandPosition().getX(), platform.finalStandPosition().getY(),
+            platform.finalStandPosition().getZ());
+        return true;
+    }
+
     private ChunkPreparationPlan resolvePhysicalValidationPlan(ReservedPlotCandidate candidate) {
         return chunkPlanResolver.resolve(
             candidate.footprint(),
@@ -1026,16 +1130,20 @@ public class TerrainAllocationCoordinator {
         return biomeOptionRegistry.getAll();
     }
 
-    private PlotFootprint buildClaimFootprint(int slotMinX, int slotMinZ, Config.PlayerLandAllocationConfig lac) {
+    static PlotFootprint resolveClaimFootprint(PlotSlotService.PlotSlotCandidate candidate, Config.PlayerLandAllocationConfig lac) {
         int claimOffset = (lac.getSlotSize() - lac.getInitialClaimSize()) / 2;
-        int claimMinX = slotMinX + claimOffset;
-        int claimMinZ = slotMinZ + claimOffset;
+        int claimMinX = candidate.minX + claimOffset;
+        int claimMinZ = candidate.minZ + claimOffset;
         return new PlotFootprint(
             claimMinX,
             claimMinX + lac.getInitialClaimSize() - 1,
             claimMinZ,
             claimMinZ + lac.getInitialClaimSize() - 1
         );
+    }
+
+    private PlotFootprint buildClaimFootprint(int slotMinX, int slotMinZ, Config.PlayerLandAllocationConfig lac) {
+        return resolveClaimFootprint(new PlotSlotService.PlotSlotCandidate(0, 0, slotMinX, slotMinZ), lac);
     }
 
     private RegionBuildGeometry buildRegionGeometry(PlotFootprint footprint) {
@@ -1227,7 +1335,7 @@ public class TerrainAllocationCoordinator {
     private AllocationSearchCursor anchorCursorForSector(AllocationSearchCursor cursor, AllocationSearchSector sector, Config.WorldgenSearchConfig worldgen) {
         cursor.setSectorX(sector.centerBlockX());
         cursor.setSectorZ(sector.centerBlockZ());
-        cursor.setAnchorAttempt(Math.min(worldgen.getLocateRadiusBlocks(), Math.max(1, sector.halfSizeBlocks())));
+        cursor.setAnchorAttempt(worldgen.getLocateRadiusBlocks());
         return cursor;
     }
 
@@ -1367,15 +1475,9 @@ public class TerrainAllocationCoordinator {
             int gridZ = anchorGridZ + delta[1];
             int minX = gridX * slotSize;
             int minZ = gridZ * slotSize;
-            int claimSize = Math.min(slotSize, lac.getInitialClaimSize());
-            int claimMinX = minX + lac.getSlotInternalMargin();
-            int claimMinZ = minZ + lac.getSlotInternalMargin();
-            int claimMaxX = claimMinX + claimSize - 1;
-            int claimMaxZ = claimMinZ + claimSize - 1;
-            int claimCenterX = (claimMinX + claimMaxX) / 2;
-            int claimCenterZ = (claimMinZ + claimMaxZ) / 2;
-            double dist = Math.sqrt(Math.pow(anchorBlockX - claimCenterX, 2) + Math.pow(anchorBlockZ - claimCenterZ, 2));
             PlotSlotService.PlotSlotCandidate candidate = new PlotSlotService.PlotSlotCandidate(gridX, gridZ, minX, minZ);
+            PlotFootprint footprint = resolveClaimFootprint(candidate, lac);
+            double dist = Math.sqrt(Math.pow(anchorBlockX - footprint.centerX(), 2) + Math.pow(anchorBlockZ - footprint.centerZ(), 2));
             list.add(new CandidatePair(candidate, dist));
         }
         list.sort(Comparator.comparingDouble(CandidatePair::distance));
@@ -1540,6 +1642,47 @@ public class TerrainAllocationCoordinator {
                 anchorInfo);
             lastProgressLogs.put(request.getId(), now);
         }
+
+        checkProgressStagnation(request, cursor, now);
+    }
+
+    private void checkProgressStagnation(AllocationRequest request, AllocationSearchCursor cursor, long now) {
+        String sig = progressSignature(request, cursor);
+        String prevSig = lastProgressSignatures.put(request.getId(), sig);
+        if (prevSig == null || !prevSig.equals(sig)) {
+            lastSignatureChangedAt.put(request.getId(), now);
+            return;
+        }
+        Long changedAt = lastSignatureChangedAt.get(request.getId());
+        if (changedAt == null) {
+            lastSignatureChangedAt.put(request.getId(), now);
+            return;
+        }
+        long stuckMs = now - changedAt;
+        if (stuckMs >= PROGRESS_STAGNATION_WARN_MS) {
+            LOGGER.error("[BigBangRegions] Allocation STUCK: request={} biome={} state={} stuckFor={}ms band={} sector={} anchor=({},{},{}) candidateIdx={} slot={} lastRejection={}",
+                request.getId().substring(0, 8),
+                request.getRequestedBiomeOption(),
+                request.getState(),
+                stuckMs,
+                cursor.getCurrentBandId(),
+                cursor.getCurrentSectorIndex(),
+                cursor.getCurrentAnchorX(), cursor.getCurrentAnchorY(), cursor.getCurrentAnchorZ(),
+                cursor.getLocalCandidateIndex(),
+                request.getPlotSlotId(),
+                cursor.getLastRejectionReason());
+        }
+    }
+
+    private String progressSignature(AllocationRequest request, AllocationSearchCursor cursor) {
+        return request.getState().name()
+            + "|" + cursor.getCurrentBandId()
+            + "|" + cursor.getCurrentSectorIndex()
+            + "|" + cursor.getCurrentAnchorX()
+            + "|" + cursor.getCurrentAnchorY()
+            + "|" + cursor.getCurrentAnchorZ()
+            + "|" + cursor.getLocalCandidateIndex()
+            + "|" + request.getPlotSlotId();
     }
 
     private String describeProgressLine(AllocationSearchCursor cursor) {
@@ -1698,47 +1841,39 @@ public class TerrainAllocationCoordinator {
             .toList();
         int recovered = 0;
         for (Region region : allRegions) {
-            PlayerRegionHome existingHome = homeRepository.get(region.getId());
-            if (existingHome != null) {
-                continue;
+            if (homeRepository.get(region.getId()) != null) continue;
+            try {
+                repairRegionHome(region, level);
+                recovered++;
+            } catch (Exception e) {
+                LOGGER.warn("[BigBangRegions] Failed to recover home for region {}: {}", region.getId(), e.getMessage());
             }
-            LOGGER.info("[BigBangRegions] Recovery: region {} has no home entry. Rebuilding...", region.getId());
-            RegionBounds bounds = region.getBounds();
-            int centerX = (bounds.getMinX() + bounds.getMaxX()) / 2;
-            int centerZ = (bounds.getMinZ() + bounds.getMaxZ()) / 2;
-            Set<net.minecraft.world.level.ChunkPos> regionChunks = new HashSet<>();
-            for (int cx = (bounds.getMinX() >> 4); cx <= (bounds.getMaxX() >> 4); cx++) {
-                for (int cz = (bounds.getMinZ() >> 4); cz <= (bounds.getMaxZ() >> 4); cz++) {
-                    regionChunks.add(new net.minecraft.world.level.ChunkPos(cx, cz));
-                }
-            }
-            int minX = bounds.getMinX();
-            int maxX = bounds.getMaxX();
-            int minZ = bounds.getMinZ();
-            int maxZ = bounds.getMaxZ();
-            java.util.Optional<BlockPos> safeSpawn = SafeSpawnFinder.findSafeSpawn(level, minX, maxX, minZ, maxZ, regionChunks);
-            if (safeSpawn.isEmpty()) {
-                safeSpawn = java.util.Optional.of(new BlockPos(centerX, level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, centerX, centerZ), centerZ));
-            }
-            BlockPos homePos = safeSpawn.get();
-            long now = System.currentTimeMillis();
-            PlayerRegionHome home = new PlayerRegionHome(
-                region.getId(),
-                bounds.getDimension(),
-                homePos.getX() + 0.5,
-                homePos.getY(),
-                homePos.getZ() + 0.5,
-                0.0f, 0.0f,
-                now, now
-            );
-            homeRepository.save(home);
-            LOGGER.info("[BigBangRegions] Recovered home for region {} at ({},{},{})",
-                region.getId(), homePos.getX(), homePos.getY(), homePos.getZ());
-            recovered++;
         }
         if (recovered > 0) {
             LOGGER.info("[BigBangRegions] Home recovery complete: {} regions repaired", recovered);
         }
+    }
+
+    private void repairRegionHome(Region region, ServerLevel level) {
+        RegionBounds bounds = region.getBounds();
+        Set<net.minecraft.world.level.ChunkPos> regionChunks = new HashSet<>();
+        for (int cx = bounds.getMinX() >> 4; cx <= bounds.getMaxX() >> 4; cx++) {
+            for (int cz = bounds.getMinZ() >> 4; cz <= bounds.getMaxZ() >> 4; cz++) {
+                regionChunks.add(new net.minecraft.world.level.ChunkPos(cx, cz));
+            }
+        }
+        int centerX = (bounds.getMinX() + bounds.getMaxX()) / 2;
+        int centerZ = (bounds.getMinZ() + bounds.getMaxZ()) / 2;
+        BlockPos homePos = SafeSpawnFinder.findSafeSpawn(
+            level, bounds.getMinX(), bounds.getMaxX(), bounds.getMinZ(), bounds.getMaxZ(), regionChunks
+        ).orElseGet(() -> new BlockPos(centerX,
+            level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, centerX, centerZ), centerZ));
+        SpawnPlatformResult platform = buildSpawnPlatform(level, homePos);
+        if (!platform.success()) throw new IllegalStateException(String.join("; ", platform.diagnostics()));
+        long now = System.currentTimeMillis();
+        homeRepository.save(new PlayerRegionHome(region.getId(), bounds.getDimension(),
+            platform.finalStandPosition().getX() + 0.5, platform.finalStandPosition().getY(),
+            platform.finalStandPosition().getZ() + 0.5, 0.0f, 0.0f, now, now));
     }
 
     private void cleanupRequestResources(AllocationRequest request, PreparationCancelReason reason, boolean deletePreparationRecord) {
@@ -1746,6 +1881,8 @@ public class TerrainAllocationCoordinator {
         completedPreparations.remove(request.getId());
         lastProgressNotifications.remove(request.getId());
         lastProgressLogs.remove(request.getId());
+        lastProgressSignatures.remove(request.getId());
+        lastSignatureChangedAt.remove(request.getId());
         sectorSequenceCache.entrySet().removeIf(entry -> entry.getKey().startsWith(request.getId() + ":"));
 
         PreparationHandle handle = preparationHandles.remove(request.getId());

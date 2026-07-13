@@ -18,7 +18,9 @@ public enum RegionAction {
     MOB_GRIEFING("mob-griefing"),
     ITEM_PICKUP("visitor-pickup-items"),
     ITEM_DROP("visitor-drop-items"),
-    FALL_DAMAGE("fall-damage");
+    FALL_DAMAGE("fall-damage"),
+    LEAF_DECAY("leaf-decay"),
+    ICE_MELT("ice-melt");
 
     private final String flagId;
 

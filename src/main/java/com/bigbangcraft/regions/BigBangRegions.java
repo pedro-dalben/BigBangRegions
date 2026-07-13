@@ -269,7 +269,7 @@ public class BigBangRegions implements ModInitializer {
         regionAccessService = new RegionAccessService(roleResolver, flagResolver, configManager);
         accessPolicyService = new RegionAccessPolicyService(permissionManager, roleResolver, flagResolver, configManager);
         inviteService = new RegionInviteService(regionInviteRepository, regionRepository, regionCache, membershipCache, roleResolver, auditService);
-        protectionService = new ProtectionService(regionResolver, permissionManager, accessPolicyService);
+        protectionService = new ProtectionService(regionResolver, permissionManager, accessPolicyService, roleResolver);
 
         // 8. Region Entry/Exit notification service
         entryExitService = new RegionEntryExitService(regionCache, roleResolver, configManager);

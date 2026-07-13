@@ -7,6 +7,7 @@ import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.flag.RegionAccessPolicyService;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.region.RegionResolver;
+import com.bigbangcraft.regions.region.RegionRoleResolver;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
@@ -17,6 +18,7 @@ public class ProtectionService {
     private final PermissionManager permissionManager;
     private final RegionAccessService accessService;
     private final RegionAccessPolicyService accessPolicyService;
+    private final RegionRoleResolver roleResolver;
 
     public ProtectionService(RegionResolver regionResolver, PermissionManager permissionManager,
                              RegionAccessService accessService) {
@@ -24,6 +26,7 @@ public class ProtectionService {
         this.permissionManager = permissionManager;
         this.accessService = accessService;
         this.accessPolicyService = null;
+        this.roleResolver = null;
     }
 
     public ProtectionService(RegionResolver regionResolver, PermissionManager permissionManager,
@@ -32,6 +35,16 @@ public class ProtectionService {
         this.permissionManager = permissionManager;
         this.accessService = null;
         this.accessPolicyService = accessPolicyService;
+        this.roleResolver = null;
+    }
+
+    public ProtectionService(RegionResolver regionResolver, PermissionManager permissionManager,
+                             RegionAccessPolicyService accessPolicyService, RegionRoleResolver roleResolver) {
+        this.regionResolver = regionResolver;
+        this.permissionManager = permissionManager;
+        this.accessService = null;
+        this.accessPolicyService = accessPolicyService;
+        this.roleResolver = roleResolver;
     }
 
     public ProtectionResult check(ProtectionContext context) {
@@ -42,7 +55,10 @@ public class ProtectionService {
         ServerPlayer player = context.getPlayer();
 
         // 2. Resolve region
-        Optional<Region> optRegion = regionResolver.resolveRegionAt(dimension, pos.getX(), pos.getY(), pos.getZ());
+        Optional<Region> optRegion = roleResolver == null
+            ? regionResolver.resolveRegionAt(dimension, pos.getX(), pos.getY(), pos.getZ())
+            : regionResolver.resolveRegionAtForPlayer(dimension, pos.getX(), pos.getY(), pos.getZ(),
+                player != null ? player.getUUID() : null, roleResolver);
         
         // 3. No region -> NO_REGION
         if (optRegion.isEmpty()) {
