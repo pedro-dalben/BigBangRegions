@@ -72,12 +72,17 @@ public class TicketBackedChunkPreparationService implements ChunkPreparationServ
             }
 
             boolean ready = true;
+            int checkedChunks = 0;
+            long readinessStartedAt = System.nanoTime();
             for (ChunkPos chunk : active.plan().requiredChunks()) {
+                checkedChunks++;
                 if (active.world().getChunkSource().getChunkNow(chunk.x, chunk.z) == null) {
                     ready = false;
                     break;
                 }
             }
+            AllocationMetrics.add("bigbangregions_prepare_chunk_checks_total", checkedChunks);
+            AllocationMetrics.add("bigbangregions_prepare_readiness_nanos_total", System.nanoTime() - readinessStartedAt);
 
             if (ready) {
                 ActivePreparation updated = active.withReadyNotified();

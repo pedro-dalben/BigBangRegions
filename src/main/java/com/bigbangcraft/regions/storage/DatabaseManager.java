@@ -147,6 +147,20 @@ public class DatabaseManager {
             setSchemaVersion(11);
             LOGGER.info("Migration V11 applied successfully.");
         }
+
+        if (currentVersion < 12) {
+            LOGGER.info("Applying migration V12...");
+            executeMigrationResource("/storage/migrations/V012__allocation_anchor_search_cursor.sql");
+            setSchemaVersion(12);
+            LOGGER.info("Migration V12 applied successfully.");
+        }
+
+        if (currentVersion < 13) {
+            LOGGER.info("Applying migration V13...");
+            executeMigrationResource("/storage/migrations/V013__allocation_anchor_search_interval.sql");
+            setSchemaVersion(13);
+            LOGGER.info("Migration V13 applied successfully.");
+        }
     }
 
     private int getCurrentSchemaVersion() {

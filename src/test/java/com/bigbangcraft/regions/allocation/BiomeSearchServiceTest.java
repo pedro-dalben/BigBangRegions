@@ -68,6 +68,35 @@ public class BiomeSearchServiceTest {
     }
 
     @Test
+    public void relaxedFallbackAcceptsBiomeAtCenterWhenStrictBorderRuleRejects() throws Exception {
+        Path tempDir = Files.createTempDirectory("bigbangregions-biome-search-test");
+        ConfigManager configManager = new ConfigManager(tempDir);
+        configManager.getConfig().getPlayerLandAllocation().getBiomeSearch().setMinimumMatchPercentage(60);
+        configManager.getConfig().getPlayerLandAllocation().getBiomeSearch().setMinimumBorderMatchPercentage(60);
+        configManager.getConfig().getPlayerLandAllocation().getBiomeSearch().setRelaxedFallbackEnabled(true);
+        configManager.getConfig().getPlayerLandAllocation().getBiomeSearch().setRelaxedMinimumMatchPercentage(30);
+        configManager.getConfig().getPlayerLandAllocation().getBiomeSearch().setRelaxedMinimumBorderMatchPercentage(0);
+        BiomeSearchService service = new BiomeSearchService(configManager);
+
+        Holder<Biome> plains = biomeHolder("minecraft:plains");
+        Holder<Biome> river = biomeHolder("minecraft:river");
+        BiomeSource biomeSource = mock(BiomeSource.class);
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any())).thenAnswer(inv -> {
+            int quartX = inv.getArgument(0);
+            int quartZ = inv.getArgument(2);
+            return quartX > 0 && quartX < 16 && quartZ > 0 && quartZ < 16 ? plains : river;
+        });
+
+        WorldgenSearchContext context = worldgenContext(biomeSource, "relaxed-center-plains");
+        BiomeOption option = biomeOption("planicies", List.of("minecraft:plains"));
+
+        assertEquals(BiomeSearchService.MatchResult.MISMATCH,
+            service.evaluateBiomeOptionMatching(context, 0, 64, 0, 64, option));
+        assertEquals(BiomeSearchService.MatchResult.MATCH,
+            service.evaluateRelaxedBiomeOptionMatching(context, 0, 64, 0, 64, option));
+    }
+
+    @Test
     public void acceptsPureMatchingBiomeWithoutChunkAccess() throws Exception {
         Path tempDir = Files.createTempDirectory("bigbangregions-biome-search-test");
         ConfigManager configManager = new ConfigManager(tempDir);

@@ -1,8 +1,6 @@
 package com.bigbangcraft.regions.allocation;
 
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.biome.Biome;
 
 import java.util.ArrayList;
@@ -29,7 +27,7 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
         this.sampler = Objects.requireNonNull(sampler, "sampler");
         this.sampleGridSize = normalizeGridSize(sampleGridSize);
         this.minimumMatchPercentage = Math.max(1, Math.min(100, minimumMatchPercentage));
-        this.minimumBorderMatchPercentage = Math.max(1, Math.min(100, minimumBorderMatchPercentage));
+        this.minimumBorderMatchPercentage = Math.max(0, Math.min(100, minimumBorderMatchPercentage));
         this.requireFullBorderMatch = requireFullBorderMatch;
     }
 
@@ -44,7 +42,7 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
             return VirtualBiomeValidationResult.rejected(0.0, 0, 0, 0, 0, 0, ValidationFailureReason.NO_CONTEXT);
         }
 
-        Set<ResourceKey<Biome>> acceptedKeys = resolveAcceptedKeys(biomeOption);
+        Set<ResourceKey<Biome>> acceptedKeys = biomeOption == null ? Set.of() : biomeOption.getAcceptedBiomeKeys();
         if (acceptedKeys.isEmpty()) {
             return VirtualBiomeValidationResult.rejected(0.0, 0, 0, 0, 0, 0, ValidationFailureReason.EMPTY_ACCEPTED_BIOMES);
         }
@@ -341,18 +339,6 @@ public final class AdaptiveVirtualFootprintValidator implements VirtualFootprint
             normalized++;
         }
         return normalized;
-    }
-
-    private static Set<ResourceKey<Biome>> resolveAcceptedKeys(BiomeOption biomeOption) {
-        Set<ResourceKey<Biome>> keys = new HashSet<>();
-        for (String biomeId : biomeOption.getAcceptedBiomeIds()) {
-            try {
-                ResourceLocation location = ResourceLocation.parse(biomeId);
-                keys.add(ResourceKey.create(Registries.BIOME, location));
-            } catch (Exception ignored) {
-            }
-        }
-        return keys;
     }
 
     private record Point(int x, int z) {

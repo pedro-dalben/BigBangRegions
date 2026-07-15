@@ -385,6 +385,9 @@ public class Config {
         private int maximumSearchRadiusBlocks = 120000;
         private boolean requireFullBorderMatch = false;
         private int minimumBorderMatchPercentage = 60;
+        private boolean relaxedFallbackEnabled = true;
+        private int relaxedMinimumMatchPercentage = 30;
+        private int relaxedMinimumBorderMatchPercentage = 0;
 
         public int getMinimumMatchPercentage() { return minimumMatchPercentage; }
         public int getSampleGridSize() { return sampleGridSize; }
@@ -392,6 +395,9 @@ public class Config {
         public int getMaximumSearchRadiusBlocks() { return maximumSearchRadiusBlocks; }
         public boolean isRequireFullBorderMatch() { return requireFullBorderMatch; }
         public int getMinimumBorderMatchPercentage() { return minimumBorderMatchPercentage; }
+        public boolean isRelaxedFallbackEnabled() { return relaxedFallbackEnabled; }
+        public int getRelaxedMinimumMatchPercentage() { return relaxedMinimumMatchPercentage; }
+        public int getRelaxedMinimumBorderMatchPercentage() { return relaxedMinimumBorderMatchPercentage; }
 
         public void setMinimumMatchPercentage(int minimumMatchPercentage) { this.minimumMatchPercentage = minimumMatchPercentage; }
         public void setSampleGridSize(int sampleGridSize) { this.sampleGridSize = sampleGridSize; }
@@ -399,6 +405,9 @@ public class Config {
         public void setMaximumSearchRadiusBlocks(int maximumSearchRadiusBlocks) { this.maximumSearchRadiusBlocks = maximumSearchRadiusBlocks; }
         public void setRequireFullBorderMatch(boolean requireFullBorderMatch) { this.requireFullBorderMatch = requireFullBorderMatch; }
         public void setMinimumBorderMatchPercentage(int minimumBorderMatchPercentage) { this.minimumBorderMatchPercentage = minimumBorderMatchPercentage; }
+        public void setRelaxedFallbackEnabled(boolean relaxedFallbackEnabled) { this.relaxedFallbackEnabled = relaxedFallbackEnabled; }
+        public void setRelaxedMinimumMatchPercentage(int relaxedMinimumMatchPercentage) { this.relaxedMinimumMatchPercentage = relaxedMinimumMatchPercentage; }
+        public void setRelaxedMinimumBorderMatchPercentage(int relaxedMinimumBorderMatchPercentage) { this.relaxedMinimumBorderMatchPercentage = relaxedMinimumBorderMatchPercentage; }
     }
 
     public static class WorldgenSearchConfig {

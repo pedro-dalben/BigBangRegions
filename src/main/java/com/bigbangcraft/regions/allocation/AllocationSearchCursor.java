@@ -18,6 +18,10 @@ public class AllocationSearchCursor {
     private int sectorsDiscarded;
     private int anchorsFound;
     private int locateCallsUsed;
+    private int anchorSearchYIndex;
+    private int anchorSearchRingQuart;
+    private int anchorSearchPointIndex;
+    private int anchorSearchIntervalQuart;
     private Integer currentAnchorX;
     private Integer currentAnchorY;
     private Integer currentAnchorZ;
@@ -44,6 +48,10 @@ public class AllocationSearchCursor {
     public int getSectorsDiscarded() { return sectorsDiscarded; }
     public int getAnchorsFound() { return anchorsFound; }
     public int getLocateCallsUsed() { return locateCallsUsed; }
+    public int getAnchorSearchYIndex() { return anchorSearchYIndex; }
+    public int getAnchorSearchRingQuart() { return anchorSearchRingQuart; }
+    public int getAnchorSearchPointIndex() { return anchorSearchPointIndex; }
+    public int getAnchorSearchIntervalQuart() { return anchorSearchIntervalQuart; }
     public Integer getCurrentAnchorX() { return currentAnchorX; }
     public Integer getCurrentAnchorY() { return currentAnchorY; }
     public Integer getCurrentAnchorZ() { return currentAnchorZ; }
@@ -69,6 +77,10 @@ public class AllocationSearchCursor {
     public void setSectorsDiscarded(int sectorsDiscarded) { this.sectorsDiscarded = sectorsDiscarded; }
     public void setAnchorsFound(int anchorsFound) { this.anchorsFound = anchorsFound; }
     public void setLocateCallsUsed(int locateCallsUsed) { this.locateCallsUsed = locateCallsUsed; }
+    public void setAnchorSearchYIndex(int anchorSearchYIndex) { this.anchorSearchYIndex = anchorSearchYIndex; }
+    public void setAnchorSearchRingQuart(int anchorSearchRingQuart) { this.anchorSearchRingQuart = anchorSearchRingQuart; }
+    public void setAnchorSearchPointIndex(int anchorSearchPointIndex) { this.anchorSearchPointIndex = anchorSearchPointIndex; }
+    public void setAnchorSearchIntervalQuart(int anchorSearchIntervalQuart) { this.anchorSearchIntervalQuart = anchorSearchIntervalQuart; }
     public void setCurrentAnchorX(Integer currentAnchorX) { this.currentAnchorX = currentAnchorX; }
     public void setCurrentAnchorY(Integer currentAnchorY) { this.currentAnchorY = currentAnchorY; }
     public void setCurrentAnchorZ(Integer currentAnchorZ) { this.currentAnchorZ = currentAnchorZ; }

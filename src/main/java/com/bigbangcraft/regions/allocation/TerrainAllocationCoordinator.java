@@ -32,6 +32,7 @@ import net.minecraft.world.phys.AABB;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -368,7 +369,10 @@ public class TerrainAllocationCoordinator {
                 LOGGER.warn("[BigBangRegions] Preparation metadata not found for request={}. Recomputing physical validation plan from reserved candidate.", request.getId());
                 plan = resolvePhysicalValidationPlan(candidate);
             }
+            long physicalValidationStartedAt = System.nanoTime();
             LoadedWorldValidationResult validation = loadedWorldValidator.validate(level, candidate, plan);
+            AllocationMetrics.add("bigbangregions_physical_validation_nanos_total", System.nanoTime() - physicalValidationStartedAt);
+            AllocationMetrics.increment("bigbangregions_physical_validation_total");
             if (!validation.accepted()) {
                 AllocationRequestPreparation prep = preparationRepository.get(request.getId());
                 if (prep != null) {
@@ -460,14 +464,15 @@ public class TerrainAllocationCoordinator {
                 continue;
             }
 
-            boolean probableBiome = sectorContainsAcceptedBiome(context, biomeOpt.get(), sector);
-
+            long locateStartedAt = System.nanoTime();
             BiomeAnchorSearchStepResult anchorResult = biomeAnchorLocator.searchStep(
                 context,
                 biomeOpt.get(),
                 anchorCursorForSector(cursor, sector, worldgen),
                 new SearchBudget(worldgen.getBlockCheckInterval(), worldgen.getMaxLocateCallsPerSearchStep())
             );
+            AllocationMetrics.add("bigbangregions_biome_locate_nanos_total", System.nanoTime() - locateStartedAt);
+            AllocationMetrics.increment("bigbangregions_biome_locate_total");
 
             if (anchorResult instanceof BiomeAnchorSearchStepResult.Found found) {
                 cursor = found.nextCursor();
@@ -493,7 +498,8 @@ public class TerrainAllocationCoordinator {
                 continue;
             }
 
-            cursor.setLastRejectionReason(cursor.getLastRejectionReason() == null ? "rejected_anchor_not_found" : cursor.getLastRejectionReason());
+            cursor.setLastProgressAt(System.currentTimeMillis());
+            cursor.setLastRejectionReason("searching_biome");
             progressed = true;
             break;
         }
@@ -593,8 +599,22 @@ public class TerrainAllocationCoordinator {
         }
 
         BlockPos homePos = validation.safeSpawn().blockPos();
+        String regionId = request.getRegionId();
+        PlotFootprint claimFootprint = buildClaimFootprint(slot.getMinX(), slot.getMinZ(), lac);
+        RegionBounds bounds = new RegionBounds(
+            lac.getTargetDimension(),
+            claimFootprint.minX(), -64, claimFootprint.minZ(),
+            claimFootprint.maxX(), 320, claimFootprint.maxZ()
+        );
+        boolean snapshotEnabled = lac.getBorder().isRestoreOnDelete();
+        if (!snapshotCreatedTerrain(regionId, bounds, level, homePos, snapshotEnabled, lac.getBorder().isCreateCeiling())) {
+            pauseForRecovery(request, "Falha ao criar snapshot de restauracao antes da mutacao do terreno.", "failed_snapshot_capture");
+            return;
+        }
+
         SpawnPlatformResult platformResult = buildSpawnPlatform(level, homePos);
         if (!platformResult.success()) {
+            discardTerrainSnapshot(regionId);
             LOGGER.error("[BigBangRegions] Failed to build spawn platform for request={}: {}",
                 request.getId(), String.join("; ", platformResult.diagnostics()));
             pauseForRecovery(request, "Falha na criacao da plataforma: " + String.join("; ", platformResult.diagnostics()),
@@ -606,17 +626,11 @@ public class TerrainAllocationCoordinator {
             Connection conn = databaseManager.getConnection();
             boolean wasAutoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
+            boolean committed = false;
+            Region region = null;
             try {
-                String regionId = request.getRegionId();
-                PlotFootprint claimFootprint = buildClaimFootprint(slot.getMinX(), slot.getMinZ(), lac);
-                RegionBounds bounds = new RegionBounds(
-                    lac.getTargetDimension(),
-                    claimFootprint.minX(), -64, claimFootprint.minZ(),
-                    claimFootprint.maxX(), 320, claimFootprint.maxZ()
-                );
-
                 long now = System.currentTimeMillis();
-                Region region = new Region(regionId, "Player Region", RegionType.PLAYER_REGION,
+                region = new Region(regionId, "Player Region", RegionType.PLAYER_REGION,
                     bounds, 100, request.getOwnerUuid(), request.getOwnerUuid(), now, now, "ACTIVE");
                 regionRepository.saveOnConnection(conn, region);
                 regionRepository.saveMembersOnConnection(conn, regionId, Collections.emptyMap());
@@ -642,17 +656,25 @@ public class TerrainAllocationCoordinator {
                 requestRepository.saveOnConnection(conn, request);
 
                 conn.commit();
+                committed = true;
 
                 regionCache.add(region);
                 membershipCache.loadFromRegion(region);
 
-                snapshotCreatedTerrain(regionId, bounds, level, platformResult.finalStandPosition(), configManager.getConfig().getPlayerLandAllocation().getBorder().isRestoreOnDelete());
                 postRegionCreationSetup(request, bounds, level, platformResult.finalStandPosition());
                 LOGGER.info("[BigBangRegions] Region created successfully request={} region={} home=(x={}, y={}, z={})",
                     request.getId(), regionId,
                     platformResult.finalStandPosition().getX(), platformResult.finalStandPosition().getY(), platformResult.finalStandPosition().getZ());
             } catch (Exception e) {
                 try { conn.rollback(); } catch (SQLException ignored) {}
+                if (!committed && snapshotEnabled && region != null) {
+                    try {
+                        RegionTerrainSnapshot.restore(level, region, getRestoreDirectory());
+                    } catch (Exception restoreError) {
+                        LOGGER.error("[BigBangRegions] Failed to restore pre-creation terrain after transaction failure for request={}: {}",
+                            request.getId(), restoreError.getMessage(), restoreError);
+                    }
+                }
                 LOGGER.error("[BigBangRegions] DB transaction failed during region creation request={}: {}", request.getId(), e.getMessage(), e);
                 pauseForRecovery(request, "Falha na transacao de criacao da regiao: " + e.getMessage(),
                     "failed_home_persistence");
@@ -731,15 +753,37 @@ public class TerrainAllocationCoordinator {
         }
     }
 
-    private void snapshotCreatedTerrain(String regionId, RegionBounds bounds, ServerLevel level, BlockPos homePos, boolean enabled) {
+    private boolean snapshotCreatedTerrain(
+        String regionId,
+        RegionBounds bounds,
+        ServerLevel level,
+        BlockPos homePos,
+        boolean enabled,
+        boolean createCeiling
+    ) {
         if (!enabled) {
-            return;
+            return true;
         }
 
+        long startedAt = System.nanoTime();
         try {
-            RegionTerrainSnapshot.capture(level, bounds, homePos, regionId, getRestoreDirectory());
+            RegionTerrainSnapshot.capture(level, bounds, homePos, regionId, getRestoreDirectory(), createCeiling);
+            AllocationMetrics.increment("bigbangregions_snapshot_capture_total");
+            return true;
         } catch (Exception e) {
             LOGGER.warn("Failed to snapshot terrain for region {}: {}", regionId, e.getMessage());
+            discardTerrainSnapshot(regionId);
+            return false;
+        } finally {
+            AllocationMetrics.add("bigbangregions_snapshot_capture_nanos_total", System.nanoTime() - startedAt);
+        }
+    }
+
+    private void discardTerrainSnapshot(String regionId) {
+        try {
+            RegionTerrainSnapshot.discard(regionId, getRestoreDirectory());
+        } catch (IOException e) {
+            LOGGER.warn("Failed to discard terrain snapshot for region {}: {}", regionId, e.getMessage());
         }
     }
 
@@ -770,6 +814,7 @@ public class TerrainAllocationCoordinator {
     }
 
     private void generateGlassBorder(ServerLevel level, RegionBounds bounds, String materialId, boolean createCeiling) {
+        long startedAt = System.nanoTime();
         try {
             ResourceLocation loc = ResourceLocation.parse(materialId);
             net.minecraft.world.level.block.Block block = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(loc);
@@ -805,6 +850,9 @@ public class TerrainAllocationCoordinator {
             }
         } catch (Exception e) {
             LOGGER.error("Failed to generate glass border", e);
+        } finally {
+            AllocationMetrics.add("bigbangregions_border_generation_nanos_total", System.nanoTime() - startedAt);
+            AllocationMetrics.increment("bigbangregions_border_generation_total");
         }
     }
 
@@ -1208,10 +1256,7 @@ public class TerrainAllocationCoordinator {
                 continue;
             }
             int[] coords = sectorCoordinates(request, band, cursor.getCurrentSectorIndex(), worldgen.getSectorSizeBlocks());
-            cursor.setCurrentBandId(band.getId());
-            cursor.setSectorX(coords[0]);
-            cursor.setSectorZ(coords[1]);
-            return new AllocationSearchSector(
+            AllocationSearchSector sector = new AllocationSearchSector(
                 band.getId(),
                 cursor.getCurrentSectorIndex(),
                 coords[0],
@@ -1220,6 +1265,13 @@ public class TerrainAllocationCoordinator {
                 band.getMinRadiusBlocks(),
                 band.getMaxRadiusBlocks()
             );
+            cursor.setCurrentBandId(band.getId());
+            // The biome locator uses block coordinates. Persisting the grid
+            // coordinates here made anchorCursorForSector treat the same
+            // sector as new every scheduler step and restart its scan.
+            cursor.setSectorX(sector.centerBlockX());
+            cursor.setSectorZ(sector.centerBlockZ());
+            return sector;
         }
         return null;
     }
@@ -1275,67 +1327,19 @@ public class TerrainAllocationCoordinator {
         return seed;
     }
 
-    private boolean sectorContainsAcceptedBiome(WorldgenSearchContext context, BiomeOption option, AllocationSearchSector sector) {
-        Set<ResourceKey<net.minecraft.world.level.biome.Biome>> accepted = new HashSet<>();
-        for (String biomeId : option.getAcceptedBiomeIds()) {
-            try {
-                accepted.add(ResourceKey.create(Registries.BIOME, ResourceLocation.parse(biomeId)));
-            } catch (Exception ignored) {
-            }
-        }
-        if (accepted.isEmpty()) {
-            return false;
-        }
-
-        int sectorMinX = sector.sectorX() * sector.sectorSizeBlocks();
-        int sectorMinZ = sector.sectorZ() * sector.sectorSizeBlocks();
-        int sectorMaxX = sectorMinX + sector.sectorSizeBlocks() - 1;
-        int sectorMaxZ = sectorMinZ + sector.sectorSizeBlocks() - 1;
-        int gridSize = 5;
-        int stepX = Math.max(1, (sectorMaxX - sectorMinX) / (gridSize - 1));
-        int stepZ = Math.max(1, (sectorMaxZ - sectorMinZ) / (gridSize - 1));
-        long seed = deterministicSectorSeedFromValues(option.getKey(), sector.bandId(), sector.sectorIndex(), sector.sectorX(), sector.sectorZ());
-        List<Integer> sampleYs = context.getEffectiveSampleBlockYs();
-
-        for (int gz = 0; gz < gridSize; gz++) {
-            for (int gx = 0; gx < gridSize; gx++) {
-                int jitterX = deterministicJitter(seed, gx, gz, Math.max(1, stepX / 3));
-                int jitterZ = deterministicJitter(seed ^ 0x9E3779B97F4A7C15L, gz, gx, Math.max(1, stepZ / 3));
-                int x = clamp(sectorMinX + (gx * stepX) + jitterX, sectorMinX, sectorMaxX);
-                int z = clamp(sectorMinZ + (gz * stepZ) + jitterZ, sectorMinZ, sectorMaxZ);
-                for (int sampleY : sampleYs) {
-                    ResourceKey<net.minecraft.world.level.biome.Biome> key = biomeSearchService.getVirtualSampler()
-                        .sampleAtBlock(context, x, sampleY, z);
-                    if (key != null && accepted.contains(key)) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        int[][] fallbackPoints = new int[][]{
-            {sector.centerBlockX(), sector.centerBlockZ()},
-            {sectorMinX, sectorMinZ},
-            {sectorMaxX, sectorMinZ},
-            {sectorMinX, sectorMaxZ},
-            {sectorMaxX, sectorMaxZ}
-        };
-        for (int[] point : fallbackPoints) {
-            for (int sampleY : sampleYs) {
-                ResourceKey<net.minecraft.world.level.biome.Biome> key = biomeSearchService.getVirtualSampler()
-                    .sampleAtBlock(context, point[0], sampleY, point[1]);
-                if (key != null && accepted.contains(key)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
     private AllocationSearchCursor anchorCursorForSector(AllocationSearchCursor cursor, AllocationSearchSector sector, Config.WorldgenSearchConfig worldgen) {
+        boolean newSector = cursor.getAnchorAttempt() <= 0
+            || cursor.getSectorX() != sector.centerBlockX()
+            || cursor.getSectorZ() != sector.centerBlockZ();
         cursor.setSectorX(sector.centerBlockX());
         cursor.setSectorZ(sector.centerBlockZ());
         cursor.setAnchorAttempt(worldgen.getLocateRadiusBlocks());
+        if (newSector) {
+            cursor.setAnchorSearchYIndex(0);
+            cursor.setAnchorSearchRingQuart(0);
+            cursor.setAnchorSearchPointIndex(0);
+            cursor.setAnchorSearchIntervalQuart(0);
+        }
         return cursor;
     }
 
@@ -1401,6 +1405,32 @@ public class TerrainAllocationCoordinator {
                 return LocalAnchorSearchResult.CONTINUE;
             }
             if (biomeMatch != BiomeSearchService.MatchResult.MATCH) {
+                BiomeSearchService.MatchResult relaxedMatch = biomeSearchService.evaluateRelaxedBiomeOptionMatching(
+                    context,
+                    claimFootprint.minX(), claimFootprint.maxX(), claimFootprint.minZ(), claimFootprint.maxZ(),
+                    biomeOption
+                );
+                if (relaxedMatch == BiomeSearchService.MatchResult.PENDING) {
+                    cursor.setLastRejectionReason("pending_relaxed_virtual_validation");
+                    AllocationMetrics.increment("pending_relaxed_virtual_validation");
+                    cursor.incrementRejection("pending_relaxed_virtual_validation");
+                    return LocalAnchorSearchResult.CONTINUE;
+                }
+                if (relaxedMatch == BiomeSearchService.MatchResult.MATCH) {
+                    cursor.setFallbackMode("RELAXED_BIOME_FOOTPRINT");
+                    cursor.setLastRejectionReason("accepted_relaxed_biome_footprint");
+                    if (reserveSlotForCandidate(request, candidate, lac, sc)) {
+                        cursorRepository.save(cursor);
+                        maybeEmitProgress(request, level, cursor);
+                        LOGGER.info("Slot reserved with relaxed biome footprint: slotId={}, request={}, grid=({},{})",
+                            request.getPlotSlotId(), request.getId(), candidate.gridX, candidate.gridZ);
+                        return LocalAnchorSearchResult.RESERVED;
+                    }
+                    cursor.setLastRejectionReason("rejected_slot_overlap");
+                    AllocationMetrics.increment("rejected_slot_overlap");
+                    cursor.incrementRejection("rejected_slot_overlap");
+                    continue;
+                }
                 cursor.setLastRejectionReason("rejected_border_mismatch");
                 AllocationMetrics.increment("rejected_border_mismatch");
                 cursor.incrementRejection("rejected_border_mismatch");
@@ -1510,23 +1540,15 @@ public class TerrainAllocationCoordinator {
         return seed;
     }
 
-    private int deterministicJitter(long seed, int a, int b, int bound) {
-        if (bound <= 0) {
-            return 0;
-        }
-        java.util.Random random = new java.util.Random(seed ^ (31L * a) ^ (17L * b));
-        return random.nextInt(bound * 2 + 1) - bound;
-    }
-
-    private int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
     private void markSectorRejected(AllocationSearchCursor cursor, AllocationSearchSector sector, String reason) {
         cursor.setCurrentSectorIndex(cursor.getCurrentSectorIndex() + 1);
         cursor.setTotalSectorsChecked(cursor.getTotalSectorsChecked() + 1);
         cursor.setSectorsDiscarded(cursor.getSectorsDiscarded() + 1);
         cursor.setAnchorAttempt(0);
+        cursor.setAnchorSearchYIndex(0);
+        cursor.setAnchorSearchRingQuart(0);
+        cursor.setAnchorSearchPointIndex(0);
+        cursor.setAnchorSearchIntervalQuart(0);
         cursor.setLocalCandidateIndex(0);
         cursor.setCurrentAnchorX(null);
         cursor.setCurrentAnchorY(null);
@@ -1630,7 +1652,7 @@ public class TerrainAllocationCoordinator {
                 anchorInfo = String.format(" anchor=(%d,%d,%d,biome=%s)",
                     cursor.getCurrentAnchorX(), cursor.getCurrentAnchorY(), cursor.getCurrentAnchorZ(), cursor.getCurrentAnchorBiomeId());
             }
-            LOGGER.info("[BigBangRegions] Allocation progress: request={} biome={} state={} elapsed={}s sectors={} anchors={} candidates={} lastRejection={}{}",
+            LOGGER.info("[BigBangRegions] Allocation progress: request={} biome={} state={} elapsed={}s sectors={} anchors={} candidates={} biomeSamples={} scan=(y={},ring={},point={},step={}) lastRejection={}{}",
                 request.getId().substring(0, 8),
                 request.getRequestedBiomeOption(),
                 request.getState(),
@@ -1638,6 +1660,11 @@ public class TerrainAllocationCoordinator {
                 cursor.getTotalSectorsChecked(),
                 cursor.getAnchorsFound(),
                 cursor.getTotalVirtualCandidatesChecked(),
+                cursor.getTotalBiomeSamples(),
+                cursor.getAnchorSearchYIndex(),
+                cursor.getAnchorSearchRingQuart(),
+                cursor.getAnchorSearchPointIndex(),
+                cursor.getAnchorSearchIntervalQuart(),
                 cursor.getLastRejectionReason(),
                 anchorInfo);
             lastProgressLogs.put(request.getId(), now);
@@ -1660,7 +1687,7 @@ public class TerrainAllocationCoordinator {
         }
         long stuckMs = now - changedAt;
         if (stuckMs >= PROGRESS_STAGNATION_WARN_MS) {
-            LOGGER.error("[BigBangRegions] Allocation STUCK: request={} biome={} state={} stuckFor={}ms band={} sector={} anchor=({},{},{}) candidateIdx={} slot={} lastRejection={}",
+            LOGGER.error("[BigBangRegions] Allocation STUCK: request={} biome={} state={} stuckFor={}ms band={} sector={} anchor=({},{},{}) candidateIdx={} biomeSamples={} scan=(y={},ring={},point={},step={}) slot={} lastRejection={}",
                 request.getId().substring(0, 8),
                 request.getRequestedBiomeOption(),
                 request.getState(),
@@ -1669,6 +1696,11 @@ public class TerrainAllocationCoordinator {
                 cursor.getCurrentSectorIndex(),
                 cursor.getCurrentAnchorX(), cursor.getCurrentAnchorY(), cursor.getCurrentAnchorZ(),
                 cursor.getLocalCandidateIndex(),
+                cursor.getTotalBiomeSamples(),
+                cursor.getAnchorSearchYIndex(),
+                cursor.getAnchorSearchRingQuart(),
+                cursor.getAnchorSearchPointIndex(),
+                cursor.getAnchorSearchIntervalQuart(),
                 request.getPlotSlotId(),
                 cursor.getLastRejectionReason());
         }
@@ -1678,6 +1710,14 @@ public class TerrainAllocationCoordinator {
         return request.getState().name()
             + "|" + cursor.getCurrentBandId()
             + "|" + cursor.getCurrentSectorIndex()
+            + "|" + cursor.getSectorX()
+            + "|" + cursor.getSectorZ()
+            + "|" + cursor.getAnchorAttempt()
+            + "|" + cursor.getAnchorSearchYIndex()
+            + "|" + cursor.getAnchorSearchRingQuart()
+            + "|" + cursor.getAnchorSearchPointIndex()
+            + "|" + cursor.getAnchorSearchIntervalQuart()
+            + "|" + cursor.getTotalBiomeSamples()
             + "|" + cursor.getCurrentAnchorX()
             + "|" + cursor.getCurrentAnchorY()
             + "|" + cursor.getCurrentAnchorZ()

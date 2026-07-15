@@ -23,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -54,26 +56,27 @@ public class BiomeAnchorSearchRegressionTest {
     }
 
     @Test
-    public void locatorReturnsExhaustedWhenFindBiomeHorizontalReturnsNullWithBudget() {
+    public void locatorReturnsExhaustedWhenNoBiomeExistsWithinRadius() {
         BiomeSource biomeSource = mock(BiomeSource.class);
-        when(biomeSource.findBiomeHorizontal(anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), anyBoolean(), any()))
-            .thenReturn(null);
+        Holder<Biome> riverHolder = biomeHolder("minecraft:river");
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any()))
+            .thenReturn(riverHolder);
 
         WorldgenSearchContext context = testContext(biomeSource, List.of(64));
         BiomeOption option = biomeOption("planicies", List.of("minecraft:plains"));
         AllocationSearchCursor cursor = new AllocationSearchCursor("test-request");
         cursor.setSectorX(1000);
         cursor.setSectorZ(1000);
-        cursor.setAnchorAttempt(1300);
+        cursor.setAnchorAttempt(16);
 
         WorldgenBiomeAnchorLocator locator = new WorldgenBiomeAnchorLocator();
         BiomeAnchorSearchStepResult result = locator.searchStep(
             context, option, cursor,
-            new SearchBudget(64, 1)
+            new SearchBudget(128, 1)
         );
 
         assertInstanceOf(BiomeAnchorSearchStepResult.Exhausted.class, result,
-            "Should return Exhausted when findBiomeHorizontal returns null with budget available");
+            "Should return Exhausted after the complete small radius is scanned");
         assertEquals(1, cursor.getLocateCallsUsed());
     }
 
@@ -98,11 +101,18 @@ public class BiomeAnchorSearchRegressionTest {
     @Test
     public void locatorReturnsFoundWhenBiomeLocated() {
         Holder<Biome> plainsHolder = biomeHolder("minecraft:plains");
-        Pair<BlockPos, Holder<Biome>> foundPair = Pair.of(new BlockPos(1500, 64, 1500), plainsHolder);
-
         BiomeSource biomeSource = mock(BiomeSource.class);
-        when(biomeSource.findBiomeHorizontal(anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), anyBoolean(), any()))
-            .thenReturn(foundPair);
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any()))
+            .thenAnswer(invocation -> {
+                int quartX = invocation.getArgument(0);
+                int quartY = invocation.getArgument(1);
+                int quartZ = invocation.getArgument(2);
+                return quartX == BiomeCoordinateMath.blockToQuart(1064)
+                    && quartY == BiomeCoordinateMath.blockToQuart(64)
+                    && quartZ == BiomeCoordinateMath.blockToQuart(1000)
+                    ? plainsHolder
+                    : biomeHolder("minecraft:river");
+            });
 
         WorldgenSearchContext context = testContext(biomeSource, List.of(64));
         BiomeOption option = biomeOption("planicies", List.of("minecraft:plains"));
@@ -114,23 +124,55 @@ public class BiomeAnchorSearchRegressionTest {
         WorldgenBiomeAnchorLocator locator = new WorldgenBiomeAnchorLocator();
         BiomeAnchorSearchStepResult result = locator.searchStep(
             context, option, cursor,
-            new SearchBudget(64, 1)
+            new SearchBudget(128, 1)
         );
 
         assertInstanceOf(BiomeAnchorSearchStepResult.Found.class, result);
         BiomeAnchorSearchStepResult.Found found = (BiomeAnchorSearchStepResult.Found) result;
-        assertEquals(1500, found.anchor().blockX());
+        assertEquals(1064, found.anchor().blockX());
         assertEquals(64, found.anchor().blockY());
-        assertEquals(1500, found.anchor().blockZ());
+        assertEquals(1000, found.anchor().blockZ());
         assertTrue(cursor.getCurrentAnchorX() != null);
         assertEquals(1, cursor.getLocateCallsUsed());
     }
 
     @Test
-    public void locatorConvertsBlockRadiusToQuartSearchDistance() {
+    public void fastLocatorUsesSixteenBlockNativeSamplingStep() {
+        Holder<Biome> cherryHolder = biomeHolder("minecraft:cherry_grove");
         BiomeSource biomeSource = mock(BiomeSource.class);
-        when(biomeSource.findBiomeHorizontal(anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), anyBoolean(), any()))
-            .thenReturn(null);
+        when(biomeSource.findBiomeHorizontal(
+            anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), anyBoolean(), any()
+        )).thenReturn(Pair.of(new BlockPos(128, 64, 128), cherryHolder));
+
+        WorldgenSearchContext context = testContext(biomeSource, List.of(64));
+        AllocationSearchCursor cursor = new AllocationSearchCursor("test-request");
+        cursor.setSectorX(0);
+        cursor.setSectorZ(0);
+        cursor.setAnchorAttempt(1300);
+
+        BiomeAnchorSearchStepResult result = new WorldgenBiomeAnchorLocator().searchStep(
+            context,
+            biomeOption("cerejeira", List.of("minecraft:cherry_grove")),
+            cursor,
+            new SearchBudget(64, 1)
+        );
+
+        assertInstanceOf(BiomeAnchorSearchStepResult.Found.class, result);
+        verify(biomeSource).findBiomeHorizontal(
+            eq(0), eq(64), eq(0), eq(BiomeCoordinateMath.blockToQuart(1300)),
+            eq(BiomeCoordinateMath.blockToQuart(16)), any(), any(), eq(true), any()
+        );
+    }
+
+    @Test
+    public void locatorUsesQuartGridForBiomeSourceLookup() {
+        BiomeSource biomeSource = mock(BiomeSource.class);
+        Holder<Biome> cherryHolder = biomeHolder("minecraft:cherry_grove");
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any()))
+            .thenAnswer(invocation -> invocation.getArgument(0).equals(BiomeCoordinateMath.blockToQuart(3072))
+                && invocation.getArgument(1).equals(BiomeCoordinateMath.blockToQuart(64))
+                && invocation.getArgument(2).equals(BiomeCoordinateMath.blockToQuart(1024))
+                ? cherryHolder : biomeHolder("minecraft:river"));
 
         WorldgenSearchContext context = testContext(biomeSource, List.of(64));
         BiomeOption option = biomeOption("cerejeira", List.of("minecraft:cherry_grove"));
@@ -140,21 +182,78 @@ public class BiomeAnchorSearchRegressionTest {
         cursor.setAnchorAttempt(1300);
 
         WorldgenBiomeAnchorLocator locator = new WorldgenBiomeAnchorLocator();
+        BiomeAnchorSearchStepResult result = locator.searchStep(context, option, cursor, new SearchBudget(64, 1));
+
+        assertInstanceOf(BiomeAnchorSearchStepResult.Found.class, result);
+        BiomeAnchorSearchStepResult.Found found = (BiomeAnchorSearchStepResult.Found) result;
+        assertEquals(3072, found.anchor().blockX());
+        assertEquals(64, found.anchor().blockY());
+        assertEquals(1024, found.anchor().blockZ());
+    }
+
+    @Test
+    public void locatorPersistsScanPositionAcrossSteps() {
+        BiomeSource biomeSource = mock(BiomeSource.class);
+        Set<String> sampledPositions = new HashSet<>();
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any()))
+            .thenAnswer(invocation -> {
+                sampledPositions.add(invocation.getArgument(0) + ":" + invocation.getArgument(1) + ":" + invocation.getArgument(2));
+                return biomeHolder("minecraft:river");
+            });
+
+        WorldgenSearchContext context = testContext(biomeSource, List.of(64));
+        BiomeOption option = biomeOption("planicies", List.of("minecraft:plains"));
+        AllocationSearchCursor cursor = new AllocationSearchCursor("test-request");
+        cursor.setSectorX(0);
+        cursor.setSectorZ(0);
+        cursor.setAnchorAttempt(1300);
+
+        WorldgenBiomeAnchorLocator locator = new WorldgenBiomeAnchorLocator();
+        BiomeAnchorSearchStepResult first = locator.searchStep(context, option, cursor, new SearchBudget(64, 1));
+        int firstPointIndex = cursor.getAnchorSearchPointIndex();
+        int firstRing = cursor.getAnchorSearchRingQuart();
+        assertInstanceOf(BiomeAnchorSearchStepResult.Continue.class, first);
+
         locator.searchStep(context, option, cursor, new SearchBudget(64, 1));
 
-        verify(biomeSource).findBiomeHorizontal(
-            eq(3072), eq(64), eq(1024),
-            eq(BiomeCoordinateMath.blockToQuart(1300)),
-            eq(BiomeCoordinateMath.blockToQuart(64)),
-            any(), any(), eq(true), any()
+        assertTrue(firstPointIndex > 0 || firstRing > 0, "First step must advance the persisted scan position");
+        assertEquals(128, sampledPositions.size(), "Two steps must not rescan the same quart cells");
+    }
+
+    @Test
+    public void locatorFindsBiomeInsideLegacySixtyFourBlockGap() {
+        Holder<Biome> cherryHolder = biomeHolder("minecraft:cherry_grove");
+        Holder<Biome> riverHolder = biomeHolder("minecraft:river");
+        BiomeSource biomeSource = mock(BiomeSource.class);
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any()))
+            .thenAnswer(invocation -> invocation.getArgument(0).equals(BiomeCoordinateMath.blockToQuart(16))
+                && invocation.getArgument(1).equals(BiomeCoordinateMath.blockToQuart(64))
+                && invocation.getArgument(2).equals(BiomeCoordinateMath.blockToQuart(0))
+                ? cherryHolder : riverHolder);
+
+        AllocationSearchCursor cursor = new AllocationSearchCursor("test-request");
+        cursor.setSectorX(0);
+        cursor.setSectorZ(0);
+        cursor.setAnchorAttempt(64);
+
+        BiomeAnchorSearchStepResult result = new WorldgenBiomeAnchorLocator().searchStep(
+            testContext(biomeSource, List.of(64)),
+            biomeOption("cerejeira", List.of("minecraft:cherry_grove")),
+            cursor,
+            new SearchBudget(64, 1)
         );
+
+        assertInstanceOf(BiomeAnchorSearchStepResult.Found.class, result);
+        assertEquals(16, ((BiomeAnchorSearchStepResult.Found) result).anchor().blockX());
+        assertEquals(1, cursor.getLocateCallsUsed());
     }
 
     @Test
     public void sectorExhaustionAdvancesSectorIndex() {
         BiomeSource biomeSource = mock(BiomeSource.class);
-        when(biomeSource.findBiomeHorizontal(anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), anyBoolean(), any()))
-            .thenReturn(null);
+        Holder<Biome> riverHolder = biomeHolder("minecraft:river");
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any()))
+            .thenReturn(riverHolder);
 
         WorldgenSearchContext context = testContext(biomeSource, List.of(64));
         BiomeOption option = biomeOption("planicies", List.of("minecraft:plains"));
@@ -163,7 +262,7 @@ public class BiomeAnchorSearchRegressionTest {
         cursor.setCurrentSectorIndex(0);
         cursor.setSectorX(1000);
         cursor.setSectorZ(1000);
-        cursor.setAnchorAttempt(1300);
+        cursor.setAnchorAttempt(16);
         cursor.setLocalCandidateIndex(0);
 
         assertEquals(0, cursor.getCurrentSectorIndex());
@@ -172,7 +271,7 @@ public class BiomeAnchorSearchRegressionTest {
         WorldgenBiomeAnchorLocator locator = new WorldgenBiomeAnchorLocator();
         BiomeAnchorSearchStepResult result = locator.searchStep(
             context, option, cursor,
-            new SearchBudget(64, 1)
+            new SearchBudget(128, 1)
         );
 
         assertInstanceOf(BiomeAnchorSearchStepResult.Exhausted.class, result);
@@ -261,30 +360,32 @@ public class BiomeAnchorSearchRegressionTest {
     @Test
     public void stonyShoreLocatorReturnsFoundForStonyShore() {
         Holder<Biome> stonyShoreHolder = biomeHolder("minecraft:stony_shore");
-        Pair<BlockPos, Holder<Biome>> foundPair = Pair.of(new BlockPos(2000, 64, 2000), stonyShoreHolder);
-
         BiomeSource biomeSource = mock(BiomeSource.class);
-        when(biomeSource.findBiomeHorizontal(anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), anyBoolean(), any()))
-            .thenReturn(foundPair);
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any()))
+            .thenAnswer(invocation -> invocation.getArgument(0).equals(BiomeCoordinateMath.blockToQuart(64))
+                && invocation.getArgument(1).equals(BiomeCoordinateMath.blockToQuart(64))
+                && invocation.getArgument(2).equals(BiomeCoordinateMath.blockToQuart(0))
+                ? stonyShoreHolder : biomeHolder("minecraft:river"));
 
         WorldgenSearchContext context = testContext(biomeSource, List.of(64));
         BiomeOption option = biomeOption("costapedra", List.of("minecraft:stony_shore", "minecraft:stony_peaks"));
         AllocationSearchCursor cursor = new AllocationSearchCursor("test-request");
         cursor.setSectorX(0);
         cursor.setSectorZ(0);
-        cursor.setAnchorAttempt(1300);
+        cursor.setAnchorAttempt(64);
         cursor.setLocalCandidateIndex(0);
 
         WorldgenBiomeAnchorLocator locator = new WorldgenBiomeAnchorLocator();
         BiomeAnchorSearchStepResult result = locator.searchStep(
             context, option, cursor,
-            new SearchBudget(64, 1)
+            new SearchBudget(128, 1)
         );
 
         assertInstanceOf(BiomeAnchorSearchStepResult.Found.class, result,
             "Stony shore should be found when accepted biomes include stony_shore");
         BiomeAnchorSearchStepResult.Found found = (BiomeAnchorSearchStepResult.Found) result;
         assertEquals("minecraft:stony_shore", found.anchor().biomeId());
+        assertEquals(64, found.anchor().blockX());
         assertTrue(cursor.getCurrentAnchorX() != null);
         assertTrue(cursor.getAnchorsFound() == 0 || cursor.getAnchorsFound() >= 0);
     }
@@ -370,6 +471,29 @@ public class BiomeAnchorSearchRegressionTest {
     }
 
     @Test
+    public void cursorProgressSignatureChangesWhenBiomeScanAdvances() {
+        AllocationSearchCursor cursor = new AllocationSearchCursor("test-request");
+        cursor.setCurrentBandId("primary");
+        cursor.setCurrentSectorIndex(0);
+        cursor.setSectorX(1024);
+        cursor.setSectorZ(-1024);
+        cursor.setAnchorAttempt(1300);
+        cursor.setAnchorSearchIntervalQuart(4);
+        cursor.setAnchorSearchRingQuart(16);
+        cursor.setAnchorSearchPointIndex(5);
+        cursor.setTotalBiomeSamples(64);
+
+        String sig1 = progressSignature(cursor);
+
+        cursor.setAnchorSearchPointIndex(6);
+        cursor.setTotalBiomeSamples(65);
+        String sig2 = progressSignature(cursor);
+
+        assertNotEquals(sig1, sig2,
+            "Biome-source scan progress must prevent a false allocation-stuck warning");
+    }
+
+    @Test
     public void defaultLocateRadiusIsLargeEnoughToReachSectorEdge() {
         int sectorSize = 2048;
         int locateRadius = 1300;
@@ -384,6 +508,14 @@ public class BiomeAnchorSearchRegressionTest {
         return "VIRTUAL_SEARCHING"
             + "|" + cursor.getCurrentBandId()
             + "|" + cursor.getCurrentSectorIndex()
+            + "|" + cursor.getSectorX()
+            + "|" + cursor.getSectorZ()
+            + "|" + cursor.getAnchorAttempt()
+            + "|" + cursor.getAnchorSearchYIndex()
+            + "|" + cursor.getAnchorSearchRingQuart()
+            + "|" + cursor.getAnchorSearchPointIndex()
+            + "|" + cursor.getAnchorSearchIntervalQuart()
+            + "|" + cursor.getTotalBiomeSamples()
             + "|" + cursor.getCurrentAnchorX()
             + "|" + cursor.getCurrentAnchorY()
             + "|" + cursor.getCurrentAnchorZ()

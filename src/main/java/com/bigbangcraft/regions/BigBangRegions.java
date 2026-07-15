@@ -65,7 +65,9 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class BigBangRegions implements ModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions");
@@ -98,6 +100,21 @@ public class BigBangRegions implements ModInitializer {
     private static PermissionManager permissionManager;
     private static RegionMapIntegration regionMapIntegration;
     private static RegionFlagResolver flagResolver;
+
+    // Tip cooldown: 10s between advisory messages for unclaimed-area actions
+    private static final Map<String, Long> tipCooldowns = new ConcurrentHashMap<>();
+    private static final long TIP_COOLDOWN_MS = 10000L;
+
+    private static void sendTipWithCooldown(ServerPlayer player, String tipKey, String message) {
+        String key = player.getUUID().toString() + ":" + tipKey;
+        long now = System.currentTimeMillis();
+        Long lastTime = tipCooldowns.get(key);
+        if (lastTime != null && (now - lastTime) < TIP_COOLDOWN_MS) {
+            return;
+        }
+        tipCooldowns.put(key, now);
+        player.sendSystemMessage(net.minecraft.network.chat.Component.literal(message));
+    }
 
     public static PermissionManager getPermissionManager() {
         return permissionManager;
@@ -331,6 +348,7 @@ public class BigBangRegions implements ModInitializer {
             }
             if (server.getTickCount() % 200 == 0) {
                 MessageHelper.cleanCache();
+                tipCooldowns.clear();
                 if (allocationCoordinator != null) {
                     allocationCoordinator.cleanCooldowns();
                 }
@@ -408,12 +426,10 @@ public class BigBangRegions implements ModInitializer {
         if (result.getDecision() == ProtectionDecision.NO_REGION) {
             if (dimension.equals("minecraft:overworld")) {
                 if (action == RegionAction.BLOCK_PLACE) {
-                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cPara construir digite /region e escolha um terreno"));
-                    return false;
+                    sendTipWithCooldown(player, "build", "§cPara construir digite /region e escolha um terreno");
                 }
                 if (action == RegionAction.BLOCK_BREAK) {
-                    player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cPara minerar digite /minerar"));
-                    return false;
+                    sendTipWithCooldown(player, "mine", "§cPara minerar digite /minerar");
                 }
             }
             return true;
