@@ -43,10 +43,8 @@ public class RegionMainMenu extends ChestMenu {
         container.setItem(11, button(Items.COMPASS, "§a§lIr para meu terreno",
             "§7Teleportar para o spawn seguro"));
         container.setItem(13, button(Items.PLAYER_HEAD, "§b§lMembros",
-            "§7Ver e gerenciar membros"));
-        container.setItem(15, button(Items.PAPER, "§d§lConvites",
-            "§7Ver convites pendentes e enviar convites"));
-        container.setItem(17, button(Items.COMPARATOR, "§e§lFlags",
+            "§7Gerenciar membros, convites e cargos"));
+        container.setItem(15, button(Items.COMPARATOR, "§e§lFlags",
             "§7Configurar permissões da região"));
         container.setItem(22, button(Items.BOOK, "§6§lInformações",
             "§7Ver informações e limites do terreno"));
@@ -115,8 +113,6 @@ public class RegionMainMenu extends ChestMenu {
         } else if (slotId == 13) {
             RegionGuiHandler.openMembersMenu(serverPlayer, region);
         } else if (slotId == 15) {
-            RegionGuiHandler.openInvitesMenu(serverPlayer, region);
-        } else if (slotId == 17) {
             RegionGuiHandler.openFlagsMenu(serverPlayer, region);
         } else if (slotId == 22) {
             serverPlayer.closeContainer();

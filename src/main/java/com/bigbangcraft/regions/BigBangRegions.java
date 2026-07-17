@@ -10,7 +10,6 @@ import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.flag.FlagResolver;
-import com.bigbangcraft.regions.flag.RegionAccessPolicyService;
 import com.bigbangcraft.regions.flag.RegionFlagResolver;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.protection.*;
@@ -83,7 +82,6 @@ public class BigBangRegions implements ModInitializer {
     private static RegionRoleResolver roleResolver;
     private static RegionMembershipService membershipService;
     private static RegionInviteService inviteService;
-    private static RegionAccessPolicyService accessPolicyService;
     private static RegionAccessService regionAccessService;
     private static TerrainAllocationCoordinator allocationCoordinator;
     private static AllocationScheduler allocationScheduler;
@@ -138,10 +136,6 @@ public class BigBangRegions implements ModInitializer {
 
     public static RegionAccessService getRegionAccessService() {
         return regionAccessService;
-    }
-
-    public static RegionAccessPolicyService getAccessPolicyService() {
-        return accessPolicyService;
     }
 
     public static RegionInviteService getInviteService() {
@@ -284,9 +278,8 @@ public class BigBangRegions implements ModInitializer {
         roleResolver = new RegionRoleResolver(membershipCache);
         membershipService = new RegionMembershipService(regionRepository, membershipCache, auditService, roleResolver);
         regionAccessService = new RegionAccessService(roleResolver, flagResolver, configManager);
-        accessPolicyService = new RegionAccessPolicyService(permissionManager, roleResolver, flagResolver, configManager);
         inviteService = new RegionInviteService(regionInviteRepository, regionRepository, regionCache, membershipCache, roleResolver, auditService);
-        protectionService = new ProtectionService(regionResolver, permissionManager, accessPolicyService, roleResolver);
+        protectionService = new ProtectionService(regionResolver, permissionManager, regionAccessService, roleResolver);
 
         // 8. Region Entry/Exit notification service
         entryExitService = new RegionEntryExitService(regionCache, roleResolver, configManager);

@@ -4,6 +4,8 @@ import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
+import com.bigbangcraft.regions.region.RegionMembershipService;
+import com.bigbangcraft.regions.region.RegionRoleResolver;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -45,9 +47,13 @@ public class RegionMembersMenu extends ChestMenu {
             container.setItem(i, glass.copy());
         }
 
-        container.setItem(11, button(Items.PLAYER_HEAD, "§a§lConvidar membro", "§7Convidar jogador online"));
-        container.setItem(13, button(Items.BARRIER, "§c§lRemover membro", "§7Remove um membro clicando em um item"));
-        container.setItem(15, button(Items.NAME_TAG, "§e§lAlterar cargo", "§7Ainda em desenvolvimento"));
+        container.setItem(11, button(Items.PLAYER_HEAD, "§a§lConvidar membro",
+            "§7Envia convite para jogadores online"));
+        container.setItem(13, button(Items.BARRIER, "§c§lRemover membro",
+            "§7Clique Esquerdo no membro abaixo para remover"));
+        container.setItem(15, button(Items.NAME_TAG, "§e§lAlterar cargo",
+            "§7Clique Direito: promover um nivel",
+            "§7Shift + Esquerdo: rebaixar um nivel"));
         container.setItem(22, button(Items.BOOK, "§b§lListar membros", "§7Mostra membros no chat"));
 
         int slot = 18;
@@ -62,8 +68,10 @@ public class RegionMembersMenu extends ChestMenu {
             List<Component> lore = new ArrayList<>();
             lore.add(Component.literal("§7Status: " + (online != null ? "§aOnline" : "§7Offline")));
             lore.add(Component.literal("§7Cargo: §f" + member.getRole().name()));
-            lore.add(Component.literal("§7Clique esquerdo para remover"));
-            lore.add(Component.literal("§7Clique direito para transferir dono"));
+            lore.add(Component.literal("§7Clique Esquerdo: §cremover"));
+            lore.add(Component.literal("§7Clique Direito: §epromover"));
+            lore.add(Component.literal("§7Shift+Esquerdo: §6rebaixar"));
+            lore.add(Component.literal("§7Shift+Direito: §ctransferir dono"));
             head.set(DataComponents.LORE, new ItemLore(lore));
             container.setItem(slot, head);
             slotToMember.put(slot, member.getUuid());
@@ -71,13 +79,24 @@ public class RegionMembersMenu extends ChestMenu {
         }
     }
 
-    private ItemStack button(net.minecraft.world.item.Item item, String name, String loreLine) {
+    private ItemStack button(net.minecraft.world.item.Item item, String name, String... loreLines) {
         ItemStack stack = new ItemStack(item);
         stack.set(DataComponents.CUSTOM_NAME, Component.literal(name));
         List<Component> lore = new ArrayList<>();
-        lore.add(Component.literal(loreLine));
+        for (String loreLine : loreLines) {
+            lore.add(Component.literal(loreLine));
+        }
         stack.set(DataComponents.LORE, new ItemLore(lore));
         return stack;
+    }
+
+    private Region freshRegion() {
+        Region cached = BigBangRegions.getRegionCache().get(region.getId());
+        return cached != null ? cached : region;
+    }
+
+    private RegionRole currentRole(UUID target) {
+        return BigBangRegions.getRoleResolver().resolveRole(region, target);
     }
 
     @Override
@@ -93,7 +112,7 @@ public class RegionMembersMenu extends ChestMenu {
         }
         if (slotId == 22) {
             serverPlayer.closeContainer();
-            serverPlayer.sendSystemMessage(Component.literal("§eMembros da região:"));
+            serverPlayer.sendSystemMessage(Component.literal("§eMembros da regiao:"));
             for (RegionMember member : region.getMembers().values()) {
                 ServerPlayer online = serverPlayer.getServer().getPlayerList().getPlayer(member.getUuid());
                 String name = online != null ? online.getGameProfile().getName() : member.getUuid().toString();
@@ -107,18 +126,55 @@ public class RegionMembersMenu extends ChestMenu {
             if (target == null) {
                 return;
             }
+
+            RegionMembershipService ms = BigBangRegions.getMembershipService();
+            UUID actorUuid = serverPlayer.getUUID();
+            boolean isQuickMove = clickType == ClickType.QUICK_MOVE && button == 0;
+            boolean shift = clickType == ClickType.QUICK_MOVE;
+            boolean right = button == 1;
+
             try {
-                if (button == 1) {
-                    BigBangRegions.getInviteService().sendInvite(region, serverPlayer.getUUID(), target, RegionRole.OWNER, 86400000L);
-                    serverPlayer.sendSystemMessage(Component.literal("§aPedido de transferência enviado. O novo dono precisa aceitar."));
+                if (right && shift) {
+                    BigBangRegions.getInviteService().sendInvite(region, actorUuid, target, RegionRole.OWNER, 86400000L);
+                    serverPlayer.sendSystemMessage(Component.literal("§aPedido de transferencia enviado. O novo dono precisa aceitar."));
+                } else if (right) {
+                    RegionRole currentRole = currentRole(target);
+                    RegionRole newRole = nextPromotion(currentRole);
+                    if (newRole == currentRole) {
+                        serverPlayer.sendSystemMessage(Component.literal("§cEste membro ja tem o cargo maximo."));
+                    } else {
+                        ms.setRole(region, actorUuid, target, newRole, false);
+                        serverPlayer.sendSystemMessage(Component.literal("§aMembro promovido para " + newRole.name() + "."));
+                    }
+                } else if (isQuickMove) {
+                    RegionRole currentRole = currentRole(target);
+                    RegionRole newRole = nextDemotion(currentRole);
+                    if (newRole == currentRole) {
+                        serverPlayer.sendSystemMessage(Component.literal("§cEste membro ja tem o cargo minimo."));
+                    } else {
+                        ms.setRole(region, actorUuid, target, newRole, false);
+                        serverPlayer.sendSystemMessage(Component.literal("§aMembro rebaixado para " + newRole.name() + "."));
+                    }
                 } else {
-                    BigBangRegions.getMembershipService().removeMember(region, serverPlayer.getUUID(), target, false);
+                    ms.removeMember(region, actorUuid, target, false);
                     serverPlayer.sendSystemMessage(Component.literal("§aMembro removido."));
                 }
-                RegionGuiHandler.openMembersMenu(serverPlayer, region);
+                RegionGuiHandler.openMembersMenu(serverPlayer, freshRegion());
             } catch (Exception e) {
                 serverPlayer.sendSystemMessage(Component.literal("§c" + e.getMessage()));
             }
         }
+    }
+
+    private static RegionRole nextPromotion(RegionRole current) {
+        if (current == RegionRole.MEMBER) return RegionRole.MANAGER;
+        if (current == RegionRole.MANAGER) return RegionRole.LEADER;
+        return current;
+    }
+
+    private static RegionRole nextDemotion(RegionRole current) {
+        if (current == RegionRole.LEADER) return RegionRole.MANAGER;
+        if (current == RegionRole.MANAGER) return RegionRole.MEMBER;
+        return current;
     }
 }

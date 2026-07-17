@@ -27,6 +27,10 @@ public class RegionFlagCategoryMenu extends ChestMenu {
     private final Region region;
     private final String category;
 
+    private static final List<String> VISITOR_FLAGS = List.of(
+        "visitor-build", "visitor-usage", "visitor-item-frames", "visitor-armor-stands"
+    );
+
     public RegionFlagCategoryMenu(int containerId, Inventory playerInventory, ServerPlayer player, Region region, String category) {
         super(MenuType.GENERIC_9x3, containerId, playerInventory, new SimpleContainer(27), 3);
         this.player = player;
@@ -52,7 +56,12 @@ public class RegionFlagCategoryMenu extends ChestMenu {
             stack.set(DataComponents.CUSTOM_NAME, Component.literal("§e" + def.getId() + " §7[" + current + "]"));
             List<Component> lore = new ArrayList<>();
             lore.add(Component.literal("§7" + def.getDescription()));
-            lore.add(Component.literal("§7Clique para alternar/gerenciar"));
+            if (VISITOR_FLAGS.contains(def.getId())) {
+                lore.add(Component.literal("§8Afeta apenas visitantes — membros e donos sempre tem acesso."));
+                lore.add(Component.literal("§8Shift+Clique para alterar"));
+            } else {
+                lore.add(Component.literal("§7Clique para alternar"));
+            }
             stack.set(DataComponents.LORE, new ItemLore(lore));
             container.setItem(slots[i], stack);
         }
@@ -71,6 +80,15 @@ public class RegionFlagCategoryMenu extends ChestMenu {
                     serverPlayer.sendSystemMessage(Component.literal("§eFlag de tipo " + def.getValueType() + " ainda nao possui editor visual."));
                     return;
                 }
+
+                boolean isVisitorFlag = VISITOR_FLAGS.contains(def.getId());
+                boolean isShiftClick = clickType == ClickType.QUICK_MOVE;
+
+                if (isVisitorFlag && !isShiftClick) {
+                    serverPlayer.sendSystemMessage(Component.literal("§eUse Shift+Clique para alterar esta flag. Ela afeta apenas visitantes."));
+                    return;
+                }
+
                 String current = region.getFlagValue(def.getId());
                 String next = "ALLOW".equalsIgnoreCase(current) ? "DENY" : "ALLOW";
                 region.setFlag(def.getId(), next);

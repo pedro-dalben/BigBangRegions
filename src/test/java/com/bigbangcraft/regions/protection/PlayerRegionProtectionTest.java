@@ -122,7 +122,7 @@ public class PlayerRegionProtectionTest {
     }
 
     @Test
-    public void testMemberBlockedWithFlagDeny() {
+    public void testMemberNotBlockedWithFlagDeny() {
         Level level = mockLevel();
         ServerPlayer player = mockPlayer(member, level);
         BlockPos pos = new BlockPos(5, 5, 5);
@@ -133,12 +133,12 @@ public class PlayerRegionProtectionTest {
                 .player(player)
                 .build();
         ProtectionResult result = protectionService.check(context);
-        assertFalse(result.isAllowed());
-        assertEquals("DENY_REASON_REGION_FLAG", result.getReason());
+        assertTrue(result.isAllowed());
+        assertEquals("ALLOW_REASON_MEMBER", result.getReason());
     }
 
     @Test
-    public void testOwnerBlockedWithFlagDeny() {
+    public void testOwnerNotBlockedWithFlagDeny() {
         Level level = mockLevel();
         ServerPlayer player = mockPlayer(owner, level);
         BlockPos pos = new BlockPos(5, 5, 5);
@@ -149,8 +149,8 @@ public class PlayerRegionProtectionTest {
                 .player(player)
                 .build();
         ProtectionResult result = protectionService.check(context);
-        assertFalse(result.isAllowed());
-        assertEquals("DENY_REASON_REGION_FLAG", result.getReason());
+        assertTrue(result.isAllowed());
+        assertEquals("ALLOW_REASON_OWNER", result.getReason());
     }
 
     @Test

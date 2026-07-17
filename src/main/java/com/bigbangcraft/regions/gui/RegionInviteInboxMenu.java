@@ -1,6 +1,7 @@
 package com.bigbangcraft.regions.gui;
 
 import com.bigbangcraft.regions.BigBangRegions;
+import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.invite.RegionInvite;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -41,9 +42,14 @@ public class RegionInviteInboxMenu extends ChestMenu {
         for (RegionInvite invite : invites) {
             if (slot >= 27) break;
             ItemStack stack = new ItemStack(Items.PAPER);
-            stack.set(DataComponents.CUSTOM_NAME, Component.literal("§e" + invite.getRegionId()));
+
+            String regionName = regionDisplayName(invite.getRegionId());
+            String inviterName = playerName(invite.getInvitedByUuid());
+
+            stack.set(DataComponents.CUSTOM_NAME, Component.literal("§e" + regionName));
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.literal("§7Cargo: §f" + invite.getRole().name()));
+            lore.add(Component.literal("§7Convidado por: §f" + inviterName));
+            lore.add(Component.literal("§7Cargo oferecido: §f" + invite.getRole().name()));
             lore.add(Component.literal("§7Clique esquerdo para aceitar"));
             lore.add(Component.literal("§7Clique direito para recusar"));
             stack.set(DataComponents.LORE, new ItemLore(lore));
@@ -76,5 +82,21 @@ public class RegionInviteInboxMenu extends ChestMenu {
             }
             inviteSlot++;
         }
+    }
+
+    private String playerName(java.util.UUID uuid) {
+        ServerPlayer online = player.getServer().getPlayerList().getPlayer(uuid);
+        if (online != null) {
+            return online.getGameProfile().getName();
+        }
+        return uuid.toString().substring(0, 8);
+    }
+
+    private static String regionDisplayName(String regionId) {
+        Region region = BigBangRegions.getRegionCache().get(regionId);
+        if (region != null) {
+            return region.getName() + " (" + regionId + ")";
+        }
+        return regionId;
     }
 }

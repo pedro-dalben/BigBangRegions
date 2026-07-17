@@ -9,6 +9,9 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 public class ConfigManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-Config");
@@ -43,6 +46,7 @@ public class ConfigManager {
                 }
                 this.config = parsed;
                 LOGGER.info("Configuration loaded successfully from {}", configFile);
+                applyMigrations(this.config);
             } catch (Exception e) {
                 LOGGER.error("Failed to parse configuration file. Using safe fallback defaults. Error details: ", e);
                 // Safe fallback: keep the default config created in constructor
@@ -50,6 +54,30 @@ public class ConfigManager {
         } catch (IOException e) {
             LOGGER.error("Failed to read or create configuration directory/file: ", e);
         }
+    }
+
+    private static final List<String> VISITOR_FLAGS = Arrays.asList(
+        "visitor-build", "visitor-usage", "visitor-item-frames", "visitor-armor-stands"
+    );
+
+    private void applyMigrations(Config config) {
+        if (config.getSchemaVersion() >= 2) return;
+
+        LOGGER.info("Migrating configuration from schema v{} to v2", config.getSchemaVersion());
+
+        for (Map<String, String> section : Arrays.asList(
+            config.getDefaults().getGlobal(),
+            config.getDefaults().getAdminRegion(),
+            config.getDefaults().getPlayerRegion()
+        )) {
+            for (String flag : VISITOR_FLAGS) {
+                section.put(flag, "DENY");
+            }
+        }
+
+        config.setSchemaVersion(2);
+        save();
+        LOGGER.info("Config migrated to schema v2 and saved.");
     }
 
     public void save() {

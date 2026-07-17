@@ -1,10 +1,7 @@
 package com.bigbangcraft.regions.protection;
 
-import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
-import com.bigbangcraft.regions.domain.RegionRole;
-import com.bigbangcraft.regions.flag.RegionAccessPolicyService;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.region.RegionResolver;
 import com.bigbangcraft.regions.region.RegionRoleResolver;
@@ -17,7 +14,6 @@ public class ProtectionService {
     private final RegionResolver regionResolver;
     private final PermissionManager permissionManager;
     private final RegionAccessService accessService;
-    private final RegionAccessPolicyService accessPolicyService;
     private final RegionRoleResolver roleResolver;
 
     public ProtectionService(RegionResolver regionResolver, PermissionManager permissionManager,
@@ -25,25 +21,14 @@ public class ProtectionService {
         this.regionResolver = regionResolver;
         this.permissionManager = permissionManager;
         this.accessService = accessService;
-        this.accessPolicyService = null;
         this.roleResolver = null;
     }
 
     public ProtectionService(RegionResolver regionResolver, PermissionManager permissionManager,
-                             RegionAccessPolicyService accessPolicyService) {
+                             RegionAccessService accessService, RegionRoleResolver roleResolver) {
         this.regionResolver = regionResolver;
         this.permissionManager = permissionManager;
-        this.accessService = null;
-        this.accessPolicyService = accessPolicyService;
-        this.roleResolver = null;
-    }
-
-    public ProtectionService(RegionResolver regionResolver, PermissionManager permissionManager,
-                             RegionAccessPolicyService accessPolicyService, RegionRoleResolver roleResolver) {
-        this.regionResolver = regionResolver;
-        this.permissionManager = permissionManager;
-        this.accessService = null;
-        this.accessPolicyService = accessPolicyService;
+        this.accessService = accessService;
         this.roleResolver = roleResolver;
     }
 
@@ -78,16 +63,6 @@ public class ProtectionService {
             if (action == RegionAction.BLOCK_BREAK || action == RegionAction.BLOCK_PLACE || action == RegionAction.PVP) {
                 return new ProtectionResult(ProtectionDecision.DENY, "Unknown actor performing destructive action", region, flagId);
             }
-        }
-
-        if (accessPolicyService != null) {
-            boolean allowed = accessPolicyService.canPerform(player, region, action, context);
-            return new ProtectionResult(
-                allowed ? ProtectionDecision.ALLOW : ProtectionDecision.DENY,
-                allowed ? "ALLOW_REASON_POLICY" : "DENY_REASON_REGION_POLICY",
-                region,
-                flagId
-            );
         }
 
         java.util.UUID playerUuid = player != null ? player.getUUID() : null;

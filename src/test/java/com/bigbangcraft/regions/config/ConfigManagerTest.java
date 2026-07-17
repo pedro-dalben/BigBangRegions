@@ -25,9 +25,9 @@ public class ConfigManagerTest {
 
         Config config = manager.getConfig();
         assertNotNull(config);
-        assertEquals(1, config.getSchemaVersion());
+        assertEquals(2, config.getSchemaVersion());
         assertEquals(1000, config.getDefaultPriorities().getAdminRegion());
-        assertEquals("ALLOW", config.getDefaults().getGlobal().get("visitor-build"));
+        assertEquals("DENY", config.getDefaults().getGlobal().get("visitor-build"));
         assertEquals("DENY", config.getDefaults().getAdminRegion().get("visitor-build"));
         assertEquals("ALLOW", config.getDefaults().getGlobal().get("explosion-block-damage"));
         assertEquals("DENY", config.getDefaults().getAdminRegion().get("explosion-block-damage"));

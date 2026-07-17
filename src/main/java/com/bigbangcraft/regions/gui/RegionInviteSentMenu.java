@@ -44,9 +44,12 @@ public class RegionInviteSentMenu extends ChestMenu {
         for (RegionInvite invite : invites) {
             if (slot >= 27) break;
             ItemStack stack = new ItemStack(Items.PAPER);
-            stack.set(DataComponents.CUSTOM_NAME, Component.literal("§e" + invite.getInvitedUuid()));
+
+            String invitedName = playerName(invite.getInvitedUuid());
+
+            stack.set(DataComponents.CUSTOM_NAME, Component.literal("§e" + invitedName));
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.literal("§7Cargo: §f" + invite.getRole().name()));
+            lore.add(Component.literal("§7Cargo oferecido: §f" + invite.getRole().name()));
             lore.add(Component.literal("§7Clique para cancelar"));
             stack.set(DataComponents.LORE, new ItemLore(lore));
             container.setItem(slot++, stack);
@@ -73,5 +76,13 @@ public class RegionInviteSentMenu extends ChestMenu {
             }
             inviteSlot++;
         }
+    }
+
+    private String playerName(java.util.UUID uuid) {
+        ServerPlayer online = player.getServer().getPlayerList().getPlayer(uuid);
+        if (online != null) {
+            return online.getGameProfile().getName();
+        }
+        return uuid.toString().substring(0, 8);
     }
 }

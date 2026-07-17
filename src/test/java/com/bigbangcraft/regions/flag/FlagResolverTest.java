@@ -61,7 +61,7 @@ public class FlagResolverTest {
     public void testInheritanceWithNoRegion() {
         // Null region (Global coordinate check)
         EffectiveRegionPolicy policy = flagResolver.resolve(null, "visitor-build", config);
-        assertEquals(FlagPolicy.ALLOW, policy.policy()); // global config is ALLOW
+        assertEquals(FlagPolicy.DENY, policy.policy()); // global config is DENY
         assertEquals("global_default", policy.source());
     }
 

@@ -12,7 +12,7 @@ import java.util.Set;
 public class Config {
     public static final int BIOME_SEARCH_VALIDATION_SCHEMA_VERSION = 1;
 
-    private int schemaVersion = 1;
+    private int schemaVersion = 2;
     private DefaultPriorities defaultPriorities = new DefaultPriorities();
     private Permissions permissions = new Permissions();
     private Defaults defaults = new Defaults();
@@ -135,10 +135,10 @@ public class Config {
         private Map<String, String> playerRegion = new HashMap<>();
         public Defaults() {
             // Global default policies
-            global.put("visitor-build", "ALLOW");
-            global.put("visitor-usage", "ALLOW");
-            global.put("visitor-item-frames", "ALLOW");
-            global.put("visitor-armor-stands", "ALLOW");
+            global.put("visitor-build", "DENY");
+            global.put("visitor-usage", "DENY");
+            global.put("visitor-item-frames", "DENY");
+            global.put("visitor-armor-stands", "DENY");
             global.put("pvp", "ALLOW");
             global.put("fire-spread", "ALLOW");
             global.put("fire-block-damage", "ALLOW");
@@ -173,10 +173,10 @@ public class Config {
             adminRegion.put("visitor-drop-items", "ALLOW");
 
             // Player Region default policies
-            playerRegion.put("visitor-build", "ALLOW");
-            playerRegion.put("visitor-usage", "ALLOW");
-            playerRegion.put("visitor-item-frames", "ALLOW");
-            playerRegion.put("visitor-armor-stands", "ALLOW");
+            playerRegion.put("visitor-build", "DENY");
+            playerRegion.put("visitor-usage", "DENY");
+            playerRegion.put("visitor-item-frames", "DENY");
+            playerRegion.put("visitor-armor-stands", "DENY");
             playerRegion.put("pvp", "DENY");
             playerRegion.put("fire-spread", "DENY");
             playerRegion.put("fire-block-damage", "DENY");
@@ -694,6 +694,7 @@ public class Config {
     private JourneyMapConfig journeyMap = new JourneyMapConfig();
 
     public int getSchemaVersion() { return schemaVersion; }
+    public void setSchemaVersion(int schemaVersion) { this.schemaVersion = schemaVersion; }
     public DefaultPriorities getDefaultPriorities() { return defaultPriorities; }
     public Permissions getPermissions() { return permissions; }
     public Defaults getDefaults() { return defaults; }

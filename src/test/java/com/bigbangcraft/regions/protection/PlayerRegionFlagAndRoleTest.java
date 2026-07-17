@@ -134,8 +134,10 @@ public class PlayerRegionFlagAndRoleTest {
                 assertTrue(protectionService.check(memberContext).isAllowed(), "Member should be allowed on " + action);
             }
 
-            region.setFlag(action.getFlagId(), "DENY");
-            assertFalse(protectionService.check(memberContext).isAllowed(), "Member should be blocked on " + action + " when flag is DENY");
+            if (flagDriven) {
+                region.setFlag(action.getFlagId(), "DENY");
+                assertFalse(protectionService.check(memberContext).isAllowed(), "Member should be blocked on " + action + " when flag is DENY");
+            }
 
             region.setFlag(action.getFlagId(), "INHERIT");
         }
