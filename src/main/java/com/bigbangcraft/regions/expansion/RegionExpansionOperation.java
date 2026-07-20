@@ -1,6 +1,7 @@
 package com.bigbangcraft.regions.expansion;
 
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 
 public class RegionExpansionOperation {
     private final String operationId;
@@ -80,6 +81,13 @@ public class RegionExpansionOperation {
     public String getOperationId() { return operationId; }
     public String getRegionId() { return regionId; }
     public UUID getOwnerUuid() { return ownerUuid; }
+    public UUID getPaymentOperationUuid() {
+        try {
+            return UUID.fromString(operationId);
+        } catch (IllegalArgumentException ignored) {
+            return UUID.nameUUIDFromBytes(operationId.getBytes(StandardCharsets.UTF_8));
+        }
+    }
     public String getPlotSlotId() { return plotSlotId; }
     public String getDimensionKey() { return dimensionKey; }
 

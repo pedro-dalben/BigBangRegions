@@ -206,6 +206,7 @@ public class RegionsCommand {
                 )
             )
             .then(Commands.literal("info").executes(RegionsCommand::showInfo))
+            .then(Commands.literal("amigos").executes(context -> openFriendsMenu(context)))
             .then(Commands.literal("list")
                 .executes(context -> listRegions(context, 1))
                 .then(Commands.argument("page", IntegerArgumentType.integer(1))
@@ -327,9 +328,6 @@ public class RegionsCommand {
         }
         if (isCommandEnabled("expandir")) {
             builder.then(Commands.literal("expandir")
-                .then(Commands.argument("tamanho", IntegerArgumentType.integer(1, 256))
-                    .executes(RegionsCommand::beginExpansion)
-                )
                 .then(Commands.literal("status")
                     .executes(RegionsCommand::expansionStatus)
                 )
@@ -385,6 +383,25 @@ public class RegionsCommand {
         dispatcher.register(Commands.literal("regioes").redirect(mainNode));
 
         dispatcher.register(Commands.literal("region")
+            .then(Commands.literal("player")
+                .requires(source -> checkPermission(source, "bigbangregions.admin.chunkloader"))
+                .then(Commands.argument("player", StringArgumentType.word())
+                    .then(Commands.literal("addchunk")
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(1))
+                            .executes(RegionsCommand::addChunkLoaderCredits)))
+                    .then(Commands.literal("chunkquota")
+                        .executes(RegionsCommand::showChunkLoaderQuota))
+                    .then(Commands.literal("chunkstatus")
+                        .executes(RegionsCommand::showChunkLoaderQuota))))
+            .then(Commands.literal("amigos")
+                .executes(RegionsCommand::openFriendsMenu))
+            .then(Commands.literal("convite")
+                .then(Commands.literal("aceitar")
+                    .then(Commands.argument("inviteId", StringArgumentType.word())
+                        .executes(context -> respondToInvite(context, true))))
+                .then(Commands.literal("recusar")
+                    .then(Commands.argument("inviteId", StringArgumentType.word())
+                        .executes(context -> respondToInvite(context, false)))))
             .then(Commands.literal("cancelar")
                 .executes(context -> {
                     CommandSourceStack source = context.getSource();
@@ -485,6 +502,54 @@ public class RegionsCommand {
                 return 1;
             })
         );
+    }
+
+    private static int addChunkLoaderCredits(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        String name = StringArgumentType.getString(context, "player");
+        var profile = source.getServer().getProfileCache().get(name).orElse(null);
+        if (profile == null) {
+            source.sendFailure(Component.literal("Jogador não encontrado: " + name));
+            return 0;
+        }
+        int amount = IntegerArgumentType.getInteger(context, "amount");
+        BigBangRegions.getChunkLoaderService().addCredits(profile.getId(), amount);
+        source.sendSuccess(() -> Component.literal("§aAdicionados " + amount + " créditos de chunk loader para " + name + "."), true);
+        return 1;
+    }
+
+    private static int showChunkLoaderQuota(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        String name = StringArgumentType.getString(context, "player");
+        var profile = source.getServer().getProfileCache().get(name).orElse(null);
+        if (profile == null) {
+            source.sendFailure(Component.literal("Jogador não encontrado: " + name));
+            return 0;
+        }
+
+        var service = BigBangRegions.getChunkLoaderService();
+        Region region = service.ownedRegionFor(profile.getId());
+        ServerPlayer online = source.getServer().getPlayerList().getPlayer(profile.getId());
+        int extras = service.extraCredits(profile.getId());
+        source.sendSuccess(() -> Component.literal("§6=== Chunk Loader: " + name + " ==="), false);
+        source.sendSuccess(() -> Component.literal("§eCréditos extras: §f" + extras), false);
+        if (online == null) {
+            source.sendSuccess(() -> Component.literal("§7Permissão base: jogador offline (indisponível)"), false);
+        } else {
+            int permission = service.permissionCredits(online);
+            int selected = region == null ? 0 : service.selectedCount(region);
+            int available = Math.max(0, permission + extras - selected);
+            source.sendSuccess(() -> Component.literal("§ePermissão base: §f" + permission), false);
+            source.sendSuccess(() -> Component.literal("§eQuota total: §f" + (permission + extras)), false);
+            source.sendSuccess(() -> Component.literal("§eSelecionados: §f" + selected + " §7| Disponíveis: §f" + available), false);
+        }
+        if (region == null) {
+            source.sendSuccess(() -> Component.literal("§7Região de jogador ativa: nenhuma"), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("§eRegião: §f" + region.getId() + " §7| Chunks da região: §f" + service.regionChunkCount(region)), false);
+            source.sendSuccess(() -> Component.literal("§eChunks carregados agora: §f" + service.loadedCount(region)), false);
+        }
+        return 1;
     }
 
     private static String formatPlayerAllocationStatus(com.bigbangcraft.regions.allocation.AllocationStatusSnapshot snapshot) {
@@ -733,6 +798,7 @@ public class RegionsCommand {
             }
 
             UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
+            BigBangRegions.getChunkLoaderService().onRegionDeleted(source.getServer(), region);
             BigBangRegions.getAllocationCoordinator().deleteRegionAsAdmin(region, level, actorUuid);
             auditService.log(region.getId(), actorUuid, "DELETE_REGION", region.getType().name(), null, null);
             deleted++;
@@ -1017,13 +1083,7 @@ public class RegionsCommand {
 
         try {
             configManager.load();
-            regionCache.clear();
-            BigBangRegions.getMembershipCache().clear();
-            List<Region> reloaded = regionRepository.loadAll();
-            for (Region region : reloaded) {
-                regionCache.add(region);
-                BigBangRegions.getMembershipCache().loadFromRegion(region);
-            }
+            regionRepository.reloadCaches(regionCache, BigBangRegions.getMembershipCache());
 
             UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
             auditService.log(null, actorUuid, "RELOAD", null, null, null);
@@ -1032,6 +1092,39 @@ public class RegionsCommand {
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("Erro ao recarregar o mod. Veja os logs para mais detalhes."));
+            return 0;
+        }
+    }
+
+    private static int openFriendsMenu(CommandContext<CommandSourceStack> context) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null) {
+            context.getSource().sendFailure(Component.literal("Apenas jogadores podem usar este menu."));
+            return 0;
+        }
+        com.bigbangcraft.regions.gui.RegionGuiHandler.openFriendsMenu(player);
+        return 1;
+    }
+
+    private static int respondToInvite(CommandContext<CommandSourceStack> context, boolean accept) {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player == null) {
+            context.getSource().sendFailure(Component.literal("Apenas jogadores podem responder a convites."));
+            return 0;
+        }
+        String inviteId = StringArgumentType.getString(context, "inviteId");
+        try {
+            if (accept) {
+                player.sendSystemMessage(Component.literal("§eAo aceitar, você receberá permissão para modificar esta região."));
+                BigBangRegions.getInviteService().acceptInvite(inviteId, player.getUUID());
+                player.sendSystemMessage(Component.literal("§aConvite aceito."));
+            } else {
+                BigBangRegions.getInviteService().declineInvite(inviteId, player.getUUID());
+                player.sendSystemMessage(Component.literal("§cConvite recusado."));
+            }
+            return 1;
+        } catch (Exception e) {
+            context.getSource().sendFailure(Component.literal("§c" + e.getMessage()));
             return 0;
         }
     }

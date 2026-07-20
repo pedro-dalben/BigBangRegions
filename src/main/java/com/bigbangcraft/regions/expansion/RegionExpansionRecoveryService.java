@@ -87,13 +87,9 @@ public class RegionExpansionRecoveryService {
 
     private void reloadRegionsFromDb() {
         try {
-            List<Region> regions = regionRepository.loadAll();
-            for (Region r : regions) {
-                regionCache.add(r);
-                membershipCache.loadFromRegion(r);
-            }
+            regionRepository.reloadCaches(regionCache, membershipCache);
         } catch (Exception e) {
-            LOGGER.error("Expansion recovery: failed to reload regions from database.", e);
+            LOGGER.error("Expansion recovery: failed to reload regions and members; existing caches were preserved.", e);
         }
     }
 
@@ -151,7 +147,7 @@ public class RegionExpansionRecoveryService {
         }
 
         LandPaymentReleaseRequest req = new LandPaymentReleaseRequest(
-            UUID.fromString(op.getOperationId()),
+            op.getPaymentOperationUuid(),
             reservationId,
             releaseKey
         );
@@ -207,11 +203,7 @@ public class RegionExpansionRecoveryService {
     private void applyResizeRecovery(RegionExpansionOperation op) throws SQLException {
         Region region = regionCache.get(op.getRegionId());
         if (region == null) {
-            List<Region> allRegions = regionRepository.loadAll();
-            for (Region r : allRegions) {
-                regionCache.add(r);
-                membershipCache.loadFromRegion(r);
-            }
+            regionRepository.reloadCaches(regionCache, membershipCache);
             region = regionCache.get(op.getRegionId());
         }
         if (region == null) {
@@ -268,7 +260,7 @@ public class RegionExpansionRecoveryService {
         expansionRepository.save(op);
 
         LandPaymentReleaseRequest req = new LandPaymentReleaseRequest(
-            UUID.fromString(op.getOperationId()),
+            op.getPaymentOperationUuid(),
             op.getGemsReservationId(),
             releaseKey
         );

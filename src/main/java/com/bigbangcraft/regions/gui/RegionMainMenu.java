@@ -46,6 +46,14 @@ public class RegionMainMenu extends ChestMenu {
             "§7Gerenciar membros, convites e cargos"));
         container.setItem(15, button(Items.COMPARATOR, "§e§lFlags",
             "§7Configurar permissões da região"));
+        container.setItem(17, button(Items.COMPASS, "§b§lRegiões de amigos",
+            "§7Ver regiões ativas das quais você é membro"));
+        if (player.getUUID().equals(region.getOwnerUuid())) {
+            container.setItem(19, button(Items.EMERALD, "§a§lExpandir terreno", "§7Escolher lado e quantidade de blocos"));
+            container.setItem(21, button(Items.ENDER_EYE, "§b§lChunk loader", "§7Selecionar chunks carregados", "§7Somente o owner usa sua quota"));
+        }
+        container.setItem(26, button(Items.PAPER, "§e§lConvites recebidos",
+            "§7Aceitar ou recusar convites"));
         container.setItem(22, button(Items.BOOK, "§6§lInformações",
             "§7Ver informações e limites do terreno"));
         container.setItem(24, buildDeleteButton());
@@ -114,6 +122,14 @@ public class RegionMainMenu extends ChestMenu {
             RegionGuiHandler.openMembersMenu(serverPlayer, region);
         } else if (slotId == 15) {
             RegionGuiHandler.openFlagsMenu(serverPlayer, region);
+        } else if (slotId == 17) {
+            RegionGuiHandler.openFriendsMenu(serverPlayer);
+        } else if (slotId == 19 && serverPlayer.getUUID().equals(region.getOwnerUuid())) {
+            RegionGuiHandler.openExpansionDirections(serverPlayer, region);
+        } else if (slotId == 21 && serverPlayer.getUUID().equals(region.getOwnerUuid())) {
+            RegionGuiHandler.openChunkLoaderMenu(serverPlayer, region, 0, 0);
+        } else if (slotId == 26) {
+            RegionGuiHandler.openInviteInboxMenu(serverPlayer);
         } else if (slotId == 22) {
             serverPlayer.closeContainer();
             serverPlayer.sendSystemMessage(Component.literal("§eRegiao: " + region.getId()));

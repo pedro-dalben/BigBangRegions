@@ -72,6 +72,39 @@ final class RegionTerrainSnapshot {
         Files.deleteIfExists(snapshotPath(directory, regionId));
     }
 
+    /** Adds newly exposed border blocks without replacing the original snapshot. */
+    static void captureExpansionBorder(
+        ServerLevel level,
+        RegionBounds bounds,
+        String regionId,
+        Path directory,
+        boolean createCeiling
+    ) throws IOException {
+        Files.createDirectories(directory);
+        Path target = snapshotPath(directory, regionId);
+        CompoundTag root = Files.exists(target)
+            ? NbtIo.readCompressed(target, NbtAccounter.unlimitedHeap())
+            : new CompoundTag();
+        root.putString("regionId", regionId);
+        root.putString("dimension", bounds.getDimension());
+        root.putString("format", MUTATION_FORMAT);
+        ListTag blocks = root.contains("blocks", Tag.TAG_LIST)
+            ? root.getList("blocks", Tag.TAG_COMPOUND) : new ListTag();
+        Set<Long> seen = new HashSet<>();
+        for (int i = 0; i < blocks.size(); i++) {
+            Tag tag = blocks.get(i);
+            if (tag instanceof CompoundTag entry && entry.contains("pos", Tag.TAG_LONG)) {
+                seen.add(entry.getLong("pos"));
+            }
+        }
+        addBorderShell(level, bounds, blocks, seen);
+        if (createCeiling) addCeiling(level, bounds, blocks, seen);
+        root.putInt("blockCount", blocks.size());
+        root.put("blocks", blocks);
+        root.putLong("regionVolume", bounds.volume());
+        writeAtomically(root, target);
+    }
+
     static boolean restore(ServerLevel level, Region region, Path directory) throws IOException {
         ChunkAccessGuard.assertAllowed(AllocationPhase.REGION_CREATING);
         long startedAt = System.nanoTime();

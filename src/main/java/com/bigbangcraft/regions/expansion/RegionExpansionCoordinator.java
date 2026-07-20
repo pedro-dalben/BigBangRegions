@@ -1,5 +1,6 @@
 package com.bigbangcraft.regions.expansion;
 
+import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.cache.RegionCache;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.config.Config;
@@ -7,17 +8,21 @@ import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.domain.RegionType;
+import com.bigbangcraft.regions.allocation.PlotSlot;
 import com.bigbangcraft.regions.payment.api.*;
 import com.bigbangcraft.regions.repository.PlotSlotRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class RegionExpansionCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-RegionExpansionCoordinator");
@@ -34,6 +39,7 @@ public class RegionExpansionCoordinator {
     private final RegionMembershipCache membershipCache;
     private final LandPaymentGateway paymentGateway;
     private final RegionExpansionPricingPolicy pricingPolicy;
+    private final Set<String> reconciledVisuals = ConcurrentHashMap.newKeySet();
 
     public RegionExpansionCoordinator(ConfigManager configManager,
                                        DatabaseManager databaseManager,
@@ -114,7 +120,7 @@ public class RegionExpansionCoordinator {
             throw new IllegalStateException("Expansao ultrapassa os limites do Plot Slot.");
         }
 
-        String operationId = "expand_" + region.getId() + "_" + System.currentTimeMillis();
+        String operationId = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
 
         RegionExpansionOperation operation = new RegionExpansionOperation(
@@ -138,6 +144,62 @@ public class RegionExpansionCoordinator {
         LOGGER.info("Expansion operation created: op={}, region={}, {}x{}→{}x{} ({} gems)",
             operationId, region.getId(), currentSize, currentSize, targetSize, targetSize, quote.getPriceGems());
         return operation;
+    }
+
+    public RegionExpansionOperation beginExpansion(ServerPlayer player, ExpansionDirection direction, int increment) {
+        if (increment != 1 && increment != 5 && increment != 10) {
+            throw new IllegalArgumentException("Incremento inválido. Escolha 1, 5 ou 10 blocos.");
+        }
+        UUID ownerUuid = player.getUUID();
+        Config.RegionExpansionConfig ec = configManager.getConfig().getRegionExpansion();
+        if (!ec.isEnabled()) throw new IllegalStateException("Expansão de regiões desabilitada.");
+        if (ec.getPricePerAddedBlock() == 0) {
+            throw new IllegalStateException("A política de preços para expansão ainda não foi configurada.");
+        }
+        if (ec.isPaymentRequired() && !paymentGateway.isAvailable()) {
+            throw new IllegalStateException("Sistema de pagamento indisponível.");
+        }
+        Region region = regionCache.getAll().stream()
+            .filter(r -> r.getType() == RegionType.PLAYER_REGION && ownerUuid.equals(r.getOwnerUuid()) && "ACTIVE".equals(r.getStatus()))
+            .findFirst().orElseThrow(() -> new IllegalStateException("Você não possui uma região ativa para expandir."));
+        if (expansionRepository.getActiveByRegion(region.getId()) != null) {
+            throw new IllegalStateException("Já existe uma expansão ativa para esta região.");
+        }
+        RegionBounds old = region.getBounds();
+        RegionBounds target = directionalBounds(old, direction, increment);
+        Config.PlayerLandAllocationConfig lac = configManager.getConfig().getPlayerLandAllocation();
+        int max = lac.getFutureMaximumClaimSize();
+        if (target.getMaxX() - target.getMinX() + 1 > max || target.getMaxZ() - target.getMinZ() + 1 > max) {
+            throw new IllegalArgumentException("A expansão ultrapassa o tamanho máximo permitido.");
+        }
+        PlotSlot slot = slotRepository.getByRegionId(region.getId());
+        if (slot == null || target.getMinX() < slot.getMinX() || target.getMinZ() < slot.getMinZ()
+            || target.getMaxX() > slot.getMinX() + lac.getSlotSize() - 1
+            || target.getMaxZ() > slot.getMinZ() + lac.getSlotSize() - 1) {
+            throw new IllegalArgumentException("A expansão ultrapassa os limites do Plot Slot.");
+        }
+        RegionExpansionQuote quote = pricingPolicy.calculateQuote(old, target);
+        if (!quote.isAccepted()) throw new IllegalArgumentException(quote.getRejectionReason());
+        long now = System.currentTimeMillis();
+        RegionExpansionOperation operation = new RegionExpansionOperation(
+            UUID.randomUUID().toString(), region.getId(), ownerUuid, slot.getId(), old.getDimension(),
+            old.getMaxX() - old.getMinX() + 1, Math.max(target.getMaxX() - target.getMinX() + 1, target.getMaxZ() - target.getMinZ() + 1),
+            old.getMinX(), old.getMinZ(), old.getMaxX(), old.getMaxZ(),
+            target.getMinX(), target.getMinZ(), target.getMaxX(), target.getMaxZ(),
+            quote.getPriceGems(), quote.getPolicyVersion(), RegionExpansionState.REQUESTED, now);
+        expansionRepository.save(operation);
+        operation.transitionTo(RegionExpansionState.QUOTED);
+        expansionRepository.save(operation);
+        return operation;
+    }
+
+    public static RegionBounds directionalBounds(RegionBounds old, ExpansionDirection direction, int increment) {
+        int minX = old.getMinX(), maxX = old.getMaxX(), minZ = old.getMinZ(), maxZ = old.getMaxZ();
+        if (direction == ExpansionDirection.WEST || direction == ExpansionDirection.ALL) minX -= increment;
+        if (direction == ExpansionDirection.EAST || direction == ExpansionDirection.ALL) maxX += increment;
+        if (direction == ExpansionDirection.NORTH || direction == ExpansionDirection.ALL) minZ -= increment;
+        if (direction == ExpansionDirection.SOUTH || direction == ExpansionDirection.ALL) maxZ += increment;
+        return new RegionBounds(old.getDimension(), minX, old.getMinY(), minZ, maxX, old.getMaxY(), maxZ);
     }
 
     public RegionExpansionOperation getActiveExpansion(UUID ownerUuid) {
@@ -177,6 +239,25 @@ public class RegionExpansionCoordinator {
         return 0;
     }
 
+    public void reconcileExpansionVisuals(MinecraftServer server) {
+        for (RegionExpansionOperation op : expansionRepository.getActiveOperations()) {
+            if (op.getState() != RegionExpansionState.RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING) continue;
+            if (reconciledVisuals.contains(op.getOperationId())) continue;
+            ServerLevel level = server.getLevel(net.minecraft.resources.ResourceKey.create(
+                net.minecraft.core.registries.Registries.DIMENSION,
+                net.minecraft.resources.ResourceLocation.parse(op.getDimensionKey())));
+            if (level == null) continue;
+            RegionBounds oldBounds = new RegionBounds(op.getDimensionKey(), op.getOldMinX(), 0, op.getOldMinZ(), op.getOldMaxX(), 0, op.getOldMaxZ());
+            Region region = regionCache.get(op.getRegionId());
+            if (region != null) {
+                oldBounds = new RegionBounds(op.getDimensionKey(), op.getOldMinX(), region.getBounds().getMinY(), op.getOldMinZ(), op.getOldMaxX(), region.getBounds().getMaxY(), op.getOldMaxZ());
+                if (BigBangRegions.getAllocationCoordinator().refreshExpansionBorder(level, oldBounds, region.getBounds(), region.getId())) {
+                    reconciledVisuals.add(op.getOperationId());
+                }
+            }
+        }
+    }
+
     private int processOperation(RegionExpansionOperation op, Config.RegionExpansionConfig ec) {
         switch (op.getState()) {
             case REQUESTED:
@@ -200,6 +281,7 @@ public class RegionExpansionCoordinator {
             case RESIZE_APPLYING:
                 return recoverResizeApplying(op);
             case RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING:
+                if (!reconciledVisuals.contains(op.getOperationId())) return 0;
                 return handleCaptureResult(op, ec);
             default:
                 return 0;
@@ -213,7 +295,7 @@ public class RegionExpansionCoordinator {
         expansionRepository.save(op);
 
         LandPaymentReserveRequest req = new LandPaymentReserveRequest(
-            UUID.fromString(op.getOperationId()),
+            op.getPaymentOperationUuid(),
             op.getOwnerUuid(),
             op.getPriceGems(),
             reserveKey,
@@ -240,7 +322,7 @@ public class RegionExpansionCoordinator {
         }
 
         LandPaymentReserveRequest req = new LandPaymentReserveRequest(
-            UUID.fromString(op.getOperationId()),
+            op.getPaymentOperationUuid(),
             op.getOwnerUuid(),
             op.getPriceGems(),
             op.getReserveIdempotencyKey(),
@@ -265,7 +347,7 @@ public class RegionExpansionCoordinator {
         expansionRepository.save(op);
 
         LandPaymentRenewRequest req = new LandPaymentRenewRequest(
-            UUID.fromString(op.getOperationId()),
+            op.getPaymentOperationUuid(),
             op.getGemsReservationId(),
             renewKey,
             op.getRenewSequence(),
@@ -291,7 +373,7 @@ public class RegionExpansionCoordinator {
         }
 
         LandPaymentRenewRequest req = new LandPaymentRenewRequest(
-            UUID.fromString(op.getOperationId()),
+            op.getPaymentOperationUuid(),
             op.getGemsReservationId(),
             op.getRenewIdempotencyKey(),
             op.getRenewSequence(),
@@ -333,11 +415,7 @@ public class RegionExpansionCoordinator {
         Region region = regionCache.get(op.getRegionId());
         if (region == null) {
             try {
-                List<Region> allRegions = regionRepository.loadAll();
-                for (Region r : allRegions) {
-                    regionCache.add(r);
-                    membershipCache.loadFromRegion(r);
-                }
+                regionRepository.reloadCaches(regionCache, membershipCache);
                 region = regionCache.get(op.getRegionId());
             } catch (Exception e) {
                 LOGGER.error("Failed to reload regions for resize recovery", e);
@@ -377,11 +455,7 @@ public class RegionExpansionCoordinator {
     private void applyExpansionInSingleTransaction(RegionExpansionOperation op) throws SQLException {
         Region region = regionCache.get(op.getRegionId());
         if (region == null) {
-            List<Region> allRegions = regionRepository.loadAll();
-            for (Region r : allRegions) {
-                regionCache.add(r);
-                membershipCache.loadFromRegion(r);
-            }
+            regionRepository.reloadCaches(regionCache, membershipCache);
             region = regionCache.get(op.getRegionId());
         }
         if (region == null) {
@@ -431,7 +505,7 @@ public class RegionExpansionCoordinator {
         }
 
         LandPaymentCaptureRequest req = new LandPaymentCaptureRequest(
-            UUID.fromString(op.getOperationId()),
+            op.getPaymentOperationUuid(),
             op.getGemsReservationId(),
             captureKey
         );
@@ -513,7 +587,7 @@ public class RegionExpansionCoordinator {
         expansionRepository.save(op);
 
         LandPaymentReleaseRequest req = new LandPaymentReleaseRequest(
-            UUID.fromString(op.getOperationId()),
+            op.getPaymentOperationUuid(),
             op.getGemsReservationId(),
             releaseKey
         );

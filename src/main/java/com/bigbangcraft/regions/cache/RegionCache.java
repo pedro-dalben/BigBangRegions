@@ -14,6 +14,13 @@ public class RegionCache {
         spatialIndex.add(region);
     }
 
+    public synchronized void replaceAll(Collection<Region> regions) {
+        clear();
+        for (Region region : regions) {
+            add(region);
+        }
+    }
+
     public void remove(String id) {
         if (id == null) return;
         regionsById.remove(id.toLowerCase());

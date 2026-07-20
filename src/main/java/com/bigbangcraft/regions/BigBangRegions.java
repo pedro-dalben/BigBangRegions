@@ -12,6 +12,7 @@ import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.flag.FlagResolver;
 import com.bigbangcraft.regions.flag.RegionFlagResolver;
 import com.bigbangcraft.regions.permission.PermissionManager;
+import com.bigbangcraft.regions.chunkloader.RegionChunkLoaderService;
 import com.bigbangcraft.regions.protection.*;
 import com.bigbangcraft.regions.region.*;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
@@ -22,6 +23,7 @@ import com.bigbangcraft.regions.recovery.LandOperationRecoveryService;
 import com.bigbangcraft.regions.expansion.RegionExpansionCoordinator;
 import com.bigbangcraft.regions.expansion.RegionExpansionOperationRepository;
 import com.bigbangcraft.regions.expansion.RegionExpansionRecoveryService;
+import com.bigbangcraft.regions.expansion.ExpansionDirection;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import com.bigbangcraft.regions.repository.AllocationRequestRepository;
 import com.bigbangcraft.regions.repository.AuditRepository;
@@ -98,6 +100,7 @@ public class BigBangRegions implements ModInitializer {
     private static PermissionManager permissionManager;
     private static RegionMapIntegration regionMapIntegration;
     private static RegionFlagResolver flagResolver;
+    private static RegionChunkLoaderService chunkLoaderService;
 
     // Tip cooldown: 10s between advisory messages for unclaimed-area actions
     private static final Map<String, Long> tipCooldowns = new ConcurrentHashMap<>();
@@ -190,6 +193,10 @@ public class BigBangRegions implements ModInitializer {
         return expansionRecoveryService;
     }
 
+    public static RegionChunkLoaderService getChunkLoaderService() {
+        return chunkLoaderService;
+    }
+
     @Override
     public void onInitialize() {
         LOGGER.info("Initializing BigBang Regions...");
@@ -222,12 +229,7 @@ public class BigBangRegions implements ModInitializer {
         membershipCache = new RegionMembershipCache();
 
         // Load all regions into cache
-        List<Region> regions = regionRepository.loadAll();
-        for (Region r : regions) {
-            regionCache.add(r);
-            membershipCache.loadFromRegion(r);
-        }
-        LOGGER.info("Loaded {} regions into cache.", regions.size());
+        regionRepository.reloadCaches(regionCache, membershipCache);
 
         // 5. Allocation repositories
         AllocationRequestRepository allocationRequestRepository = new AllocationRequestRepository(databaseManager);
@@ -274,9 +276,10 @@ public class BigBangRegions implements ModInitializer {
         selectionManager = new SelectionManager();
         int operatorFallback = configManager.getConfig().getPermissions().getOperatorFallbackLevel();
         permissionManager = new PermissionManager(operatorFallback);
+        chunkLoaderService = new RegionChunkLoaderService(regionRepository, permissionManager);
         
         roleResolver = new RegionRoleResolver(membershipCache);
-        membershipService = new RegionMembershipService(regionRepository, membershipCache, auditService, roleResolver);
+        membershipService = new RegionMembershipService(regionRepository, membershipCache, regionCache, auditService, roleResolver);
         regionAccessService = new RegionAccessService(roleResolver, flagResolver, configManager);
         inviteService = new RegionInviteService(regionInviteRepository, regionRepository, regionCache, membershipCache, roleResolver, auditService);
         protectionService = new ProtectionService(regionResolver, permissionManager, regionAccessService, roleResolver);
@@ -322,6 +325,7 @@ public class BigBangRegions implements ModInitializer {
                 allocationScheduler.tick(server);
             }
             if (expansionCoordinator != null) {
+                expansionCoordinator.reconcileExpansionVisuals(server);
                 expansionCoordinator.processNextExpansion();
             }
             if (entryExitService != null) {
@@ -361,14 +365,25 @@ public class BigBangRegions implements ModInitializer {
                 if (containmentService != null) {
                     containmentService.removePlayer(uuid);
                 }
+                if (chunkLoaderService != null) {
+                    chunkLoaderService.onDisconnect(handler.getPlayer());
+                }
                 PlayerMapPreference.removePlayer(uuid);
             }
         });
 
         // 12.5 Player connect reposition check + map sync
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            if (handler.getPlayer() != null && inviteService != null) {
+                for (var invite : inviteService.getPendingInvitesForPlayer(handler.getPlayer().getUUID())) {
+                    com.bigbangcraft.regions.gui.RegionGuiHandler.sendInviteNotification(handler.getPlayer(), invite);
+                }
+            }
             if (handler.getPlayer() != null && containmentService != null) {
                 containmentService.onPlayerJoin(handler.getPlayer());
+            }
+            if (handler.getPlayer() != null && chunkLoaderService != null) {
+                chunkLoaderService.onJoin(handler.getPlayer());
             }
             if (handler.getPlayer() != null && regionMapIntegration != null) {
                 regionMapIntegration.onPlayerJoin(handler.getPlayer());
@@ -378,6 +393,9 @@ public class BigBangRegions implements ModInitializer {
         // 13. Clean shutdown handler
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             LOGGER.info("Server is stopping. Shutting down BigBang Regions services...");
+            if (chunkLoaderService != null) {
+                chunkLoaderService.shutdown(server);
+            }
             if (auditService != null) {
                 auditService.shutdown();
             }
@@ -552,6 +570,10 @@ public class BigBangRegions implements ModInitializer {
             BlockPos pos = hitResult.getBlockPos();
             BlockState state = world.getBlockState(pos);
 
+            if (state.getBlock() == configuredBorderBlock() && expansionWallClick(serverPlayer, pos)) {
+                return InteractionResult.SUCCESS;
+            }
+
             com.bigbangcraft.regions.protection.BlockInteractionClassifier.ClassifiedInteraction classified = 
                     com.bigbangcraft.regions.protection.BlockInteractionClassifier.classify(world, pos, state, serverPlayer, hand, hitResult);
 
@@ -590,6 +612,33 @@ public class BigBangRegions implements ModInitializer {
             }
             return InteractionResult.PASS;
         });
+    }
+
+    private static net.minecraft.world.level.block.Block configuredBorderBlock() {
+        try {
+            net.minecraft.resources.ResourceLocation id = net.minecraft.resources.ResourceLocation.parse(
+                configManager.getConfig().getPlayerLandAllocation().getBorder().getMaterial());
+            net.minecraft.world.level.block.Block block = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(id);
+            return block == null || block == Blocks.AIR ? Blocks.GLASS : block;
+        } catch (Exception e) {
+            return Blocks.GLASS;
+        }
+    }
+
+    private static boolean expansionWallClick(ServerPlayer player, BlockPos pos) {
+        for (Region region : regionCache.getRegionsAt(player.level().dimension().location().toString(), pos.getX(), pos.getY(), pos.getZ())) {
+            if (!player.getUUID().equals(region.getOwnerUuid()) || region.getType() != com.bigbangcraft.regions.domain.RegionType.PLAYER_REGION) continue;
+            RegionBounds b = region.getBounds();
+            ExpansionDirection side = pos.getX() == b.getMinX() ? ExpansionDirection.WEST
+                : pos.getX() == b.getMaxX() ? ExpansionDirection.EAST
+                : pos.getZ() == b.getMinZ() ? ExpansionDirection.NORTH
+                : pos.getZ() == b.getMaxZ() ? ExpansionDirection.SOUTH : null;
+            if (side != null) {
+                com.bigbangcraft.regions.gui.RegionGuiHandler.openExpansionSizes(player, region, side);
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isProtectedEntity(Entity entity) {

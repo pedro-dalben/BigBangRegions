@@ -7,6 +7,7 @@ import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.domain.RegionType;
+import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.event.RegionChangeEvent;
 import com.bigbangcraft.regions.event.RegionEventBus;
 import com.bigbangcraft.regions.repository.AllocationRequestPreparationRepository;
@@ -856,6 +857,41 @@ public class TerrainAllocationCoordinator {
         }
     }
 
+    public boolean refreshExpansionBorder(ServerLevel level, RegionBounds oldBounds, RegionBounds targetBounds, String regionId) {
+        Config.BorderConfig border = configManager.getConfig().getPlayerLandAllocation().getBorder();
+        try {
+            RegionTerrainSnapshot.captureExpansionBorder(level, targetBounds, regionId,
+                getRestoreDirectory(), border.isCreateCeiling());
+        } catch (Exception e) {
+            LOGGER.error("Failed to capture expansion border snapshot", e);
+            return false;
+        }
+        ResourceLocation material = ResourceLocation.parse(border.getMaterial());
+        net.minecraft.world.level.block.Block glass = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(material);
+        if (glass == null || glass == net.minecraft.world.level.block.Blocks.AIR) glass = net.minecraft.world.level.block.Blocks.GLASS;
+        net.minecraft.world.level.block.state.BlockState oldState = glass.defaultBlockState();
+        for (int y = oldBounds.getMinY(); y <= oldBounds.getMaxY(); y++) {
+            for (int z = oldBounds.getMinZ(); z <= oldBounds.getMaxZ(); z++) {
+                clearExpansionWall(level, new BlockPos(oldBounds.getMinX(), y, z), oldState, targetBounds);
+                clearExpansionWall(level, new BlockPos(oldBounds.getMaxX(), y, z), oldState, targetBounds);
+            }
+            for (int x = oldBounds.getMinX(); x <= oldBounds.getMaxX(); x++) {
+                clearExpansionWall(level, new BlockPos(x, y, oldBounds.getMinZ()), oldState, targetBounds);
+                clearExpansionWall(level, new BlockPos(x, y, oldBounds.getMaxZ()), oldState, targetBounds);
+            }
+        }
+        generateGlassBorder(level, targetBounds, border.getMaterial(), border.isCreateCeiling());
+        return true;
+    }
+
+
+    private static void clearExpansionWall(ServerLevel level, BlockPos pos, net.minecraft.world.level.block.state.BlockState glass, RegionBounds target) {
+        if (!level.getBlockState(pos).equals(glass)) return;
+        boolean targetWall = pos.getX() == target.getMinX() || pos.getX() == target.getMaxX()
+            || pos.getZ() == target.getMinZ() || pos.getZ() == target.getMaxZ();
+        if (!targetWall) level.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 2);
+    }
+
     private void applyRegionBiome(ServerLevel level, RegionBounds bounds, String biomeOptionKey) {
         try {
             Optional<BiomeOption> opt = biomeOptionRegistry.lookup(biomeOptionKey);
@@ -899,13 +935,9 @@ public class TerrainAllocationCoordinator {
 
     private void reloadCachesFromDb() {
         try {
-            List<Region> regions = regionRepository.loadAll();
-            for (Region r : regions) {
-                regionCache.add(r);
-                membershipCache.loadFromRegion(r);
-            }
+            regionRepository.reloadCaches(regionCache, membershipCache);
         } catch (Exception e) {
-            LOGGER.error("Failed to reload caches from DB", e);
+            LOGGER.error("Failed to reload regions and members from DB; existing caches were preserved", e);
         }
     }
 
@@ -971,6 +1003,17 @@ public class TerrainAllocationCoordinator {
         admin.teleportTo(targetLevel, home.getX(), home.getY(), home.getZ(), home.getYaw(), home.getPitch());
         admin.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
         return true;
+    }
+
+    public boolean teleportToRegionHome(ServerPlayer player, Region region) {
+        if (player == null || region == null || region.getType() != RegionType.PLAYER_REGION
+            || !"ACTIVE".equals(region.getStatus())) {
+            throw new IllegalArgumentException("Regiao invalida ou inativa");
+        }
+        if (membershipCache.getRole(region.getId(), player.getUUID(), region.getOwnerUuid()) == RegionRole.VISITOR) {
+            throw new IllegalArgumentException("Voce nao e membro desta regiao");
+        }
+        return teleportToPlayerRegionHome(player, region.getOwnerUuid());
     }
 
     public boolean repairPlayerRegionHome(ServerPlayer admin, UUID ownerUuid) {

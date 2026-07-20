@@ -84,6 +84,7 @@ public class RegionDeleteConfirmMenu extends ChestMenu {
         if (slotId == 15) {
             try {
                 serverPlayer.closeContainer();
+                BigBangRegions.getChunkLoaderService().onRegionDeleted(serverPlayer.getServer(), region);
                 boolean restored = BigBangRegions.getAllocationCoordinator().deletePlayerOwnedRegion(serverPlayer, region);
                 if (BigBangRegions.getAuditService() != null) {
                     try {

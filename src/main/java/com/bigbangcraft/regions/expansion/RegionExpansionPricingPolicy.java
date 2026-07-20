@@ -1,6 +1,7 @@
 package com.bigbangcraft.regions.expansion;
 
 import com.bigbangcraft.regions.config.Config;
+import com.bigbangcraft.regions.domain.RegionBounds;
 import java.util.List;
 
 public class RegionExpansionPricingPolicy {
@@ -37,5 +38,22 @@ public class RegionExpansionPricingPolicy {
         long priceGems = additionalBlocks * pricePerBlock;
 
         return RegionExpansionQuote.accept(additionalBlocks, priceGems, pricePerBlock, POLICY_VERSION);
+    }
+
+    public RegionExpansionQuote calculateQuote(RegionBounds current, RegionBounds target) {
+        long currentArea = area(current);
+        long targetArea = area(target);
+        if (targetArea <= currentArea) {
+            return RegionExpansionQuote.reject("A nova área deve ser maior que a atual", "EXPANSION_TARGET_NOT_LARGER");
+        }
+        long additionalBlocks = targetArea - currentArea;
+        return RegionExpansionQuote.accept(additionalBlocks,
+            additionalBlocks * config.getPricePerAddedBlock(),
+            config.getPricePerAddedBlock(), POLICY_VERSION);
+    }
+
+    private static long area(RegionBounds bounds) {
+        return ((long) bounds.getMaxX() - bounds.getMinX() + 1)
+            * ((long) bounds.getMaxZ() - bounds.getMinZ() + 1);
     }
 }
