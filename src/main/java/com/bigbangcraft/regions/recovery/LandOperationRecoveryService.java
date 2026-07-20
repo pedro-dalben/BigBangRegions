@@ -86,14 +86,10 @@ public class LandOperationRecoveryService {
 
     private void reloadRegionsFromDb() {
         try {
-            List<Region> regions = regionRepository.loadAll();
-            for (Region r : regions) {
-                regionCache.add(r);
-                membershipCache.loadFromRegion(r);
-            }
-            LOGGER.info("Recovery: reloaded {} regions from database.", regions.size());
+            regionRepository.reloadCaches(regionCache, membershipCache);
+            LOGGER.info("Recovery: reloaded regions and persisted members from database.");
         } catch (Exception e) {
-            LOGGER.error("Recovery: failed to reload regions from database.", e);
+            LOGGER.error("Recovery: failed to reload regions and members from database; existing caches were preserved.", e);
         }
     }
 

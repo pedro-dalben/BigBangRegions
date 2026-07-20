@@ -3,6 +3,7 @@ package com.bigbangcraft.regions.gui;
 import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionRole;
+import com.bigbangcraft.regions.invite.RegionInvite;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -91,8 +92,10 @@ public class RegionInvitesMenu extends ChestMenu {
                 return;
             }
             try {
-                BigBangRegions.getInviteService().sendInvite(region, serverPlayer.getUUID(), target.getUUID(), RegionRole.MEMBER, 86400000L);
+                RegionInvite invite = BigBangRegions.getInviteService().sendInvite(
+                    region, serverPlayer.getUUID(), target.getUUID(), RegionRole.MEMBER, 86400000L);
                 serverPlayer.sendSystemMessage(Component.literal("§aConvite enviado para " + target.getGameProfile().getName()));
+                RegionGuiHandler.sendInviteNotification(target, invite);
             } catch (Exception e) {
                 serverPlayer.sendSystemMessage(Component.literal("§c" + e.getMessage()));
             }

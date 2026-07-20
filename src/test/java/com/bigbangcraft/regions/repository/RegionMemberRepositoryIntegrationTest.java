@@ -1,6 +1,11 @@
 package com.bigbangcraft.regions.repository;
 
 import com.bigbangcraft.regions.domain.*;
+import com.bigbangcraft.regions.audit.AuditService;
+import com.bigbangcraft.regions.cache.RegionCache;
+import com.bigbangcraft.regions.cache.RegionMembershipCache;
+import com.bigbangcraft.regions.region.RegionMembershipService;
+import com.bigbangcraft.regions.region.RegionRoleResolver;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -10,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 public class RegionMemberRepositoryIntegrationTest {
 
@@ -60,5 +66,40 @@ public class RegionMemberRepositoryIntegrationTest {
         assertEquals(6000L, loadedL1.getUpdatedAt());
 
         dbManager.close();
+    }
+
+    @Test
+    public void memberKeepsPermissionAfterCacheReload() throws Exception {
+        DatabaseManager dbManager = new DatabaseManager(tempDir.resolve("reload_members.db"));
+        dbManager.initialize();
+        try {
+            RegionRepository repository = new RegionRepository(dbManager);
+            RegionCache regionCache = new RegionCache();
+            RegionMembershipCache membershipCache = new RegionMembershipCache();
+            RegionRoleResolver roleResolver = new RegionRoleResolver(membershipCache);
+            RegionMembershipService service = new RegionMembershipService(
+                repository, membershipCache, regionCache, mock(AuditService.class), roleResolver);
+
+            UUID owner = UUID.randomUUID();
+            UUID member = UUID.randomUUID();
+            Region region = new Region("reload_claim", "ReloadClaim", RegionType.PLAYER_REGION,
+                new RegionBounds("minecraft:overworld", 0, 0, 0, 10, 10, 10), 100,
+                owner, owner, 1L, 1L, "ACTIVE");
+            repository.save(region);
+            regionCache.add(region);
+            membershipCache.loadFromRegion(region);
+
+            service.addMember(region, owner, member, RegionRole.MEMBER, false);
+            regionCache.clear();
+            membershipCache.clear();
+            repository.reloadCaches(regionCache, membershipCache);
+
+            Region reloaded = regionCache.get("reload_claim");
+            assertNotNull(reloaded);
+            assertEquals(RegionRole.MEMBER, roleResolver.resolveRole(reloaded, member));
+            assertEquals(RegionRole.MEMBER, reloaded.getRole(member));
+        } finally {
+            dbManager.close();
+        }
     }
 }

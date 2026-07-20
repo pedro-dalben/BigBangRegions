@@ -135,8 +135,11 @@ public class RegionMembersMenu extends ChestMenu {
 
             try {
                 if (right && shift) {
-                    BigBangRegions.getInviteService().sendInvite(region, actorUuid, target, RegionRole.OWNER, 86400000L);
+                    var invite = BigBangRegions.getInviteService().sendInvite(
+                        region, actorUuid, target, RegionRole.OWNER, 86400000L);
                     serverPlayer.sendSystemMessage(Component.literal("§aPedido de transferencia enviado. O novo dono precisa aceitar."));
+                    ServerPlayer targetPlayer = serverPlayer.getServer().getPlayerList().getPlayer(target);
+                    RegionGuiHandler.sendInviteNotification(targetPlayer, invite);
                 } else if (right) {
                     RegionRole currentRole = currentRole(target);
                     RegionRole newRole = nextPromotion(currentRole);

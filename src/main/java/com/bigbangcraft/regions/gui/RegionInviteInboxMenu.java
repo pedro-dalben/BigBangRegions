@@ -50,6 +50,7 @@ public class RegionInviteInboxMenu extends ChestMenu {
             List<Component> lore = new ArrayList<>();
             lore.add(Component.literal("§7Convidado por: §f" + inviterName));
             lore.add(Component.literal("§7Cargo oferecido: §f" + invite.getRole().name()));
+            lore.add(Component.literal("§eMembros possuem permissão para modificar esta região"));
             lore.add(Component.literal("§7Clique esquerdo para aceitar"));
             lore.add(Component.literal("§7Clique direito para recusar"));
             stack.set(DataComponents.LORE, new ItemLore(lore));
@@ -71,6 +72,7 @@ public class RegionInviteInboxMenu extends ChestMenu {
                         BigBangRegions.getInviteService().declineInvite(invite.getId(), serverPlayer.getUUID());
                         serverPlayer.sendSystemMessage(Component.literal("§cConvite recusado."));
                     } else {
+                        serverPlayer.sendSystemMessage(Component.literal("§eAo aceitar, você receberá permissão para modificar esta região."));
                         BigBangRegions.getInviteService().acceptInvite(invite.getId(), serverPlayer.getUUID());
                         serverPlayer.sendSystemMessage(Component.literal("§aConvite aceito."));
                     }

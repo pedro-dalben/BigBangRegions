@@ -1,6 +1,7 @@
 package com.bigbangcraft.regions.region;
 
 import com.bigbangcraft.regions.audit.AuditService;
+import com.bigbangcraft.regions.cache.RegionCache;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionMember;
@@ -15,14 +16,21 @@ import java.util.UUID;
 
 public class RegionMembershipService {
     private final RegionRepository repository;
+    private final RegionCache regionCache;
     private final RegionMembershipCache cache;
     private final AuditService auditService;
     private final RegionRoleResolver roleResolver;
 
     public RegionMembershipService(RegionRepository repository, RegionMembershipCache cache,
                                    AuditService auditService, RegionRoleResolver roleResolver) {
+        this(repository, cache, null, auditService, roleResolver);
+    }
+
+    public RegionMembershipService(RegionRepository repository, RegionMembershipCache cache,
+                                   RegionCache regionCache, AuditService auditService, RegionRoleResolver roleResolver) {
         this.repository = repository;
         this.cache = cache;
+        this.regionCache = regionCache;
         this.auditService = auditService;
         this.roleResolver = roleResolver;
     }
@@ -30,6 +38,7 @@ public class RegionMembershipService {
     public void addMember(Region region, UUID actorUuid, UUID memberUuid, RegionRole role, boolean isAdmin) {
         if (region == null) throw new IllegalArgumentException("Region cannot be null");
         if (memberUuid == null) throw new IllegalArgumentException("Member UUID cannot be null");
+        region = currentRegion(region);
         if (role != RegionRole.MEMBER && role != RegionRole.MANAGER && role != RegionRole.LEADER) {
             throw new IllegalArgumentException("Invalid role: Only MEMBER, MANAGER or LEADER can be added");
         }
@@ -77,9 +86,10 @@ public class RegionMembershipService {
         
         // Save to DB and update cache
         repository.saveMembers(region.getId(), updatedMembers);
-        cache.updateMember(region.getId(), memberUuid, role);
+        Region updatedRegion = rebuildRegion(region, updatedMembers);
+        syncRegion(updatedRegion);
 
-        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.MEMBER_JOINED, region, memberUuid));
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.MEMBER_JOINED, updatedRegion, memberUuid));
 
         // Audit log
         String metadata = "{\"addedByUuid\":\"" + (actorUuid != null ? actorUuid.toString() : "admin") + "\",\"role\":\"" + role.name() + "\"}";
@@ -89,6 +99,7 @@ public class RegionMembershipService {
     public void removeMember(Region region, UUID actorUuid, UUID memberUuid, boolean isAdmin) {
         if (region == null) throw new IllegalArgumentException("Region cannot be null");
         if (memberUuid == null) throw new IllegalArgumentException("Member UUID cannot be null");
+        region = currentRegion(region);
 
         if (memberUuid.equals(region.getOwnerUuid())) {
             throw new IllegalArgumentException("Cannot remove the owner of the region");
@@ -125,9 +136,10 @@ public class RegionMembershipService {
         Map<UUID, RegionMember> updatedMembers = new HashMap<>(region.getMembers());
         updatedMembers.remove(memberUuid);
         repository.saveMembers(region.getId(), updatedMembers);
-        cache.updateMember(region.getId(), memberUuid, null);
+        Region updatedRegion = rebuildRegion(region, updatedMembers);
+        syncRegion(updatedRegion);
 
-        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.MEMBER_REMOVED, region, memberUuid));
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.MEMBER_REMOVED, updatedRegion, memberUuid));
 
         // Audit log
         String metadata = "{\"removedByUuid\":\"" + (actorUuid != null ? actorUuid.toString() : "admin") + "\"}";
@@ -137,6 +149,7 @@ public class RegionMembershipService {
     public void setRole(Region region, UUID actorUuid, UUID memberUuid, RegionRole role, boolean isAdmin) {
         if (region == null) throw new IllegalArgumentException("Region cannot be null");
         if (memberUuid == null) throw new IllegalArgumentException("Member UUID cannot be null");
+        region = currentRegion(region);
         if (role != RegionRole.MEMBER && role != RegionRole.MANAGER && role != RegionRole.LEADER) {
             throw new IllegalArgumentException("Invalid role: must be LEADER, MANAGER or MEMBER");
         }
@@ -180,9 +193,10 @@ public class RegionMembershipService {
         Map<UUID, RegionMember> updatedMembers = new HashMap<>(region.getMembers());
         updatedMembers.put(memberUuid, updatedMember);
         repository.saveMembers(region.getId(), updatedMembers);
-        cache.updateMember(region.getId(), memberUuid, role);
+        Region updatedRegion = rebuildRegion(region, updatedMembers);
+        syncRegion(updatedRegion);
 
-        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.ROLE_CHANGED, region, memberUuid));
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.ROLE_CHANGED, updatedRegion, memberUuid));
 
         // Audit log
         String action = role == RegionRole.LEADER ? "PROMOTE_MEMBER" : "DEMOTE_LEADER";
@@ -193,6 +207,7 @@ public class RegionMembershipService {
     public void leaveRegion(Region region, UUID memberUuid) {
         if (region == null) throw new IllegalArgumentException("Region cannot be null");
         if (memberUuid == null) throw new IllegalArgumentException("Member UUID cannot be null");
+        region = currentRegion(region);
 
         if (memberUuid.equals(region.getOwnerUuid())) {
             throw new IllegalArgumentException("The owner cannot leave the region");
@@ -206,12 +221,37 @@ public class RegionMembershipService {
         Map<UUID, RegionMember> updatedMembers = new HashMap<>(region.getMembers());
         updatedMembers.remove(memberUuid);
         repository.saveMembers(region.getId(), updatedMembers);
-        cache.updateMember(region.getId(), memberUuid, null);
+        Region updatedRegion = rebuildRegion(region, updatedMembers);
+        syncRegion(updatedRegion);
 
-        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.MEMBER_REMOVED, region, memberUuid));
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.MEMBER_REMOVED, updatedRegion, memberUuid));
 
         // Audit log
         String metadata = "{\"source\":\"player-leave\"}";
         auditService.log(region.getId(), memberUuid, "MEMBER_LEAVE", existingRole.name(), null, metadata);
+    }
+
+    private Region currentRegion(Region region) {
+        if (regionCache == null) return region;
+        Region cached = regionCache.get(region.getId());
+        return cached != null ? cached : region;
+    }
+
+    private void syncRegion(Region updatedRegion) {
+        cache.loadFromRegion(updatedRegion);
+        if (regionCache != null) {
+            regionCache.remove(updatedRegion.getId());
+            regionCache.add(updatedRegion);
+        }
+    }
+
+    private Region rebuildRegion(Region region, Map<UUID, RegionMember> members) {
+        Region updated = new Region(region.getId(), region.getName(), region.getType(), region.getBounds(),
+            region.getPriority(), region.getOwnerUuid(), region.getCreatedByUuid(), region.getCreatedAt(),
+            System.currentTimeMillis(), region.getStatus(), members);
+        for (Map.Entry<String, String> entry : region.getFlags().entrySet()) {
+            updated.setFlag(entry.getKey(), entry.getValue());
+        }
+        return updated;
     }
 }

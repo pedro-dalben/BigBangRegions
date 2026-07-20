@@ -5,6 +5,7 @@ import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
 
 import java.util.Map;
+import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -18,6 +19,13 @@ public class RegionMembershipCache {
             memberRoles.put(member.getUuid(), member.getRole());
         }
         cache.put(region.getId().toLowerCase(), memberRoles);
+    }
+
+    public synchronized void replaceAll(Collection<Region> regions) {
+        clear();
+        for (Region region : regions) {
+            loadFromRegion(region);
+        }
     }
 
     public void updateMember(String regionId, UUID memberUuid, RegionRole role) {
