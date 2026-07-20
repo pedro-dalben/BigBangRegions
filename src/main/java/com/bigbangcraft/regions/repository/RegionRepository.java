@@ -5,11 +5,14 @@ import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.domain.RegionType;
+import com.bigbangcraft.regions.cache.RegionCache;
+import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.event.RegionChangeEvent;
 import com.bigbangcraft.regions.event.RegionEventBus;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.minecraft.world.level.ChunkPos;
 
 import java.sql.*;
 import java.util.*;
@@ -117,10 +120,18 @@ public class RegionRepository {
                 }
 
             } catch (SQLException e) {
-                LOGGER.error("Failed to load regions from database: ", e);
+                LOGGER.error("Failed to load regions and members from database; caches were not changed.", e);
+                throw new IllegalStateException("Failed to load regions from database", e);
             }
             return list;
         }
+    }
+
+    public void reloadCaches(RegionCache regionCache, RegionMembershipCache membershipCache) {
+        List<Region> loaded = loadAll();
+        regionCache.replaceAll(loaded);
+        membershipCache.replaceAll(loaded);
+        LOGGER.info("Reloaded {} regions and persisted members into caches.", loaded.size());
     }
 
     public void save(Region region) {
@@ -191,6 +202,7 @@ public class RegionRepository {
                         LOGGER.error("Error rolling back transaction: ", ex);
                     }
                 }
+                throw new IllegalStateException("Failed to save members for region " + regionId, e);
             } finally {
                 if (conn != null) {
                     try { conn.setAutoCommit(true); } catch (SQLException e) {
@@ -289,5 +301,74 @@ public class RegionRepository {
 
     public void updateMembers(Region region) {
         saveMembers(region.getId(), region.getMembers());
+    }
+
+    public Set<ChunkPos> loadChunkLoaderChunks(String regionId) {
+        Set<ChunkPos> chunks = new HashSet<>();
+        synchronized (dbManager) {
+            try (PreparedStatement ps = dbManager.getConnection().prepareStatement(
+                "SELECT chunkX, chunkZ FROM region_chunk_loader_chunks WHERE regionId = ?")) {
+                ps.setString(1, regionId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) chunks.add(new ChunkPos(rs.getInt(1), rs.getInt(2)));
+                }
+            } catch (SQLException e) {
+                throw new IllegalStateException("Failed to load chunk loader selection", e);
+            }
+        }
+        return chunks;
+    }
+
+    public void saveChunkLoaderChunks(String regionId, Set<ChunkPos> chunks) {
+        synchronized (dbManager) {
+            try (Connection conn = dbManager.getConnection()) {
+                conn.setAutoCommit(false);
+                try (PreparedStatement delete = conn.prepareStatement(
+                    "DELETE FROM region_chunk_loader_chunks WHERE regionId = ?")) {
+                    delete.setString(1, regionId);
+                    delete.executeUpdate();
+                }
+                try (PreparedStatement insert = conn.prepareStatement(
+                    "INSERT INTO region_chunk_loader_chunks(regionId, chunkX, chunkZ) VALUES (?, ?, ?)")) {
+                    for (ChunkPos chunk : chunks) {
+                        insert.setString(1, regionId);
+                        insert.setInt(2, chunk.x);
+                        insert.setInt(3, chunk.z);
+                        insert.addBatch();
+                    }
+                    insert.executeBatch();
+                }
+                conn.commit();
+                conn.setAutoCommit(true);
+            } catch (SQLException e) {
+                throw new IllegalStateException("Failed to save chunk loader selection", e);
+            }
+        }
+    }
+
+    public int getChunkLoaderExtraCredits(UUID ownerUuid) {
+        synchronized (dbManager) {
+            try (PreparedStatement ps = dbManager.getConnection().prepareStatement(
+                "SELECT extraCredits FROM player_chunk_loader_credits WHERE ownerUuid = ?")) {
+                ps.setString(1, ownerUuid.toString());
+                try (ResultSet rs = ps.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
+            } catch (SQLException e) {
+                throw new IllegalStateException("Failed to load chunk loader credits", e);
+            }
+        }
+    }
+
+    public void addChunkLoaderExtraCredits(UUID ownerUuid, int amount) {
+        synchronized (dbManager) {
+            try (PreparedStatement ps = dbManager.getConnection().prepareStatement(
+                "INSERT INTO player_chunk_loader_credits(ownerUuid, extraCredits) VALUES (?, ?) " +
+                "ON CONFLICT(ownerUuid) DO UPDATE SET extraCredits = extraCredits + excluded.extraCredits")) {
+                ps.setString(1, ownerUuid.toString());
+                ps.setInt(2, amount);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new IllegalStateException("Failed to save chunk loader credits", e);
+            }
+        }
     }
 }

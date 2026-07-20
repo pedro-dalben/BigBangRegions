@@ -27,4 +27,12 @@ public class PermissionManager {
         return hasPermission(player, "bigbangregions.bypass") || 
                hasPermission(player, "bigbangregions.bypass." + flagId.toLowerCase());
     }
+
+    public int chunkLoaderPermissionCredits(ServerPlayer player) {
+        int credits = 0;
+        for (int i = 1; i <= 256; i++) {
+            if (hasPermission(player, "bigbangregions.chunkloader." + i)) credits = Math.max(credits, i);
+        }
+        return credits;
+    }
 }

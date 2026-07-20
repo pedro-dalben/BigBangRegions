@@ -66,6 +66,16 @@ These commands require administrative permissions or OP status.
   `/regions list [page]`
   - Permission: `bigbangregions.admin.list`
 
+### 4. Chunk Loader Administration
+- **Add extra credits**
+  `/region player <player> addchunk <amount>`
+  - Permission: `bigbangregions.admin.chunkloader`
+  - Adds permanent credits to that player's owner quota.
+- **View quota**
+  `/region player <player> chunkquota`
+  - Permission: `bigbangregions.admin.chunkloader`
+  - `chunkstatus` is an alias.
+
 ---
 
 ## Player Commands

@@ -325,9 +325,10 @@ CANCELLED  FAILED       FAILED          FAILED
 
 ### Expansão de Claim
 
-- Comando: `/regiao expandir <tamanho>` (1–256)
-- Não pode exceder `futureMaximumClaimSize` (config)
-- Não pode ultrapassar o limite do plot slot
+- Disponível no menu do terreno ou clicando no muro de vidro.
+- Escolha Norte, Sul, Leste, Oeste ou todos os lados e acrescente 1, 5 ou 10 blocos.
+- O custo é calculado pela área nova efetivamente adicionada vezes o preço por bloco.
+- Não pode exceder `futureMaximumClaimSize` (config) nem o limite do plot slot.
 
 ### Zona de Exploração
 
@@ -393,6 +394,56 @@ CANCELLED  FAILED       FAILED          FAILED
 | Comando | Descrição |
 |---|---|
 | `/regiao info` | Informações da região na posição atual |
+
+### Chunk Loader da Região
+
+O chunk loader é acessado pelo menu `/regiao` → `Chunk loader`. A tela representa os chunks cobertos pela região e permite navegar com setas para oeste, leste, norte e sul.
+
+#### Regra de ownership
+
+- A região pertence ao OWNER.
+- Somente o OWNER pode selecionar ou remover chunks.
+- A quota é individual do OWNER.
+- Créditos de membros, líderes e amigos não são usados nem somados.
+- Os tickets ficam ativos somente enquanto o OWNER está online.
+- A seleção continua salva quando o OWNER sai e é restaurada no próximo login.
+
+#### Cálculo da quota
+
+```text
+quota total = maior permissão bigbangregions.chunkloader.N + créditos extras do banco
+disponíveis = quota total - chunks selecionados
+```
+
+Exemplos de permissões:
+
+```text
+bigbangregions.chunkloader.1  -> 1 chunk
+bigbangregions.chunkloader.10 -> 10 chunks
+```
+
+O sistema procura o maior nível permitido entre `.1` e `.256`. Portanto, não é necessário conceder níveis intermediários. Se o jogador tiver `.1` e receber mais 10 créditos internos, terá 11 chunks disponíveis.
+
+#### Menu de status
+
+O livro `Status da região` mostra o tamanho atual em blocos, total de chunks da região, chunks selecionados, chunks carregados no momento, quota da permissão, créditos extras e saldo disponível.
+
+#### Comandos administrativos
+
+| Comando | Descrição | Permissão |
+|---|---|---|
+| `/region player <player> addchunk <quantidade>` | Adiciona créditos extras permanentes ao owner | `bigbangregions.admin.chunkloader` |
+| `/region player <player> chunkquota` | Consulta quota e status do jogador | `bigbangregions.admin.chunkloader` |
+| `/region player <player> chunkstatus` | Alias da consulta de quota | `bigbangregions.admin.chunkloader` |
+
+#### Persistência
+
+A migração V14 cria:
+
+- `player_chunk_loader_credits`: créditos extras por UUID do owner;
+- `region_chunk_loader_chunks`: chunks selecionados por região.
+
+As seleções e créditos sobrevivem a reinícios do servidor. Os tickets ativos não são persistidos como tickets do Minecraft: eles são reaplicados apenas quando o owner entra.
 
 ### Comandos Desabilitáveis via Config
 
@@ -465,6 +516,7 @@ Os seguintes comandos podem ser desabilitados no `config.json` em `disabledComma
 | `bigbangregions.admin.player.allocate` | Alocar terreno para jogador |
 | `bigbangregions.admin.player.allocation.inspect` | Ver status de alocação de qualquer jogador |
 | `bigbangregions.admin.player.allocation.cancel` | Cancelar alocação de qualquer jogador |
+| `bigbangregions.admin.chunkloader` | Adicionar e consultar créditos de chunk loader |
 | `bigbangregions.admin.slot.recycle` | Reciclar slots de plot retirados |
 | `bigbangregions.inspect` | Inspecionar regiões com info detalhada |
 
@@ -478,6 +530,7 @@ Os seguintes comandos podem ser desabilitados no `config.json` em `disabledComma
 | `bigbangregions.player.expand` | Expandir/redimensionar claim |
 | `bigbangregions.player.mapvisibility` | Gerenciar visibilidade no mapa |
 | `bigbangregions.player.boundaries` | Visualizar limites com partículas |
+| `bigbangregions.chunkloader.N` | Concede até N chunks de quota ao jogador |
 
 ### Permissões de Bypass
 

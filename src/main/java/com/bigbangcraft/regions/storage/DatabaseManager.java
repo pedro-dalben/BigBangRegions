@@ -161,6 +161,13 @@ public class DatabaseManager {
             setSchemaVersion(13);
             LOGGER.info("Migration V13 applied successfully.");
         }
+
+        if (currentVersion < 14) {
+            LOGGER.info("Applying migration V14...");
+            executeMigrationResource("/storage/migrations/V014__region_chunk_loader.sql");
+            setSchemaVersion(14);
+            LOGGER.info("Migration V14 applied successfully.");
+        }
     }
 
     private int getCurrentSchemaVersion() {

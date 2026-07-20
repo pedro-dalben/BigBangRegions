@@ -46,11 +46,13 @@ public class MigrationTest {
             assertTrue(tables.contains("region_expansion_operations"));
             assertTrue(tables.contains("allocation_request_preparation"));
             assertTrue(tables.contains("allocation_search_cursor"));
+            assertTrue(tables.contains("region_chunk_loader_chunks"));
+            assertTrue(tables.contains("player_chunk_loader_credits"));
 
-            // 2. Verify schema version is marked as 13
+            // 2. Verify schema version is marked as 14
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(13, rs.getInt(1));
+                assertEquals(14, rs.getInt(1));
             }
 
             // Verify columns added in V2

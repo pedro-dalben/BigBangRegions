@@ -10,7 +10,8 @@
 | `/regiao biomas` | Lista opções de bioma disponíveis | — |
 | `/regiao casa` | Teleporta para a casa da sua região | `bigbangregions.player.home` |
 | `/regiao sethome` | Define a casa na posição atual (dentro da região) | `bigbangregions.player.home` |
-| `/regiao expandir <tamanho>` | Expande/contrai o terreno (1-256, sem custo) | `bigbangregions.player.expand` |
+| `/regiao expandir status` | Consulta uma expansão em andamento | `bigbangregions.player.expand` |
+| `/regiao expandir cancelar` | Cancela uma expansão antes do redimensionamento | `bigbangregions.player.expand` |
 | `/regiao explorar` | Teleporta para o centro da zona de exploração | `bigbangregions.player.explore` |
 
 ## Membros
@@ -49,4 +50,21 @@
 | Comando | Descrição |
 |---------|-----------|
 | `/regiao info` | Informações da região na posição atual |
+
+## Chunk Loader
+
+Abra `/regiao` e clique em `Chunk loader`. O menu mostra os chunks da sua região em uma grade. Use as setas para navegar quando a região tiver mais chunks que o espaço do menu.
+
+Somente o OWNER pode selecionar chunks. Membros, líderes e amigos não podem selecionar chunks e os créditos deles nunca são somados à quota do owner.
+
+O item de status mostra:
+
+- tamanho atual da região em blocos;
+- quantidade total de chunks cobertos pela região;
+- chunks selecionados e carregados no momento;
+- créditos vindos da permissão;
+- créditos extras concedidos internamente;
+- créditos ainda disponíveis.
+
+Os chunks selecionados ficam salvos no SQLite. Eles deixam de receber tickets quando o owner sai do servidor e voltam a ser carregados quando ele entra novamente.
 | `/regiao pos1` / `pos2` | Define seleção (admin) |

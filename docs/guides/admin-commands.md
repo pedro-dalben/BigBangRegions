@@ -33,6 +33,16 @@
 | `/regions player removemember <regionId> <player>` | Remove membro |
 | `/regions player setrole <regionId> <player> <role>` | Define papel (LEADER/MEMBER) |
 
+## Chunk Loader
+
+| Comando | Descrição | Permissão |
+|---------|-----------|-----------|
+| `/region player <player> addchunk <quantidade>` | Adiciona créditos extras permanentes ao owner | `bigbangregions.admin.chunkloader` |
+| `/region player <player> chunkquota` | Mostra quota, extras, seleção e chunks carregados | `bigbangregions.admin.chunkloader` |
+| `/region player <player> chunkstatus` | Alias de `chunkquota` | `bigbangregions.admin.chunkloader` |
+
+`addchunk` grava os créditos na tabela `player_chunk_loader_credits` do SQLite. A consulta de quota exige que o jogador esteja online para calcular a parte de permissões; os créditos extras continuam disponíveis mesmo offline.
+
 ## Flags (Admin)
 
 | Comando | Descrição |
