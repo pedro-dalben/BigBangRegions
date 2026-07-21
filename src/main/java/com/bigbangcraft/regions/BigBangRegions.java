@@ -577,6 +577,12 @@ public class BigBangRegions implements ModInitializer {
             com.bigbangcraft.regions.protection.BlockInteractionClassifier.ClassifiedInteraction classified = 
                     com.bigbangcraft.regions.protection.BlockInteractionClassifier.classify(world, pos, state, serverPlayer, hand, hitResult);
 
+            // ChestShop consumes registered sign clicks itself (buy/sell/info). Let that
+            // integration run for visitors without opening the region's other interactions.
+            if (isChestShopSign(world, pos, state)) {
+                return InteractionResult.PASS;
+            }
+
             if (!handlePlayerAction(serverPlayer, classified.getTargetPos(), classified.getAction())) {
                 return InteractionResult.FAIL;
             }
@@ -612,6 +618,22 @@ public class BigBangRegions implements ModInitializer {
             }
             return InteractionResult.PASS;
         });
+    }
+
+    private static boolean isChestShopSign(Level world, BlockPos pos, BlockState state) {
+        if (!(state.getBlock() instanceof SignBlock)
+                || !FabricLoader.getInstance().isModLoaded("bigbangessentials")) {
+            return false;
+        }
+
+        try {
+            Class<?> managerClass = Class.forName("com.pedrodalben.bigbangessentials.shop.ShopManager");
+            Object manager = managerClass.getMethod("getInstance").invoke(null);
+            return managerClass.getMethod("getShopBySign", String.class, BlockPos.class).invoke(
+                    manager, world.dimension().location().toString(), pos) != null;
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            return false;
+        }
     }
 
     private static net.minecraft.world.level.block.Block configuredBorderBlock() {
