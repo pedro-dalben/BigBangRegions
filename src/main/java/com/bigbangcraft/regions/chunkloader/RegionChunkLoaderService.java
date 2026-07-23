@@ -70,6 +70,47 @@ public class RegionChunkLoaderService {
         return true;
     }
 
+    public int activateAll(ServerPlayer player, Region region) {
+        if (!isOwner(player, region)) return 0;
+        int maxQuota = quota(player);
+        var b = region.getBounds();
+        int minChunkX = b.getMinX() >> 4, maxChunkX = b.getMaxX() >> 4;
+        int minChunkZ = b.getMinZ() >> 4, maxChunkZ = b.getMaxZ() >> 4;
+
+        Set<ChunkPos> selected = repository.loadChunkLoaderChunks(region.getId());
+        Set<ChunkPos> newAcquires = new HashSet<>();
+        int activated = 0;
+
+        for (int x = minChunkX; x <= maxChunkX; x++) {
+            for (int z = minChunkZ; z <= maxChunkZ; z++) {
+                if (selected.size() >= maxQuota) break;
+                ChunkPos chunk = new ChunkPos(x, z);
+                if (selected.add(chunk)) {
+                    newAcquires.add(chunk);
+                    activated++;
+                }
+            }
+        }
+
+        if (activated > 0) {
+            repository.saveChunkLoaderChunks(region.getId(), selected);
+            if (player.getServer() != null) acquire(player.getServer(), region, newAcquires);
+        }
+        return activated;
+    }
+
+    public int deactivateAll(ServerPlayer player, Region region) {
+        if (!isOwner(player, region)) return 0;
+        Set<ChunkPos> selected = repository.loadChunkLoaderChunks(region.getId());
+        if (selected.isEmpty()) return 0;
+        int count = selected.size();
+        Set<ChunkPos> copy = new HashSet<>(selected);
+        selected.clear();
+        repository.saveChunkLoaderChunks(region.getId(), selected);
+        if (player.getServer() != null) release(player.getServer(), region, copy);
+        return count;
+    }
+
     public void addCredits(UUID owner, int amount) {
         if (amount <= 0) throw new IllegalArgumentException("A quantidade deve ser maior que zero.");
         repository.addChunkLoaderExtraCredits(owner, amount);

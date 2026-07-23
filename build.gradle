@@ -10,7 +10,7 @@ repositories {
 	mavenCentral()
 	maven { url "https://jm.gserv.me/repository/maven-public/" }
 	flatDir {
-		dirs '../BigBangEssentials/common/build/libs'
+		dirs '../BigBangEssentials/common/build/libs', '../BigBangEssentials-audit/common/build/libs'
 	}
 }
 
@@ -57,6 +57,9 @@ dependencies {
 
 	// BigBang Essentials API (compile-only; use reflection only to load the adapter class)
 	def essentialsJar = findLatestJar('../BigBangEssentials/common/build/libs', 'bigbangessentials-common-', '.jar')
+	if (essentialsJar == null) {
+		essentialsJar = findLatestJar('../BigBangEssentials-audit/common/build/libs', 'bigbangessentials-common-', '.jar')
+	}
 	if (essentialsJar != null) {
 		compileOnly files(essentialsJar)
 	} else {
