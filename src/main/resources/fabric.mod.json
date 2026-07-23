@@ -29,6 +29,7 @@
 		"journeymap-api-fabric": "<2.0.0-1.21.1"
 	},
 	"suggests": {
-		"journeymap": ">=1.21.1"
+		"journeymap": ">=1.21.1",
+		"bigbangessentials": "*"
 	}
 }

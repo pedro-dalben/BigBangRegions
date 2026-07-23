@@ -294,10 +294,10 @@ public class BigBangRegions implements ModInitializer {
         boundaryRenderer = new RegionBoundaryRenderer(regionCache, roleResolver);
 
         // 10.5 Region Containment Service
-        containmentService = new RegionContainmentService(configManager);
+        containmentService = new RegionContainmentService(configManager, regionCache, roleResolver);
 
         // 11. Public API
-        api = new BigBangRegionsApiImpl(regionResolver, protectionService);
+        api = new BigBangRegionsApiImpl(regionResolver, protectionService, containmentService);
 
         // 10. Command registration
         RegionsCommand.initialize(permissionManager, selectionManager, regionCache, regionRepository, regionResolver, auditService, configManager);
@@ -546,6 +546,9 @@ public class BigBangRegions implements ModInitializer {
         // Block break
         PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) -> {
             if (player instanceof ServerPlayer serverPlayer) {
+                if (ShopIntegration.isShopOwner(serverPlayer, world, pos)) {
+                    return true;
+                }
                 return handlePlayerAction(serverPlayer, pos, RegionAction.BLOCK_BREAK);
             }
             return true;
@@ -577,9 +580,15 @@ public class BigBangRegions implements ModInitializer {
             com.bigbangcraft.regions.protection.BlockInteractionClassifier.ClassifiedInteraction classified = 
                     com.bigbangcraft.regions.protection.BlockInteractionClassifier.classify(world, pos, state, serverPlayer, hand, hitResult);
 
-            // ChestShop consumes registered sign clicks itself (buy/sell/info). Let that
-            // integration run for visitors without opening the region's other interactions.
-            if (isChestShopSign(world, pos, state)) {
+            // ChestShop sign: any player can interact; Essentials handler takes over.
+            if (ShopIntegration.isShopSign(world, pos, state)) {
+                return InteractionResult.PASS;
+            }
+
+            // ChestShop linked chest: let the shop owner open it to restock.
+            if (classified.getAction() == RegionAction.CONTAINER
+                    && ShopIntegration.isShopChest(world, pos)
+                    && ShopIntegration.isShopOwner(serverPlayer, world, pos)) {
                 return InteractionResult.PASS;
             }
 
@@ -618,22 +627,6 @@ public class BigBangRegions implements ModInitializer {
             }
             return InteractionResult.PASS;
         });
-    }
-
-    private static boolean isChestShopSign(Level world, BlockPos pos, BlockState state) {
-        if (!(state.getBlock() instanceof SignBlock)
-                || !FabricLoader.getInstance().isModLoaded("bigbangessentials")) {
-            return false;
-        }
-
-        try {
-            Class<?> managerClass = Class.forName("com.pedrodalben.bigbangessentials.shop.ShopManager");
-            Object manager = managerClass.getMethod("getInstance").invoke(null);
-            return managerClass.getMethod("getShopBySign", String.class, BlockPos.class).invoke(
-                    manager, world.dimension().location().toString(), pos) != null;
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-            return false;
-        }
     }
 
     private static net.minecraft.world.level.block.Block configuredBorderBlock() {
