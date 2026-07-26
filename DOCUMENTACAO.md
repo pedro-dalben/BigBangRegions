@@ -651,6 +651,7 @@ Arquivo: `config/bigbangregions/config.json` (gerado automaticamente na primeira
     "slotInternalMargin": 8,
     "maxRegionsPerOwner": 1,
     "explorationExclusion": {
+      "excludeFromPlayerLandAllocation": true,
       "minX": -20000,
       "maxX": 20000,
       "minZ": -20000,
@@ -758,6 +759,7 @@ Arquivo: `config/bigbangregions/config.json` (gerado automaticamente na primeira
 | `playerLandAllocation` | `slotSize` | int | 256 | Tamanho do slot de plot |
 | `playerLandAllocation` | `futureMaximumClaimSize` | int | 240 | Tamanho máximo após expansão |
 | `playerLandAllocation` | `slotInternalMargin` | int | 8 | Margem interna entre slots |
+| `playerLandAllocation.explorationExclusion` | `excludeFromPlayerLandAllocation` | bool | true | Impede alocação de terrenos dentro da zona de exploração |
 | `playerLandAllocation.explorationExclusion` | `minX/maxX/minZ/maxZ` | int | ±20000 | Limites da zona de exploração |
 | `playerLandAllocation.explorationExclusion` | `safetyBuffer` | int | 1000 | Buffer de segurança da zona |
 | `playerLandAllocation.biomeSearch` | `minimumMatchPercentage` | int | 60 | % mínima de matching de bioma |

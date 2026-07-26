@@ -41,6 +41,14 @@ public class PlotSlotEligibilityTest {
     }
 
     @Test
+    public void testExplorationZoneCanBeIncludedInLandAllocation() {
+        Config config = configManager.getConfig();
+        config.getPlayerLandAllocation().getExplorationExclusion().setExcludeFromPlayerLandAllocation(false);
+
+        assertTrue(service.isSlotEligible(0, 0, 512));
+    }
+
+    @Test
     public void testExistingRegionIntersects() {
         // Add existing region to cache at [ 22000, 22100 ]
         Region region = new Region(

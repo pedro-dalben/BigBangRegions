@@ -359,18 +359,21 @@ public class Config {
     }
 
     public static class ExplorationExclusionConfig {
+        private boolean excludeFromPlayerLandAllocation = true;
         private int minX = -2000;
         private int maxX = 2000;
         private int minZ = -2000;
         private int maxZ = 2000;
         private int safetyBuffer = 0;
 
+        public boolean isExcludeFromPlayerLandAllocation() { return excludeFromPlayerLandAllocation; }
         public int getMinX() { return minX; }
         public int getMaxX() { return maxX; }
         public int getMinZ() { return minZ; }
         public int getMaxZ() { return maxZ; }
         public int getSafetyBuffer() { return safetyBuffer; }
 
+        public void setExcludeFromPlayerLandAllocation(boolean excludeFromPlayerLandAllocation) { this.excludeFromPlayerLandAllocation = excludeFromPlayerLandAllocation; }
         public void setMinX(int minX) { this.minX = minX; }
         public void setMaxX(int maxX) { this.maxX = maxX; }
         public void setMinZ(int minZ) { this.minZ = minZ; }

@@ -30,8 +30,9 @@ public class PlotSlotService {
     public PlotSlotIterator iteratorFor(UUID ownerUuid) {
         Config.PlayerLandAllocationConfig lac = configManager.getConfig().getPlayerLandAllocation();
         int slotSize = lac.getSlotSize();
-        int minRadius = Math.max(Math.abs(lac.getExplorationExclusion().getMaxX()),
-                                 Math.abs(lac.getExplorationExclusion().getMinX())) + lac.getExplorationExclusion().getSafetyBuffer();
+        int minRadius = lac.getExplorationExclusion().isExcludeFromPlayerLandAllocation()
+            ? Math.max(Math.abs(lac.getExplorationExclusion().getMaxX()), Math.abs(lac.getExplorationExclusion().getMinX())) + lac.getExplorationExclusion().getSafetyBuffer()
+            : 0;
         int startRing = Math.max(1, (minRadius / slotSize) + 1);
         return new PlotSlotIterator(this, slotSize, startRing);
     }
@@ -130,21 +131,20 @@ public class PlotSlotService {
         Config config = configManager.getConfig();
         Config.PlayerLandAllocationConfig lac = config.getPlayerLandAllocation();
         Config.ExplorationExclusionConfig ex = lac.getExplorationExclusion();
-
-        int safetyBuffer = ex.getSafetyBuffer();
-        int exMinX = ex.getMinX() - safetyBuffer;
-        int exMaxX = ex.getMaxX() + safetyBuffer;
-        int exMinZ = ex.getMinZ() - safetyBuffer;
-        int exMaxZ = ex.getMaxZ() + safetyBuffer;
-
         int maxX = minX + slotSize - 1;
         int maxZ = minZ + slotSize - 1;
 
-        // Check intersection with exclusion zone
-        boolean overlapX = (minX <= exMaxX && maxX >= exMinX);
-        boolean overlapZ = (minZ <= exMaxZ && maxZ >= exMinZ);
-        if (overlapX && overlapZ) {
-            return false;
+        if (ex.isExcludeFromPlayerLandAllocation()) {
+            int safetyBuffer = ex.getSafetyBuffer();
+            int exMinX = ex.getMinX() - safetyBuffer;
+            int exMaxX = ex.getMaxX() + safetyBuffer;
+            int exMinZ = ex.getMinZ() - safetyBuffer;
+            int exMaxZ = ex.getMaxZ() + safetyBuffer;
+            boolean overlapX = minX <= exMaxX && maxX >= exMinX;
+            boolean overlapZ = minZ <= exMaxZ && maxZ >= exMinZ;
+            if (overlapX && overlapZ) {
+                return false;
+            }
         }
 
         // Check intersection with any existing regions in cache
@@ -166,7 +166,9 @@ public class PlotSlotService {
         List<PlotSlotCandidate> candidates = new ArrayList<>();
 
         // Start search outside exclusion zone
-        int minRadius = Math.max(Math.abs(lac.getExplorationExclusion().getMaxX()), Math.abs(lac.getExplorationExclusion().getMinX())) + lac.getExplorationExclusion().getSafetyBuffer();
+        int minRadius = lac.getExplorationExclusion().isExcludeFromPlayerLandAllocation()
+            ? Math.max(Math.abs(lac.getExplorationExclusion().getMaxX()), Math.abs(lac.getExplorationExclusion().getMinX())) + lac.getExplorationExclusion().getSafetyBuffer()
+            : 0;
         int startRing = minRadius / slotSize + 1;
         if (startRing < 1) startRing = 1;
 

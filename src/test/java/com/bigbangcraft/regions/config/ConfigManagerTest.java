@@ -54,6 +54,7 @@ public class ConfigManagerTest {
         assertEquals(-2000, config.getPlayerLandAllocation().getExplorationExclusion().getMinX());
         assertEquals(2000, config.getPlayerLandAllocation().getExplorationExclusion().getMaxX());
         assertEquals(0, config.getPlayerLandAllocation().getExplorationExclusion().getSafetyBuffer());
+        assertTrue(config.getPlayerLandAllocation().getExplorationExclusion().isExcludeFromPlayerLandAllocation());
         assertEquals(5, config.getPlayerLandAllocation().getBiomeSearch().getSampleGridSize());
         assertEquals(64, config.getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY());
         assertEquals(50000, config.getPlayerLandAllocation().getWorldgenSearch().getVirtualBiomeCacheMaxEntries());
