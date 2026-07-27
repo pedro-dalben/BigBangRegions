@@ -277,6 +277,7 @@ public class RegionExpansionRecoveryService {
 
         LandPaymentReleaseRequest req = new LandPaymentReleaseRequest(
             op.getPaymentOperationUuid(),
+            op.getOwnerUuid(),
             op.getGemsReservationId(),
             releaseKey
         );
