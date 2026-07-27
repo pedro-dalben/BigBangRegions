@@ -353,6 +353,8 @@ public class RegionsCommand {
         }
         if (isCommandEnabled("expandir")) {
             builder.then(Commands.literal("expandir")
+                .then(Commands.argument("tamanho", IntegerArgumentType.integer(1))
+                    .executes(RegionsCommand::beginExpansion))
                 .then(Commands.literal("status")
                     .executes(RegionsCommand::expansionStatus)
                 )
