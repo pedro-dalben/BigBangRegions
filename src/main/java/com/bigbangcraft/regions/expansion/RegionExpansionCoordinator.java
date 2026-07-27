@@ -23,6 +23,10 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class RegionExpansionCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-RegionExpansionCoordinator");
@@ -40,6 +44,16 @@ public class RegionExpansionCoordinator {
     private final LandPaymentGateway paymentGateway;
     private final RegionExpansionPricingPolicy pricingPolicy;
     private final Set<String> reconciledVisuals = ConcurrentHashMap.newKeySet();
+    // ponytail: one serialized expansion worker keeps SQLite/cache ordering safe; split per operation only if measured throughput needs it.
+    private final ExecutorService operationExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "BigBangRegions-ExpansionExecutor");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final AtomicBoolean workInFlight = new AtomicBoolean();
+    private final AtomicBoolean visualWorkInFlight = new AtomicBoolean();
+    private final AtomicLong nextWorkAt = new AtomicLong();
+    private final Set<String> paymentInFlight = ConcurrentHashMap.newKeySet();
 
     public RegionExpansionCoordinator(ConfigManager configManager,
                                        DatabaseManager databaseManager,
@@ -222,38 +236,64 @@ public class RegionExpansionCoordinator {
             throw new IllegalStateException("A expansao ja ultrapassou o ponto irreversivel e nao pode ser cancelada.");
         }
 
-        beginReleaseBeforeResize(op, "Cancelled by player");
+        beginReleaseBeforeResize(op, "CANCELLED_BY_PLAYER", "Cancelled by player");
     }
 
     public int processNextExpansion() {
-        List<RegionExpansionOperation> active = expansionRepository.getActiveOperations();
-        if (active.isEmpty()) return 0;
-
-        Config.RegionExpansionConfig ec = configManager.getConfig().getRegionExpansion();
-
         long now = System.currentTimeMillis();
-        for (RegionExpansionOperation op : active) {
-            if (op.getNextRetryAt() != null && op.getNextRetryAt() > now) continue;
-            return processOperation(op, ec);
-        }
-        return 0;
+        if (now < nextWorkAt.get() || !workInFlight.compareAndSet(false, true)) return 0;
+        operationExecutor.execute(() -> {
+            try {
+                List<RegionExpansionOperation> active = expansionRepository.getActiveOperations();
+                Config.RegionExpansionConfig ec = configManager.getConfig().getRegionExpansion();
+                for (RegionExpansionOperation op : active) {
+                    if (op.getNextRetryAt() != null && op.getNextRetryAt() > System.currentTimeMillis()) continue;
+                    processOperation(op, ec);
+                    break;
+                }
+            } catch (Throwable error) {
+                LOGGER.error("Expansion worker failed; durable operation state was preserved where possible.", error);
+            } finally {
+                nextWorkAt.set(System.currentTimeMillis() + 250L);
+                workInFlight.set(false);
+            }
+        });
+        return 1;
+    }
+
+    public void shutdown() {
+        operationExecutor.shutdownNow();
     }
 
     public void reconcileExpansionVisuals(MinecraftServer server) {
-        for (RegionExpansionOperation op : expansionRepository.getActiveOperations()) {
-            if (op.getState() != RegionExpansionState.RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING) continue;
-            if (reconciledVisuals.contains(op.getOperationId())) continue;
+        if (!visualWorkInFlight.compareAndSet(false, true)) return;
+        operationExecutor.execute(() -> {
+            try {
+                List<RegionExpansionOperation> pending = expansionRepository.getActiveOperations().stream()
+                    .filter(op -> op.getState() == RegionExpansionState.RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING)
+                    .filter(op -> !reconciledVisuals.contains(op.getOperationId()))
+                    .toList();
+                if (!pending.isEmpty()) server.execute(() -> applyExpansionVisuals(server, pending));
+            } catch (Throwable error) {
+                LOGGER.warn("Failed to load expansion visuals off the server thread", error);
+            } finally {
+                visualWorkInFlight.set(false);
+            }
+        });
+    }
+
+    private void applyExpansionVisuals(MinecraftServer server, List<RegionExpansionOperation> pending) {
+        for (RegionExpansionOperation op : pending) {
             ServerLevel level = server.getLevel(net.minecraft.resources.ResourceKey.create(
                 net.minecraft.core.registries.Registries.DIMENSION,
                 net.minecraft.resources.ResourceLocation.parse(op.getDimensionKey())));
             if (level == null) continue;
-            RegionBounds oldBounds = new RegionBounds(op.getDimensionKey(), op.getOldMinX(), 0, op.getOldMinZ(), op.getOldMaxX(), 0, op.getOldMaxZ());
             Region region = regionCache.get(op.getRegionId());
-            if (region != null) {
-                oldBounds = new RegionBounds(op.getDimensionKey(), op.getOldMinX(), region.getBounds().getMinY(), op.getOldMinZ(), op.getOldMaxX(), region.getBounds().getMaxY(), op.getOldMaxZ());
-                if (BigBangRegions.getAllocationCoordinator().refreshExpansionBorder(level, oldBounds, region.getBounds(), region.getId())) {
-                    reconciledVisuals.add(op.getOperationId());
-                }
+            if (region == null) continue;
+            RegionBounds oldBounds = new RegionBounds(op.getDimensionKey(), op.getOldMinX(), region.getBounds().getMinY(),
+                op.getOldMinZ(), op.getOldMaxX(), region.getBounds().getMaxY(), op.getOldMaxZ());
+            if (BigBangRegions.getAllocationCoordinator().refreshExpansionBorder(level, oldBounds, region.getBounds(), region.getId())) {
+                reconciledVisuals.add(op.getOperationId());
             }
         }
     }
@@ -267,8 +307,7 @@ public class RegionExpansionCoordinator {
                 return handleReserveResult(op, ec);
             case PAYMENT_RESERVED:
                 if (op.isReservationExpired()) {
-                    return failOperation(op, RegionExpansionState.CANCELLED_BEFORE_RESIZE,
-                        "RESERVATION_EXPIRED", "Reserva de Gems expirada.");
+                    return releaseBeforeResize(op, "RESERVATION_EXPIRED", "Reserva de Gems expirada.");
                 }
                 long renewThreshold = ec.getRenewBeforeExpirySeconds() * 1000L;
                 if (op.getReservationLeaseExpiresAt() != null
@@ -281,7 +320,6 @@ public class RegionExpansionCoordinator {
             case RESIZE_APPLYING:
                 return recoverResizeApplying(op);
             case RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING:
-                if (!reconciledVisuals.contains(op.getOperationId())) return 0;
                 return handleCaptureResult(op, ec);
             default:
                 return 0;
@@ -302,17 +340,8 @@ public class RegionExpansionCoordinator {
             ec.getReservationLeaseSeconds()
         );
 
-        LandPaymentOperationResult result = paymentGateway.reserve(req);
-        if (result.isSuccess()) {
-            op.setGemsReservationId(result.getReservationId());
-            op.setReservationLeaseExpiresAt(System.currentTimeMillis() + ec.getReservationLeaseSeconds() * 1000L);
-            op.transitionTo(RegionExpansionState.PAYMENT_RESERVED);
-            expansionRepository.save(op);
-            LOGGER.info("Expansion gems reserved: op={}, reservationId={}", op.getOperationId(), result.getReservationId());
-            return 1;
-        } else {
-            return handlePaymentFailure(op, result, ec);
-        }
+        submitReserve(op, ec, req);
+        return 1;
     }
 
     private int handleReserveResult(RegionExpansionOperation op, Config.RegionExpansionConfig ec) {
@@ -329,15 +358,8 @@ public class RegionExpansionCoordinator {
             ec.getReservationLeaseSeconds()
         );
 
-        LandPaymentOperationResult result = paymentGateway.reserve(req);
-        if (result.isSuccess()) {
-            op.setGemsReservationId(result.getReservationId());
-            op.setReservationLeaseExpiresAt(System.currentTimeMillis() + ec.getReservationLeaseSeconds() * 1000L);
-            op.transitionTo(RegionExpansionState.PAYMENT_RESERVED);
-            expansionRepository.save(op);
-            return 1;
-        }
-        return handlePaymentFailure(op, result, ec);
+        submitReserve(op, ec, req);
+        return 1;
     }
 
     private int startPaymentRenew(RegionExpansionOperation op, Config.RegionExpansionConfig ec) {
@@ -348,22 +370,15 @@ public class RegionExpansionCoordinator {
 
         LandPaymentRenewRequest req = new LandPaymentRenewRequest(
             op.getPaymentOperationUuid(),
+            op.getOwnerUuid(),
             op.getGemsReservationId(),
             renewKey,
             op.getRenewSequence(),
             ec.getReservationLeaseSeconds()
         );
 
-        LandPaymentOperationResult result = paymentGateway.renew(req);
-        if (result.isSuccess()) {
-            op.incrementRenewSequence();
-            op.setReservationLeaseExpiresAt(System.currentTimeMillis() + ec.getReservationLeaseSeconds() * 1000L);
-            op.transitionTo(RegionExpansionState.PAYMENT_RESERVED);
-            expansionRepository.save(op);
-            LOGGER.info("Expansion gems renewed: op={}, seq={}", op.getOperationId(), op.getRenewSequence());
-            return 1;
-        }
-        return handlePaymentFailure(op, result, ec);
+        submitRenew(op, ec, req);
+        return 1;
     }
 
     private int handleRenewResult(RegionExpansionOperation op, Config.RegionExpansionConfig ec) {
@@ -374,27 +389,92 @@ public class RegionExpansionCoordinator {
 
         LandPaymentRenewRequest req = new LandPaymentRenewRequest(
             op.getPaymentOperationUuid(),
+            op.getOwnerUuid(),
             op.getGemsReservationId(),
             op.getRenewIdempotencyKey(),
             op.getRenewSequence(),
             ec.getReservationLeaseSeconds()
         );
 
-        LandPaymentOperationResult result = paymentGateway.renew(req);
+        submitRenew(op, ec, req);
+        return 1;
+    }
+
+    private void submitReserve(RegionExpansionOperation op, Config.RegionExpansionConfig ec, LandPaymentReserveRequest request) {
+        String flightKey = op.getOperationId() + ":reserve:" + request.getIdempotencyKey();
+        if (!paymentInFlight.add(flightKey)) return;
+        try {
+            paymentGateway.reserveAsync(request).whenComplete((result, error) -> operationExecutor.execute(() -> {
+                paymentInFlight.remove(flightKey);
+                finishReserve(op, ec, error == null ? result : failureFrom(error));
+            }));
+        } catch (Throwable error) {
+            paymentInFlight.remove(flightKey);
+            finishReserve(op, ec, failureFrom(error));
+        }
+    }
+
+    private void finishReserve(RegionExpansionOperation op, Config.RegionExpansionConfig ec,
+                               LandPaymentOperationResult result) {
+        if (result.isSuccess()) {
+            op.setGemsReservationId(result.getReservationId());
+            long expiresAt = result.getLeaseExpiresAt() > 0
+                ? result.getLeaseExpiresAt()
+                : System.currentTimeMillis() + ec.getReservationLeaseSeconds() * 1000L;
+            op.setReservationLeaseExpiresAt(expiresAt);
+            op.transitionTo(RegionExpansionState.PAYMENT_RESERVED);
+            op.setNextRetryAt(null);
+            expansionRepository.save(op);
+            LOGGER.info("Expansion Gems reserved: op={}, reservationId={}", op.getOperationId(), result.getReservationId());
+        } else {
+            handlePaymentFailure(op, result, ec);
+        }
+    }
+
+    private void submitRenew(RegionExpansionOperation op, Config.RegionExpansionConfig ec, LandPaymentRenewRequest request) {
+        String flightKey = op.getOperationId() + ":renew:" + request.getIdempotencyKey();
+        if (!paymentInFlight.add(flightKey)) return;
+        try {
+            paymentGateway.renewAsync(request).whenComplete((result, error) -> operationExecutor.execute(() -> {
+                paymentInFlight.remove(flightKey);
+                finishRenew(op, ec, error == null ? result : failureFrom(error));
+            }));
+        } catch (Throwable error) {
+            paymentInFlight.remove(flightKey);
+            finishRenew(op, ec, failureFrom(error));
+        }
+    }
+
+    private void finishRenew(RegionExpansionOperation op, Config.RegionExpansionConfig ec,
+                             LandPaymentOperationResult result) {
         if (result.isSuccess()) {
             op.incrementRenewSequence();
-            op.setReservationLeaseExpiresAt(System.currentTimeMillis() + ec.getReservationLeaseSeconds() * 1000L);
+            long expiresAt = result.getLeaseExpiresAt() > 0
+                ? result.getLeaseExpiresAt()
+                : System.currentTimeMillis() + ec.getReservationLeaseSeconds() * 1000L;
+            op.setReservationLeaseExpiresAt(expiresAt);
             op.transitionTo(RegionExpansionState.PAYMENT_RESERVED);
+            op.setNextRetryAt(null);
             expansionRepository.save(op);
-            return 1;
+            LOGGER.info("Expansion Gems renewed: op={}, seq={}", op.getOperationId(), op.getRenewSequence());
+        } else {
+            handlePaymentFailure(op, result, ec);
         }
-        return handlePaymentFailure(op, result, ec);
+    }
+
+    private LandPaymentOperationResult failureFrom(Throwable error) {
+        Throwable cause = error;
+        while (cause.getCause() != null) cause = cause.getCause();
+        if (cause instanceof LinkageError) return LandPaymentOperationResult.failure(LandPaymentFailure.API_INCOMPATIBLE);
+        if (cause instanceof java.util.concurrent.RejectedExecutionException) {
+            return LandPaymentOperationResult.failure(LandPaymentFailure.EXECUTOR_SATURATED);
+        }
+        return LandPaymentOperationResult.failure(LandPaymentFailure.TRANSIENT_ERROR);
     }
 
     private int applyResize(RegionExpansionOperation op, Config.RegionExpansionConfig ec) {
         if (op.isReservationExpired()) {
-            return failOperation(op, RegionExpansionState.CANCELLED_BEFORE_RESIZE,
-                "RESERVATION_EXPIRED", "Reserva de Gems expirada antes do resize.");
+            return releaseBeforeResize(op, "RESERVATION_EXPIRED", "Reserva de Gems expirada antes do resize.");
         }
 
         String captureKey = generateIdempotencyKey(op.getOperationId(), "expand_capture");
@@ -506,19 +586,38 @@ public class RegionExpansionCoordinator {
 
         LandPaymentCaptureRequest req = new LandPaymentCaptureRequest(
             op.getPaymentOperationUuid(),
+            op.getOwnerUuid(),
             op.getGemsReservationId(),
             captureKey
         );
+        submitCapture(op, ec, req);
+        return 1;
+    }
 
-        LandPaymentOperationResult result = paymentGateway.capture(req);
-        if (result.isSuccess()
-            || result.getFailure() == LandPaymentFailure.ALREADY_CAPTURED) {
+    private void submitCapture(RegionExpansionOperation op, Config.RegionExpansionConfig ec,
+                               LandPaymentCaptureRequest request) {
+        String flightKey = op.getOperationId() + ":capture:" + request.getIdempotencyKey();
+        if (!paymentInFlight.add(flightKey)) return;
+        try {
+            paymentGateway.captureAsync(request).whenComplete((result, error) -> operationExecutor.execute(() -> {
+                paymentInFlight.remove(flightKey);
+                finishCapture(op, ec, error == null ? result : failureFrom(error));
+            }));
+        } catch (Throwable error) {
+            paymentInFlight.remove(flightKey);
+            finishCapture(op, ec, failureFrom(error));
+        }
+    }
+
+    private void finishCapture(RegionExpansionOperation op, Config.RegionExpansionConfig ec,
+                               LandPaymentOperationResult result) {
+        if (result.isSuccess() || result.getFailure() == LandPaymentFailure.ALREADY_CAPTURED) {
             op.setPaymentCapturedAt(System.currentTimeMillis());
             op.transitionTo(RegionExpansionState.COMPLETED);
             expansionRepository.save(op);
             LOGGER.info("Expansion completed: op={}, region={}, size={}x{}",
                 op.getOperationId(), op.getRegionId(), op.getTargetSize(), op.getTargetSize());
-            return 1;
+            return;
         }
 
         if (result.getFailure() == LandPaymentFailure.RESERVATION_EXPIRED) {
@@ -527,14 +626,15 @@ public class RegionExpansionCoordinator {
             op.setFailureDetail("Reserva de Gems expirou apos o resize. Revisao administrativa necessaria.");
             expansionRepository.save(op);
             LOGGER.error("Expansion payment reservation expired after resize: op={}", op.getOperationId());
-            return 1;
+            return;
         }
 
-        if (result.isTransient()) {
-            op.incrementRetryCount();
-            op.setNextRetryAt(System.currentTimeMillis() + ec.getRetryBackoffSeconds() * 1000L);
-            expansionRepository.save(op);
-            return 1;
+        if (result.getFailure() == LandPaymentFailure.IDEMPOTENCY_CONFLICT
+            || result.getFailure() == LandPaymentFailure.API_INCOMPATIBLE
+            || result.getFailure() == LandPaymentFailure.DATA_INTEGRITY_FAILURE) {
+            failOperation(op, RegionExpansionState.BLOCKED_FOR_MANUAL_RECONCILIATION,
+                result.getFailure().name(), "Capture exige reconciliacao administrativa; nenhum retry cego sera feito.");
+            return;
         }
 
         op.incrementRetryCount();
@@ -542,12 +642,10 @@ public class RegionExpansionCoordinator {
             op.forceTransitionTo(RegionExpansionState.BLOCKED_FOR_MANUAL_RECONCILIATION);
             op.setFailureCode("CAPTURE_MAX_RETRIES_EXCEEDED");
             op.setFailureDetail("Falha ao capturar pagamento apos " + op.getRetryCount() + " tentativas.");
-            expansionRepository.save(op);
         } else {
             op.setNextRetryAt(System.currentTimeMillis() + ec.getRetryBackoffSeconds() * 1000L);
-            expansionRepository.save(op);
         }
-        return 1;
+        expansionRepository.save(op);
     }
 
     private int handlePaymentFailure(RegionExpansionOperation op, LandPaymentOperationResult result,
@@ -559,8 +657,21 @@ public class RegionExpansionCoordinator {
 
         if (result.getFailure() == LandPaymentFailure.RESERVATION_EXPIRED
             || result.getFailure() == LandPaymentFailure.RESERVATION_NOT_FOUND) {
-            return failOperation(op, RegionExpansionState.CANCELLED_BEFORE_RESIZE,
-                String.valueOf(result.getFailure()), "Reserva de Gems expirada.");
+            return releaseBeforeResize(op, String.valueOf(result.getFailure()), "Reserva de Gems expirada.");
+        }
+
+        if (result.getFailure() == LandPaymentFailure.IDEMPOTENCY_CONFLICT
+            || result.getFailure() == LandPaymentFailure.API_INCOMPATIBLE
+            || result.getFailure() == LandPaymentFailure.DATA_INTEGRITY_FAILURE) {
+            return failOperation(op, RegionExpansionState.BLOCKED_FOR_MANUAL_RECONCILIATION,
+                result.getFailure().name(), "A operacao exige reconciliacao administrativa; nao sera repetida automaticamente.");
+        }
+
+        if (result.getFailure() == LandPaymentFailure.PROVIDER_STARTING
+            || result.getFailure() == LandPaymentFailure.DATABASE_UNAVAILABLE) {
+            op.setNextRetryAt(System.currentTimeMillis() + ec.getRetryBackoffSeconds() * 1000L);
+            expansionRepository.save(op);
+            return 1;
         }
 
         if (result.isTransient()) {
@@ -580,20 +691,52 @@ public class RegionExpansionCoordinator {
         return 1;
     }
 
-    private void beginReleaseBeforeResize(RegionExpansionOperation op, String reason) {
+    private void beginReleaseBeforeResize(RegionExpansionOperation op, String code, String reason) {
+        operationExecutor.execute(() -> releaseBeforeResize(op, code, reason));
+    }
+
+    private int releaseBeforeResize(RegionExpansionOperation op, String code, String reason) {
         String releaseKey = generateIdempotencyKey(op.getOperationId(), "expand_release");
         op.setReleaseIdempotencyKey(releaseKey);
         op.forceTransitionTo(RegionExpansionState.RELEASE_PENDING);
+        op.setFailureCode(code);
         expansionRepository.save(op);
+
+        if (op.getGemsReservationId() == null) {
+            op.forceTransitionTo(RegionExpansionState.CANCELLED_BEFORE_RESIZE);
+            expansionRepository.save(op);
+            return 1;
+        }
 
         LandPaymentReleaseRequest req = new LandPaymentReleaseRequest(
             op.getPaymentOperationUuid(),
+            op.getOwnerUuid(),
             op.getGemsReservationId(),
             releaseKey
         );
 
-        LandPaymentOperationResult result = paymentGateway.release(req);
-        if (result.isSuccess() || result.getFailure() == LandPaymentFailure.ALREADY_RELEASED) {
+        submitRelease(op, req, reason);
+        return 1;
+    }
+
+    private void submitRelease(RegionExpansionOperation op, LandPaymentReleaseRequest request, String reason) {
+        String flightKey = op.getOperationId() + ":release:" + request.getIdempotencyKey();
+        if (!paymentInFlight.add(flightKey)) return;
+        try {
+            paymentGateway.releaseAsync(request).whenComplete((result, error) -> operationExecutor.execute(() -> {
+                paymentInFlight.remove(flightKey);
+                finishRelease(op, reason, error == null ? result : failureFrom(error));
+            }));
+        } catch (Throwable error) {
+            paymentInFlight.remove(flightKey);
+            finishRelease(op, reason, failureFrom(error));
+        }
+    }
+
+    private void finishRelease(RegionExpansionOperation op, String reason, LandPaymentOperationResult result) {
+        if (result.isSuccess() || result.getFailure() == LandPaymentFailure.ALREADY_RELEASED
+            || result.getFailure() == LandPaymentFailure.RESERVATION_EXPIRED
+            || result.getFailure() == LandPaymentFailure.RESERVATION_NOT_FOUND) {
             op.setGemsReservationId(null);
             op.forceTransitionTo(RegionExpansionState.CANCELLED_BEFORE_RESIZE);
             op.setFailureDetail(reason);
@@ -601,7 +744,7 @@ public class RegionExpansionCoordinator {
             LOGGER.info("Expansion cancelled before resize: op={}, reason={}", op.getOperationId(), reason);
         } else {
             op.incrementRetryCount();
-            op.setNextRetryAt(System.currentTimeMillis() + 5000);
+            op.setNextRetryAt(System.currentTimeMillis() + 5000L);
             expansionRepository.save(op);
             LOGGER.warn("Failed to release expansion payment: op={}, failure={}. Staying in RELEASE_PENDING.",
                 op.getOperationId(), result.getFailure());
@@ -650,6 +793,7 @@ public class RegionExpansionCoordinator {
         op.setNextRetryAt(0L);
         expansionRepository.save(op);
     }
+
 
     private String generateIdempotencyKey(String operationId, String operation) {
         String compactId = operationId.replace("-", "");
