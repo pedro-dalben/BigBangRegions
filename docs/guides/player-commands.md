@@ -10,6 +10,7 @@
 | `/regiao biomas` | Lista opções de bioma disponíveis | — |
 | `/regiao casa` | Teleporta para a casa da sua região | `bigbangregions.player.home` |
 | `/regiao sethome` | Define a casa na posição atual (dentro da região) | `bigbangregions.player.home` |
+| `/regiao expandir <tamanho>` | Inicia uma expansão paga para o tamanho permitido | `bigbangregions.player.expand` |
 | `/regiao expandir status` | Consulta uma expansão em andamento | `bigbangregions.player.expand` |
 | `/regiao expandir cancelar` | Cancela uma expansão antes do redimensionamento | `bigbangregions.player.expand` |
 | `/regiao explorar` | Teleporta para o centro da zona de exploração | `bigbangregions.player.explore` |

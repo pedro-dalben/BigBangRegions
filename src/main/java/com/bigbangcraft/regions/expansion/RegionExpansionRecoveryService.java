@@ -17,6 +17,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class RegionExpansionRecoveryService {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-RegionExpansionRecoveryService");
@@ -29,6 +31,11 @@ public class RegionExpansionRecoveryService {
     private final LandPaymentGateway paymentGateway;
     private final ConfigManager configManager;
     private final DatabaseManager databaseManager;
+    private final ExecutorService recoveryExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "BigBangRegions-ExpansionRecovery");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     public RegionExpansionRecoveryService(RegionExpansionOperationRepository expansionRepository,
                                            RegionRepository regionRepository,
@@ -49,6 +56,14 @@ public class RegionExpansionRecoveryService {
     }
 
     public void recover() {
+        recoveryExecutor.execute(this::recoverInternal);
+    }
+
+    public void shutdown() {
+        recoveryExecutor.shutdownNow();
+    }
+
+    private void recoverInternal() {
         LOGGER.info("Starting region expansion recovery...");
         reloadRegionsFromDb();
 
@@ -148,6 +163,7 @@ public class RegionExpansionRecoveryService {
 
         LandPaymentReleaseRequest req = new LandPaymentReleaseRequest(
             op.getPaymentOperationUuid(),
+            op.getOwnerUuid(),
             reservationId,
             releaseKey
         );
@@ -261,6 +277,7 @@ public class RegionExpansionRecoveryService {
 
         LandPaymentReleaseRequest req = new LandPaymentReleaseRequest(
             op.getPaymentOperationUuid(),
+            op.getOwnerUuid(),
             op.getGemsReservationId(),
             releaseKey
         );

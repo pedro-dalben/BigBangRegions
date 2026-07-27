@@ -149,6 +149,11 @@ public class RegionExpansionOperation {
         this.updatedAt = System.currentTimeMillis();
     }
 
+    public void setRenewSequence(long renewSequence) {
+        this.renewSequence = Math.max(0, renewSequence);
+        this.updatedAt = System.currentTimeMillis();
+    }
+
     public void setCaptureIdempotencyKey(String key) {
         this.captureIdempotencyKey = key;
         this.updatedAt = System.currentTimeMillis();
@@ -166,6 +171,11 @@ public class RegionExpansionOperation {
 
     public void incrementRetryCount() {
         this.retryCount++;
+        this.updatedAt = System.currentTimeMillis();
+    }
+
+    public void setRetryCount(int retryCount) {
+        this.retryCount = Math.max(0, retryCount);
         this.updatedAt = System.currentTimeMillis();
     }
 

@@ -6,6 +6,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class NoPaymentGateway implements LandPaymentGateway {
+    private final LandPaymentProviderStatus status;
+
+    public NoPaymentGateway() {
+        this(LandPaymentProviderStatus.NOT_INSTALLED);
+    }
+
+    public NoPaymentGateway(LandPaymentProviderStatus status) {
+        this.status = status;
+    }
     
     @Override
     public LandPaymentOperationResult reserve(LandPaymentReserveRequest request) {
@@ -34,7 +43,7 @@ public class NoPaymentGateway implements LandPaymentGateway {
     
     @Override
     public LandPaymentProviderStatus getProviderStatus() {
-        return LandPaymentProviderStatus.UNAVAILABLE;
+        return status;
     }
     
     @Override

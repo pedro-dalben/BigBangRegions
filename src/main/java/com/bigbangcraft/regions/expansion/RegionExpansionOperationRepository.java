@@ -160,6 +160,7 @@ public class RegionExpansionOperationRepository {
         op.setGemsReservationId(rs.getString("gems_reservation_id"));
         op.setReserveIdempotencyKey(rs.getString("reserve_idempotency_key"));
         op.setRenewIdempotencyKey(rs.getString("renew_idempotency_key"));
+        op.setRenewSequence(rs.getLong("renew_sequence"));
         op.setCaptureIdempotencyKey(rs.getString("capture_idempotency_key"));
         op.setReleaseIdempotencyKey(rs.getString("release_idempotency_key"));
 
@@ -167,7 +168,7 @@ public class RegionExpansionOperationRepository {
         Long rle = rs.getObject("reservation_lease_expires_at") != null ? rs.getLong("reservation_lease_expires_at") : null;
         op.setReservationLeaseExpiresAt(rle);
 
-        // retryCount set via increment; force via set
+        op.setRetryCount(rs.getInt("retry_count"));
         Long nextRetry = rs.getObject("next_retry_at") != null ? rs.getLong("next_retry_at") : null;
         op.setNextRetryAt(nextRetry);
 

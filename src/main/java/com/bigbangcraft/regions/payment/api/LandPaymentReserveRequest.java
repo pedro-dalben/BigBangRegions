@@ -8,6 +8,9 @@ public class LandPaymentReserveRequest {
     private final long priceGems;
     private final String idempotencyKey;
     private final long leaseDurationSeconds;
+    private final String source;
+    private final String purpose;
+    private final String externalReference;
     
     public LandPaymentReserveRequest(UUID operationId, UUID ownerUuid, long priceGems, 
                                      String idempotencyKey, long leaseDurationSeconds) {
@@ -16,6 +19,9 @@ public class LandPaymentReserveRequest {
         this.priceGems = priceGems;
         this.idempotencyKey = idempotencyKey;
         this.leaseDurationSeconds = leaseDurationSeconds;
+        this.source = "bigbangregions";
+        this.purpose = "player_region_expansion";
+        this.externalReference = operationId.toString();
     }
     
     public UUID getOperationId() { return operationId; }
@@ -23,4 +29,7 @@ public class LandPaymentReserveRequest {
     public long getPriceGems() { return priceGems; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public long getLeaseDurationSeconds() { return leaseDurationSeconds; }
+    public String getSource() { return source; }
+    public String getPurpose() { return purpose; }
+    public String getExternalReference() { return externalReference; }
 }
