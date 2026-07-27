@@ -19,6 +19,7 @@ import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.repository.RegionInviteRepository;
 import com.bigbangcraft.regions.payment.NoPaymentGateway;
 import com.bigbangcraft.regions.payment.api.LandPaymentGateway;
+import com.bigbangcraft.regions.payment.api.LandPaymentProviderStatus;
 import com.bigbangcraft.regions.recovery.LandOperationRecoveryService;
 import com.bigbangcraft.regions.expansion.RegionExpansionCoordinator;
 import com.bigbangcraft.regions.expansion.RegionExpansionOperationRepository;
@@ -311,6 +312,7 @@ public class BigBangRegions implements ModInitializer {
         // 11. Server tick scheduler for allocation processing + entry/exit tracking
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             LOGGER.info("Server started. Running land operation recovery...");
+            paymentGateway.refreshReadiness();
             if (recoveryService != null) {
                 recoveryService.recover();
             }
@@ -321,6 +323,9 @@ public class BigBangRegions implements ModInitializer {
             LOGGER.info("Payment gateway status: {}", paymentGateway.getProviderStatus());
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (paymentGateway != null) {
+                paymentGateway.refreshReadiness();
+            }
             if (allocationScheduler != null) {
                 allocationScheduler.tick(server);
             }
@@ -398,6 +403,12 @@ public class BigBangRegions implements ModInitializer {
             }
             if (auditService != null) {
                 auditService.shutdown();
+            }
+            if (expansionCoordinator != null) {
+                expansionCoordinator.shutdown();
+            }
+            if (expansionRecoveryService != null) {
+                expansionRecoveryService.shutdown();
             }
             if (databaseManager != null) {
                 databaseManager.close();
@@ -510,7 +521,11 @@ public class BigBangRegions implements ModInitializer {
     }
     
     private LandPaymentGateway initializePaymentGateway() {
-        String provider = configManager.getConfig().getPlayerLandAllocation().getPayment().getProvider();
+        Config config = configManager.getConfig();
+        String provider = config.getRegionExpansion().getPaymentProvider();
+        if (provider == null || provider.isBlank() || "none".equalsIgnoreCase(provider)) {
+            provider = config.getPlayerLandAllocation().getPayment().getProvider();
+        }
         
         if ("none".equals(provider) || provider == null || provider.isEmpty()) {
             LOGGER.info("Payment provider: none (no payment required)");
@@ -536,6 +551,9 @@ public class BigBangRegions implements ModInitializer {
         } catch (ClassNotFoundException e) {
             LOGGER.warn("BigBang Essentials adapter not found. Payment operations will be unavailable.", e);
             return new NoPaymentGateway();
+        } catch (LinkageError e) {
+            LOGGER.error("BigBang Essentials Gems API is incompatible with this Regions build.", e);
+            return new NoPaymentGateway(LandPaymentProviderStatus.API_INCOMPATIBLE);
         } catch (Exception e) {
             LOGGER.error("Failed to initialize BigBang Essentials adapter: {}", e.getMessage(), e);
             return new NoPaymentGateway();

@@ -4,6 +4,7 @@ import java.util.UUID;
 
 public class LandPaymentRenewRequest {
     private final UUID operationId;
+    private final UUID actorUuid;
     private final String reservationId;
     private final String idempotencyKey;
     private final long renewSequence;
@@ -11,7 +12,13 @@ public class LandPaymentRenewRequest {
     
     public LandPaymentRenewRequest(UUID operationId, String reservationId, 
                                    String idempotencyKey, long renewSequence, long leaseDurationSeconds) {
+        this(operationId, operationId, reservationId, idempotencyKey, renewSequence, leaseDurationSeconds);
+    }
+
+    public LandPaymentRenewRequest(UUID operationId, UUID actorUuid, String reservationId,
+                                   String idempotencyKey, long renewSequence, long leaseDurationSeconds) {
         this.operationId = operationId;
+        this.actorUuid = actorUuid;
         this.reservationId = reservationId;
         this.idempotencyKey = idempotencyKey;
         this.renewSequence = renewSequence;
@@ -19,6 +26,7 @@ public class LandPaymentRenewRequest {
     }
     
     public UUID getOperationId() { return operationId; }
+    public UUID getActorUuid() { return actorUuid; }
     public String getReservationId() { return reservationId; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public long getRenewSequence() { return renewSequence; }
