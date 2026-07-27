@@ -30,3 +30,7 @@ Reserve uses the player UUID as owner, the expansion UUID as external reference,
 ## Diagnostics
 
 Use `/regions admin payment status` (permission `bigbangregions.admin.expansion`). Pending operations use the existing `/regions expansion inspect <operation-id>`, `/regions expansion list`, `/regions expansion retry <operation-id>`, and `/regions expansion reconcile` commands.
+
+## Verified paired smoke
+
+With BigBangEssentials `1.0.2.6+build.1189`, MySQL 8.4, Gems enabled, and Regions' SQLite database, a real Fabric server completed an 80x80 → 100x100 expansion for 3,600 Gems. The wallet moved from 100,000 total to 96,400 total, held 3,600 only during reservation, and finished with no active reservation. Restarting the same server preserved `COMPLETED`, the expanded bounds, and the captured reservation.

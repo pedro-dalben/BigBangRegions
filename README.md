@@ -48,6 +48,8 @@ A alocação inicial continua gratuita e funciona sem BigBangEssentials. Para ex
 
 ### Comandos de Jogador
 * `/regiao info` - Mostra detalhes da região no bloco atual (papel, membros, e flags).
+* `/regiao expandir <tamanho>` - Inicia uma expansão paga usando Gems.
+* `/regiao expandir status|cancelar` - Consulta ou cancela antes do redimensionamento.
 * `/regiao membros listar` - Lista membros do terreno pertencente ao jogador.
 * `/regiao membros adicionar <player>` - Adiciona um membro (cargo MEMBER) no terreno.
 * `/regiao membros remover <player>` - Remove um membro do terreno.
