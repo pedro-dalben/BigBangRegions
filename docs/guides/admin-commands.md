@@ -17,6 +17,8 @@
 | Comando | Descrição | Permissão |
 |---------|-----------|-----------|
 | `/regions player allocate <player> <bioma>` | Aloca terreno para jogador | `bigbangregions.admin.player.allocate` |
+| `/regions player allocatehere <player>` | Aloca o terreno centrado na posição atual do administrador, usando o bioma atual | `bigbangregions.admin.player.allocate` |
+| `/regions player players [página]` | Lista jogadores que já entraram no servidor | `bigbangregions.admin.player.allocate` |
 | `/regions player allocation <player>` | Ver status de alocação | `bigbangregions.admin.player.allocation.inspect` |
 | `/regions player allocation <player> cancel` | Cancela alocação | `bigbangregions.admin.player.allocation.cancel` |
 | `/regions admin tp <player>` | Teleporta o administrador para a home da região do jogador | `bigbangregions.admin.player.teleport` |

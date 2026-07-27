@@ -19,6 +19,7 @@ import net.minecraft.server.Bootstrap;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -153,6 +154,30 @@ public class TerrainAllocationCoordinatorDimensionTest {
 
         AllocationRequest reloaded = requestRepository.get(request.getId());
         assertEquals(AllocationRequestState.VIRTUAL_SEARCHING, reloaded.getState());
+    }
+
+    @Test
+    public void createsManualRequestCenteredAtCommandPosition() {
+        UUID ownerUuid = UUID.randomUUID();
+        BlockPos commandPosition = new BlockPos(123, 80, -456);
+
+        String requestId = coordinator.createRequestAt(
+            ownerUuid, "planicies", "minecraft:overworld", commandPosition, "test"
+        );
+
+        AllocationRequest request = requestRepository.get(requestId);
+        PlotSlot slot = new PlotSlotRepository(dbManager).get(request.getPlotSlotId());
+
+        assertEquals(AllocationRequestState.VIRTUAL_VALIDATED, request.getState());
+        assertEquals(PlotSlotState.RESERVED, slot.getState());
+        int claimSize = configManager.getConfig().getPlayerLandAllocation().getInitialClaimSize();
+        int claimOffset = (configManager.getConfig().getPlayerLandAllocation().getSlotSize() - claimSize) / 2;
+        int claimMinX = slot.getMinX() + claimOffset;
+        int claimMinZ = slot.getMinZ() + claimOffset;
+        assertEquals(commandPosition.getX() - claimSize / 2, claimMinX);
+        assertEquals(commandPosition.getZ() - claimSize / 2, claimMinZ);
+        assertTrue(commandPosition.getX() <= claimMinX + claimSize - 1);
+        assertTrue(commandPosition.getZ() <= claimMinZ + claimSize - 1);
     }
 
     @Test

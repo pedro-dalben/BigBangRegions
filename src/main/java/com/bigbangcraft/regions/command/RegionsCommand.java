@@ -22,6 +22,9 @@ import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.util.SelectionManager;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -38,8 +41,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 
 public class RegionsCommand {
@@ -135,6 +142,18 @@ public class RegionsCommand {
                         .then(Commands.argument("bioma", StringArgumentType.greedyString())
                             .executes(RegionsCommand::adminAllocate)
                         )
+                    )
+                )
+                .then(Commands.literal("allocatehere")
+                    .then(Commands.argument("player", StringArgumentType.word())
+                        .executes(RegionsCommand::adminAllocateHere)
+                    )
+                )
+                .then(Commands.literal("players")
+                    .requires(source -> checkPermission(source, "bigbangregions.admin.player.allocate"))
+                    .executes(context -> listKnownPlayers(context, 1))
+                    .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                        .executes(context -> listKnownPlayers(context, IntegerArgumentType.getInteger(context, "page")))
                     )
                 )
                 .then(Commands.literal("allocation")
@@ -1644,6 +1663,66 @@ public class RegionsCommand {
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int adminAllocateHere(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.player.allocate")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        ServerPlayer admin = source.getPlayer();
+        if (admin == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+
+        String playerName = StringArgumentType.getString(context, "player");
+        try {
+            Optional<GameProfile> profile = lookupProfile(source, playerName);
+            if (profile.isEmpty()) {
+                source.sendFailure(Component.literal("Jogador não encontrado: " + playerName));
+                return 0;
+            }
+            ServerLevel level = (ServerLevel) admin.level();
+            String requestId = BigBangRegions.getAllocationCoordinator().createRequestAt(
+                profile.get().getId(), level, admin.blockPosition(), "admin_command_here"
+            );
+            source.sendSuccess(() -> Component.literal("§aAlocação de " + playerName + " iniciada na sua posição! ID: " + requestId)
+                .withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int listKnownPlayers(CommandContext<CommandSourceStack> context, int page) {
+        CommandSourceStack source = context.getSource();
+        int pageSize = 10;
+        Path cacheFile = source.getServer().getServerDirectory().resolve("usercache.json");
+        try (Reader reader = Files.newBufferedReader(cacheFile)) {
+            JsonElement root = JsonParser.parseReader(reader);
+            if (!root.isJsonArray()) throw new IllegalStateException("usercache.json inválido.");
+            JsonArray entries = root.getAsJsonArray();
+            int from = (page - 1) * pageSize;
+            if (from >= entries.size()) {
+                source.sendFailure(Component.literal("Nenhum jogador conhecido nesta página."));
+                return 0;
+            }
+            List<String> names = new ArrayList<>();
+            for (int i = from; i < Math.min(from + pageSize, entries.size()); i++) {
+                JsonElement entry = entries.get(i);
+                if (entry.isJsonObject() && entry.getAsJsonObject().has("name")) {
+                    names.add(entry.getAsJsonObject().get("name").getAsString());
+                }
+            }
+            source.sendSuccess(() -> Component.literal("§eJogadores conhecidos (página " + page + "): §f" + String.join(", ", names)), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Não foi possível ler jogadores conhecidos: " + e.getMessage()));
             return 0;
         }
     }

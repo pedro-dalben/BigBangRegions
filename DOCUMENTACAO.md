@@ -474,6 +474,8 @@ Os seguintes comandos podem ser desabilitados no `config.json` em `disabledComma
 | Comando | Descrição | Permissão |
 |---|---|---|
 | `/regions player allocate <player> <bioma>` | Aloca terreno para jogador | `bigbangregions.admin.player.allocate` |
+| `/regions player allocatehere <player>` | Aloca terreno centrado na posição atual do administrador, usando o bioma atual | `bigbangregions.admin.player.allocate` |
+| `/regions player players [página]` | Lista jogadores que já entraram no servidor | `bigbangregions.admin.player.allocate` |
 | `/regions player allocation <player>` | Status da alocação | `bigbangregions.admin.player.allocation.inspect` |
 | `/regions player allocation <player> cancel` | Cancela alocação | `bigbangregions.admin.player.allocation.cancel` |
 | `/regions player recycle <slotId>` | Recicla slot (RETIRED → RELEASED) | `bigbangregions.admin.slot.recycle` |

@@ -123,11 +123,93 @@ public class TerrainAllocationCoordinator {
     }
 
     public String createRequest(ServerPlayer player, String biomeQuery, String source) {
+        AllocationRequest request = newAllocationRequest(
+            player.getUUID(), biomeQuery, configManager.getConfig().getPlayerLandAllocation().getTargetDimension(), source
+        );
+        requestRepository.save(request);
+        creationCooldowns.put(request.getOwnerUuid(), System.currentTimeMillis());
+        LOGGER.info("Allocation request created (search): id={}, owner={}, biome={}",
+            request.getId(), request.getOwnerUuid(), request.getRequestedBiomeOption());
+        return request.getId();
+    }
+
+    public String createRequestAt(UUID ownerUuid, String biomeQuery, String dimension, BlockPos center, String source) {
+        Config.PlayerLandAllocationConfig lac = configManager.getConfig().getPlayerLandAllocation();
+        if (!lac.getTargetDimension().equals(dimension)) {
+            throw new IllegalArgumentException("Este comando só pode ser usado na dimensão de alocação: " + lac.getTargetDimension());
+        }
+
+        AllocationRequest request = newAllocationRequest(ownerUuid, biomeQuery, dimension, source);
+        int claimMinX = center.getX() - lac.getInitialClaimSize() / 2;
+        int claimMinZ = center.getZ() - lac.getInitialClaimSize() / 2;
+        int claimOffset = (lac.getSlotSize() - lac.getInitialClaimSize()) / 2;
+        int slotMinX = claimMinX - claimOffset;
+        int slotMinZ = claimMinZ - claimOffset;
+        PlotFootprint footprint = buildClaimFootprint(slotMinX, slotMinZ, lac);
+        RegionBounds bounds = new RegionBounds(dimension,
+            footprint.minX(), -64, footprint.minZ(), footprint.maxX(), 320, footprint.maxZ());
+
+        if (overlapsBlockedPlayerRegion(bounds)) {
+            throw new IllegalStateException("O terreno se sobrepõe a uma região existente e foi bloqueado pela configuração.");
+        }
+
+        int gridX = Math.floorDiv(center.getX(), lac.getSlotSize());
+        int gridZ = Math.floorDiv(center.getZ(), lac.getSlotSize());
+        if (slotRepository.getByGrid(dimension, gridX, gridZ) != null) {
+            throw new IllegalStateException("Já existe um slot de alocação neste setor. Escolha outro local.");
+        }
+
+        long now = System.currentTimeMillis();
+        PlotSlot slot = new PlotSlot("manual:" + request.getId(), dimension, gridX, gridZ,
+            slotMinX, slotMinZ, lac.getSlotSize(), PlotSlotState.RELEASED, null, null, null,
+            null, null, null, now, now);
+        slot.reserve(ownerUuid, request.getRequestedBiomeOption(), lac.getScheduler().getReservationLeaseSeconds() * 1000L);
+        request.setPlotSlotId(slot.getId());
+        request.transitionTo(AllocationRequestState.VIRTUAL_SEARCHING);
+        request.transitionTo(AllocationRequestState.VIRTUAL_VALIDATED);
+
+        synchronized (databaseManager) {
+            try {
+                Connection connection = databaseManager.getConnection();
+                boolean wasAutoCommit = connection.getAutoCommit();
+                connection.setAutoCommit(false);
+                try {
+                    slotRepository.saveOnConnection(connection, slot);
+                    requestRepository.saveOnConnection(connection, request);
+                    connection.commit();
+                } catch (SQLException e) {
+                    connection.rollback();
+                    throw e;
+                } finally {
+                    connection.setAutoCommit(wasAutoCommit);
+                }
+            } catch (SQLException e) {
+                throw new IllegalStateException("Não foi possível reservar o local para alocação.", e);
+            }
+        }
+
+        creationCooldowns.put(ownerUuid, now);
+        LOGGER.info("Allocation request created at command location: id={}, owner={}, center={},{}", request.getId(), ownerUuid, center.getX(), center.getZ());
+        return request.getId();
+    }
+
+    public String createRequestAt(UUID ownerUuid, ServerLevel level, BlockPos center, String source) {
+        String biomeId = level.getBiome(center).unwrapKey()
+            .map(key -> key.location().toString())
+            .orElseThrow(() -> new IllegalArgumentException("Não foi possível identificar o bioma atual."));
+        String biomeOption = biomeOptionRegistry.getAll().stream()
+            .filter(option -> option.getAcceptedBiomeIds().contains(biomeId))
+            .map(BiomeOption::getKey)
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("O bioma atual (" + biomeId + ") não possui uma opção de alocação configurada."));
+        return createRequestAt(ownerUuid, biomeOption, level.dimension().location().toString(), center, source);
+    }
+
+    private AllocationRequest newAllocationRequest(UUID ownerUuid, String biomeQuery, String dimension, String source) {
         Optional<BiomeOption> opt = biomeOptionRegistry.lookup(biomeQuery);
         if (opt.isEmpty()) {
             throw new IllegalArgumentException("Opcao de bioma nao encontrada: " + biomeQuery);
         }
-        UUID ownerUuid = player.getUUID();
         Config.SchedulerConfig sc = configManager.getConfig().getPlayerLandAllocation().getScheduler();
         long cooldownMs = sc.getCreationCooldownSeconds() * 1000L;
         if (cooldownMs > 0) {
@@ -156,15 +238,21 @@ public class TerrainAllocationCoordinator {
 
         String id = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
-        AllocationRequest request = new AllocationRequest(
-            id, ownerUuid, opt.get().getKey(), lac.getTargetDimension(),
+        return new AllocationRequest(
+            id, ownerUuid, opt.get().getKey(), dimension,
             AllocationRequestState.PENDING, source, ownerUuid, null, null, null, 0, now, now, null, null
         );
+    }
 
-        requestRepository.save(request);
-        creationCooldowns.put(ownerUuid, now);
-        LOGGER.info("Allocation request created (search): id={}, owner={}, biome={}", id, ownerUuid, opt.get().getKey());
-        return id;
+    private boolean overlapsBlockedPlayerRegion(RegionBounds bounds) {
+        Config.PlayerRegionsConfig config = configManager.getConfig().getPlayerRegions();
+        for (Region region : regionCache.getAll()) {
+            if (!region.getBounds().intersects(bounds)) continue;
+            if (region.getType() == RegionType.SYSTEM_REGION && config.isRejectOverlapWithSystemRegions()) return true;
+            if (region.getType() == RegionType.ADMIN_REGION && config.isRejectOverlapWithAdminRegions()) return true;
+            if (region.getType() == RegionType.PLAYER_REGION && config.isRejectOverlapWithPlayerRegions()) return true;
+        }
+        return false;
     }
 
     public long getCreationCooldownRemaining(UUID ownerUuid) {

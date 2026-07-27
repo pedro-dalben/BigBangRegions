@@ -47,6 +47,8 @@ Comandos de nível administrativo para controle total do servidor.
 | `/regions reload` | Recarrega configurações e banco de dados | `bigbangregions.admin.reload` |
 | `/regions info` | Inspeção detalhada da região na posição | `bigbangregions.inspect` |
 | `/regions player allocate <player> <bioma>` | Força a alocação de terreno para um jogador | `bigbangregions.admin.player.allocate` |
+| `/regions player allocatehere <player>` | Força a alocação centrada na posição atual do administrador, usando o bioma atual | `bigbangregions.admin.player.allocate` |
+| `/regions player players [página]` | Lista jogadores que já entraram no servidor | `bigbangregions.admin.player.allocate` |
 | `/regions player allocation <player>` | Consulta status de alocação de um jogador | `bigbangregions.admin.player.allocation.inspect` |
 | `/regions player allocation <player> cancel` | Cancela alocação de terceiros | `bigbangregions.admin.player.allocation.cancel` |
 | `/regions player recycle <slotId>` | Libera slot de terreno `RETIRED` $\rightarrow$ `RELEASED` | `bigbangregions.admin.slot.recycle` |
