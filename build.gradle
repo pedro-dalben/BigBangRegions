@@ -9,21 +9,6 @@ group = project.maven_group
 repositories {
 	mavenCentral()
 	maven { url "https://jm.gserv.me/repository/maven-public/" }
-	flatDir {
-		dirs '../BigBangEssentials/common/build/libs', '../BigBangEssentials-audit/common/build/libs'
-	}
-}
-
-def findLatestJar(String dirPath, String prefix, String suffix) {
-	def dir = file(dirPath)
-	if (dir.exists() && dir.isDirectory()) {
-		def files = dir.listFiles().findAll { it.name.startsWith(prefix) && it.name.endsWith(suffix) }
-		if (files) {
-			files.sort { a, b -> a.name <=> b.name }
-			return files.last()
-		}
-	}
-	return null
 }
 
 loom {
@@ -55,15 +40,19 @@ dependencies {
 	// JourneyMap API (optional — compile only, not bundled)
 	modCompileOnly "info.journeymap:journeymap-api-fabric:2.0.0-1.21.1-SNAPSHOT"
 
-	// BigBang Essentials API (compile-only; use reflection only to load the adapter class)
-	def essentialsJar = findLatestJar('../BigBangEssentials/common/build/libs', 'bigbangessentials-common-', '.jar')
-	if (essentialsJar == null) {
-		essentialsJar = findLatestJar('../BigBangEssentials-audit/common/build/libs', 'bigbangessentials-common-', '.jar')
+	// BigBang Essentials public API only. The exact artifact is intentionally pinned.
+	def essentialsApiJar = file(providers.gradleProperty('bigbangessentials_api_jar').orElse(
+		"../BigBangEssentials/common/build/libs/bigbangessentials-common-${project.bigbangessentials_api_version}.jar").get())
+	if (!essentialsApiJar.isFile()) {
+		throw new GradleException("Missing pinned BigBangEssentials API JAR: ${essentialsApiJar}. Build Essentials common first or pass -Pbigbangessentials_api_jar=<exact-api-jar>.")
 	}
-	if (essentialsJar != null) {
-		compileOnly files(essentialsJar)
-	} else {
-		compileOnly name: 'bigbangessentials-common-1.0.2.6+build.436'
+	compileOnly files(essentialsApiJar)
+
+	tasks.register('verifyBigBangEssentialsApiJar') {
+		doLast {
+			def classes = zipTree(essentialsApiJar).matching { include 'com/pedrodalben/bigbangessentials/api/gems/**' }
+			if (classes.isEmpty()) throw new GradleException("Pinned BigBangEssentials API JAR has no public Gems integration API: ${essentialsApiJar}")
+		}
 	}
 
 	// SQLite JDBC
@@ -92,6 +81,8 @@ processResources {
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 21
 }
+
+tasks.named('compileJava') { dependsOn 'verifyBigBangEssentialsApiJar' }
 
 java {
 	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
