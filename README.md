@@ -9,6 +9,7 @@ BigBang Regions é a fundação funcional do sistema de proteção territorial p
 * **Loader:** Fabric
 * **Ambiente:** Server-only (não precisa ser instalado pelos jogadores)
 * **Dependência Opcional:** `fabric-permissions-api` ( LuckPerms )
+* **Gems opcional:** BigBangEssentials com `DATABASE`/MySQL e Gems habilitado — usado somente para expansão paga.
 
 ## Instalação
 1. Baixe o jar do mod compilado (`bigbang-regions-<version>.jar`).
@@ -38,6 +39,12 @@ O mod oferece comandos principais com os aliases `/regiao` e `/regioes`:
 * `/regions player removemember <id> <player>` - Remove membro administrativamente.
 * `/regions player setrole <id> <player> <leader|member>` - Define papel administrativamente.
 * `/regions reload` - Recarrega a configuração, limpa e recarrega os caches e banco de dados.
+* `/regions admin payment status` - Mostra o estado do provedor Gems, disponibilidade e último diagnóstico.
+* `/regions expansion list|inspect|retry|reconcile` - Diagnostica e recupera expansões pagas sem editar saldo manualmente.
+
+## Integração Gems
+
+A alocação inicial continua gratuita e funciona sem BigBangEssentials. Para expansão paga, veja [o contrato e deployment Gems](docs/integrations/bigbangessentials-gems.md) e o [runbook de recovery](docs/runbooks/gems-payment-recovery.md). O jar de Regions exige um JAR de API Essentials exato no build; ele não embute classes de BigBangEssentials.
 
 ### Comandos de Jogador
 * `/regiao info` - Mostra detalhes da região no bloco atual (papel, membros, e flags).

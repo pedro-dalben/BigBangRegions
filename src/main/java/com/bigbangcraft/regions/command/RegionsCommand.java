@@ -187,6 +187,12 @@ public class RegionsCommand {
                         .executes(RegionsCommand::adminRepairPlayerRegionHome)
                     )
                 )
+                .then(Commands.literal("payment")
+                    .requires(source -> checkPermission(source, "bigbangregions.admin.expansion"))
+                    .then(Commands.literal("status")
+                        .executes(RegionsCommand::adminPaymentStatus)
+                    )
+                )
                 .then(Commands.literal("create")
                     .then(Commands.argument("sizeX", IntegerArgumentType.integer(1))
                         .then(Commands.argument("sizeZ", IntegerArgumentType.integer(1))
@@ -1501,6 +1507,21 @@ public class RegionsCommand {
         return 1;
     }
 
+    private static int adminPaymentStatus(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.expansion")) {
+            source.sendFailure(Component.literal("Sem permissao."));
+            return 0;
+        }
+        var gateway = BigBangRegions.getPaymentGateway();
+        var payment = BigBangRegions.getConfigManager().getConfig().getRegionExpansion();
+        source.sendSuccess(() -> Component.literal("§7Payment provider: " + payment.getPaymentProvider()
+            + "\n  Status: " + gateway.getProviderStatus()
+            + "\n  Available: " + gateway.isAvailable()
+            + "\n  Diagnostics: " + gateway.getDiagnosticDetails()), false);
+        return 1;
+    }
+
     private static int adminExpansionInspect(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         if (!checkPermission(source, "bigbangregions.admin.expansion")) {
@@ -1553,7 +1574,7 @@ public class RegionsCommand {
         }
         if (BigBangRegions.getExpansionRecoveryService() != null) {
             BigBangRegions.getExpansionRecoveryService().recover();
-            source.sendSuccess(() -> Component.literal("§aReconciliacao de expansoes concluida."), false);
+            source.sendSuccess(() -> Component.literal("§aReconciliacao de expansoes agendada."), false);
         } else {
             source.sendFailure(Component.literal("Servico de recovery indisponivel."));
         }
