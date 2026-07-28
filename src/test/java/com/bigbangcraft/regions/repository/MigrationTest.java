@@ -49,10 +49,10 @@ public class MigrationTest {
             assertTrue(tables.contains("region_chunk_loader_chunks"));
             assertTrue(tables.contains("player_chunk_loader_credits"));
 
-            // 2. Verify schema version is marked as 14
+            // 2. Verify schema version is marked as 15
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(14, rs.getInt(1));
+                assertEquals(15, rs.getInt(1));
             }
 
             // Verify columns added in V2
@@ -98,6 +98,14 @@ public class MigrationTest {
             assertTrue(cursorColumns.contains("current_band_id"));
             assertTrue(cursorColumns.contains("current_sector_index"));
             assertTrue(cursorColumns.contains("last_rejection_reason"));
+
+            List<String> expansionColumns = new ArrayList<>();
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(region_expansion_operations);")) {
+                while (rs.next()) {
+                    expansionColumns.add(rs.getString("name"));
+                }
+            }
+            assertTrue(expansionColumns.contains("border_applied_at"));
             assertTrue(cursorColumns.contains("current_anchor_y"));
             assertTrue(cursorColumns.contains("anchor_search_y_index"));
             assertTrue(cursorColumns.contains("anchor_search_ring_quart"));
