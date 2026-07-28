@@ -43,6 +43,7 @@ public class RegionExpansionOperation {
     private final long requestedAt;
     private long updatedAt;
     private Long resizeAppliedAt;
+    private Long borderAppliedAt;
     private Long paymentCapturedAt;
 
     private String failureCode;
@@ -124,6 +125,7 @@ public class RegionExpansionOperation {
     public long getRequestedAt() { return requestedAt; }
     public long getUpdatedAt() { return updatedAt; }
     public Long getResizeAppliedAt() { return resizeAppliedAt; }
+    public Long getBorderAppliedAt() { return borderAppliedAt; }
     public Long getPaymentCapturedAt() { return paymentCapturedAt; }
 
     public String getFailureCode() { return failureCode; }
@@ -186,6 +188,11 @@ public class RegionExpansionOperation {
 
     public void setResizeAppliedAt(Long resizeAppliedAt) {
         this.resizeAppliedAt = resizeAppliedAt;
+        this.updatedAt = System.currentTimeMillis();
+    }
+
+    public void setBorderAppliedAt(Long borderAppliedAt) {
+        this.borderAppliedAt = borderAppliedAt;
         this.updatedAt = System.currentTimeMillis();
     }
 

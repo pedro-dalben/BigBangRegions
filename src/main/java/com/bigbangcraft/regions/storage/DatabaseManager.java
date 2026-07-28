@@ -168,6 +168,13 @@ public class DatabaseManager {
             setSchemaVersion(14);
             LOGGER.info("Migration V14 applied successfully.");
         }
+
+        if (currentVersion < 15) {
+            LOGGER.info("Applying migration V15...");
+            executeMigrationResource("/storage/migrations/V015__region_expansion_border_checkpoint.sql");
+            setSchemaVersion(15);
+            LOGGER.info("Migration V15 applied successfully.");
+        }
     }
 
     private int getCurrentSchemaVersion() {

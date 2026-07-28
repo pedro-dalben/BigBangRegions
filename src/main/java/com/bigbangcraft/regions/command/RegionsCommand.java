@@ -1463,10 +1463,11 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("Voce nao possui uma operacao de expansao ativa."));
             return 0;
         }
+        String detail = op.getFailureDetail() == null ? "" : " §8(" + op.getFailureDetail() + ")";
         source.sendSuccess(() -> Component.literal("§7Expansao " + op.getOperationId()
             + ": " + op.getCurrentSize() + "x" + op.getCurrentSize()
             + " → " + op.getTargetSize() + "x" + op.getTargetSize()
-            + " (Estado: " + op.getState() + ", Custo: " + op.getPriceGems() + " gems)"), false);
+            + " (Estado: " + op.getState() + ", Custo: " + op.getPriceGems() + " gems)" + detail), false);
         return 1;
     }
 
@@ -1479,7 +1480,7 @@ public class RegionsCommand {
         }
         try {
             expansionCoordinator().cancelExpansion(player);
-            source.sendSuccess(() -> Component.literal("§aExpansao cancelada.").withStyle(ChatFormatting.GREEN), false);
+            source.sendSuccess(() -> Component.literal("§aCancelamento solicitado; a reserva de Gems sera liberada.").withStyle(ChatFormatting.GREEN), false);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));

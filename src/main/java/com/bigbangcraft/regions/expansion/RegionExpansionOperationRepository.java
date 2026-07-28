@@ -19,7 +19,8 @@ public class RegionExpansionOperationRepository {
 
     public void save(RegionExpansionOperation op) {
         synchronized (dbManager) {
-            try (Connection conn = dbManager.getConnection()) {
+            try {
+                Connection conn = dbManager.getConnection();
                 saveOnConnection(conn, op);
             } catch (SQLException e) {
                 LOGGER.error("Failed to save region expansion operation: ", e);
@@ -38,9 +39,9 @@ public class RegionExpansionOperationRepository {
                 "reserve_idempotency_key, renew_idempotency_key, renew_sequence, " +
                 "capture_idempotency_key, release_idempotency_key, " +
                 "reservation_lease_expires_at, retry_count, next_retry_at, " +
-                "requested_at, updated_at, resize_applied_at, payment_captured_at, " +
+                "requested_at, updated_at, resize_applied_at, border_applied_at, payment_captured_at, " +
                 "failure_code, failure_detail" +
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, op.getOperationId());
             pstmt.setString(2, op.getRegionId());
@@ -72,9 +73,10 @@ public class RegionExpansionOperationRepository {
             pstmt.setLong(28, op.getRequestedAt());
             pstmt.setLong(29, op.getUpdatedAt());
             pstmt.setObject(30, op.getResizeAppliedAt());
-            pstmt.setObject(31, op.getPaymentCapturedAt());
-            pstmt.setString(32, op.getFailureCode());
-            pstmt.setString(33, op.getFailureDetail());
+            pstmt.setObject(31, op.getBorderAppliedAt());
+            pstmt.setObject(32, op.getPaymentCapturedAt());
+            pstmt.setString(33, op.getFailureCode());
+            pstmt.setString(34, op.getFailureDetail());
             pstmt.executeUpdate();
         }
     }
@@ -82,8 +84,7 @@ public class RegionExpansionOperationRepository {
     public RegionExpansionOperation get(String operationId) {
         synchronized (dbManager) {
             String sql = "SELECT * FROM region_expansion_operations WHERE operation_id = ?;";
-            try (Connection conn = dbManager.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            try (PreparedStatement pstmt = dbManager.getConnection().prepareStatement(sql)) {
                 pstmt.setString(1, operationId);
                 try (ResultSet rs = pstmt.executeQuery()) {
                     if (rs.next()) return mapResultSet(rs);
@@ -102,8 +103,7 @@ public class RegionExpansionOperationRepository {
                     "'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', 'PAYMENT_RENEW_PENDING', " +
                     "'RESIZE_APPLYING', 'RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING', " +
                     "'RELEASE_PENDING');";
-            try (Connection conn = dbManager.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            try (PreparedStatement pstmt = dbManager.getConnection().prepareStatement(sql)) {
                 pstmt.setString(1, regionId);
                 try (ResultSet rs = pstmt.executeQuery()) {
                     if (rs.next()) return mapResultSet(rs);
@@ -123,8 +123,7 @@ public class RegionExpansionOperationRepository {
                     "'PAYMENT_RESERVE_PENDING', 'PAYMENT_RESERVED', 'PAYMENT_RENEW_PENDING', " +
                     "'RESIZE_APPLYING', 'RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING', " +
                     "'RELEASE_PENDING');";
-            try (Connection conn = dbManager.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement(sql);
+            try (PreparedStatement pstmt = dbManager.getConnection().prepareStatement(sql);
                  ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) list.add(mapResultSet(rs));
             } catch (SQLException e) {
@@ -174,6 +173,9 @@ public class RegionExpansionOperationRepository {
 
         Long resizeApplied = rs.getObject("resize_applied_at") != null ? rs.getLong("resize_applied_at") : null;
         op.setResizeAppliedAt(resizeApplied);
+
+        Long borderApplied = rs.getObject("border_applied_at") != null ? rs.getLong("border_applied_at") : null;
+        op.setBorderAppliedAt(borderApplied);
 
         Long paymentCaptured = rs.getObject("payment_captured_at") != null ? rs.getLong("payment_captured_at") : null;
         op.setPaymentCapturedAt(paymentCaptured);

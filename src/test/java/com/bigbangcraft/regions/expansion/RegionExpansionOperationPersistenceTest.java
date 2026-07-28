@@ -29,9 +29,11 @@ class RegionExpansionOperationPersistenceTest {
             operation.setReleaseIdempotencyKey("release-key");
             operation.setRetryCount(4);
             operation.setNextRetryAt(12345L);
+            operation.setBorderAppliedAt(23456L);
 
             RegionExpansionOperationRepository repository = new RegionExpansionOperationRepository(database);
             repository.save(operation);
+            assertFalse(database.getConnection().isClosed());
             RegionExpansionOperation reloaded = repository.get(operationId);
 
             assertNotNull(reloaded);
@@ -40,6 +42,7 @@ class RegionExpansionOperationPersistenceTest {
             assertEquals(2, reloaded.getRenewSequence());
             assertEquals(4, reloaded.getRetryCount());
             assertEquals(12345L, reloaded.getNextRetryAt());
+            assertEquals(23456L, reloaded.getBorderAppliedAt());
             assertEquals("capture-key", reloaded.getCaptureIdempotencyKey());
             assertEquals("release-key", reloaded.getReleaseIdempotencyKey());
         } finally {

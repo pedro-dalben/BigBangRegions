@@ -258,6 +258,9 @@ public class RegionExpansionRecoveryService {
     }
 
     private boolean recoverCapturePending(RegionExpansionOperation op) {
+        if (op.getBorderAppliedAt() == null) {
+            return true;
+        }
         if (op.getCaptureIdempotencyKey() == null) {
             String key = generateIdempotencyKey(op.getOperationId(), "expand_capture");
             op.setCaptureIdempotencyKey(key);
@@ -293,7 +296,8 @@ public class RegionExpansionRecoveryService {
 
     private void scheduleRetry(RegionExpansionOperation op) {
         op.incrementRetryCount();
-        op.setNextRetryAt(System.currentTimeMillis() + 5000);
+        op.setNextRetryAt(System.currentTimeMillis()
+            + configManager.getConfig().getRegionExpansion().getRetryBackoffSeconds() * 1000L);
         expansionRepository.save(op);
     }
 
