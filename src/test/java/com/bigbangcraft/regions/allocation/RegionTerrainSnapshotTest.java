@@ -62,6 +62,34 @@ public class RegionTerrainSnapshotTest {
     }
 
     @Test
+    void capturesOnlyAirBlocksAtSurfaceBorder(@TempDir Path tempDir) throws Exception {
+        RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 10, 70, 10);
+        Map<Long, net.minecraft.world.level.block.state.BlockState> states = new HashMap<>();
+        for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
+            for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
+                if (x == bounds.getMinX() || x == bounds.getMaxX() || z == bounds.getMinZ() || z == bounds.getMaxZ()) {
+                    states.put(new net.minecraft.core.BlockPos(x, 64, z).asLong(), Blocks.AIR.defaultBlockState());
+                }
+            }
+        }
+        net.minecraft.core.BlockPos solidSurface = new net.minecraft.core.BlockPos(0, 64, 0);
+        states.put(solidSurface.asLong(), Blocks.DIRT.defaultBlockState());
+
+        RegionTerrainSnapshot.capture(levelWithStates(states), bounds,
+            new net.minecraft.core.BlockPos(5, 65, 5), "region-surface", tempDir, false);
+
+        CompoundTag root = NbtIo.readCompressed(tempDir.resolve("region-surface.nbt"), NbtAccounter.unlimitedHeap());
+        ListTag blocks = root.getList("blocks", Tag.TAG_COMPOUND);
+        assertTrue(blocks.stream().map(tag -> net.minecraft.core.BlockPos.of(((CompoundTag) tag).getLong("pos")))
+            .anyMatch(pos -> pos.equals(new net.minecraft.core.BlockPos(0, 64, 1))));
+        assertFalse(blocks.stream().map(tag -> net.minecraft.core.BlockPos.of(((CompoundTag) tag).getLong("pos")))
+            .anyMatch(pos -> (pos.getX() == bounds.getMinX() || pos.getX() == bounds.getMaxX()
+                || pos.getZ() == bounds.getMinZ() || pos.getZ() == bounds.getMaxZ()) && pos.getY() != 64));
+        assertFalse(blocks.stream().map(tag -> net.minecraft.core.BlockPos.of(((CompoundTag) tag).getLong("pos")))
+            .anyMatch(solidSurface::equals));
+    }
+
+    @Test
     void restoresMutationSnapshotOnlyWhenAffectedChunksAreLoaded(@TempDir Path tempDir) throws Exception {
         ServerChunkCache chunkSource = mock(ServerChunkCache.class);
         when(chunkSource.getChunkNow(anyInt(), anyInt())).thenReturn(mock(LevelChunk.class));
@@ -134,6 +162,10 @@ public class RegionTerrainSnapshotTest {
 
     private static ServerLevel mockLevel(ServerChunkCache chunkSource) {
         return mockLevel(chunkSource, null);
+    }
+
+    private static ServerLevel levelWithStates(Map<Long, net.minecraft.world.level.block.state.BlockState> states) {
+        return mockLevel(mock(ServerChunkCache.class), states);
     }
 
     private static ServerLevel mockLevel(

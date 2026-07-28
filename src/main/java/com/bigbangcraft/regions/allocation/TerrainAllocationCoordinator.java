@@ -28,6 +28,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import org.slf4j.Logger;
@@ -902,7 +903,7 @@ public class TerrainAllocationCoordinator {
         }
     }
 
-    private void generateGlassBorder(ServerLevel level, RegionBounds bounds, String materialId, boolean createCeiling) {
+    static void generateGlassBorder(ServerLevel level, RegionBounds bounds, String materialId, boolean createCeiling) {
         long startedAt = System.nanoTime();
         try {
             ResourceLocation loc = ResourceLocation.parse(materialId);
@@ -916,24 +917,19 @@ public class TerrainAllocationCoordinator {
             int maxX = bounds.getMaxX();
             int minZ = bounds.getMinZ();
             int maxZ = bounds.getMaxZ();
-            int minY = bounds.getMinY();
-            int maxY = bounds.getMaxY();
-
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    level.setBlock(new BlockPos(minX, y, z), glassState, 2);
-                    level.setBlock(new BlockPos(maxX, y, z), glassState, 2);
-                }
-                for (int x = minX; x <= maxX; x++) {
-                    level.setBlock(new BlockPos(x, y, minZ), glassState, 2);
-                    level.setBlock(new BlockPos(x, y, maxZ), glassState, 2);
-                }
+            for (int z = minZ; z <= maxZ; z++) {
+                placeSurfaceBorderBlock(level, bounds, minX, z, glassState);
+                placeSurfaceBorderBlock(level, bounds, maxX, z, glassState);
+            }
+            for (int x = minX; x <= maxX; x++) {
+                placeSurfaceBorderBlock(level, bounds, x, minZ, glassState);
+                placeSurfaceBorderBlock(level, bounds, x, maxZ, glassState);
             }
 
             if (createCeiling) {
                 for (int x = minX; x <= maxX; x++) {
                     for (int z = minZ; z <= maxZ; z++) {
-                        level.setBlock(new BlockPos(x, maxY, z), glassState, 2);
+                        placeBorderBlock(level, new BlockPos(x, bounds.getMaxY(), z), glassState);
                     }
                 }
             }
@@ -942,6 +938,21 @@ public class TerrainAllocationCoordinator {
         } finally {
             AllocationMetrics.add("bigbangregions_border_generation_nanos_total", System.nanoTime() - startedAt);
             AllocationMetrics.increment("bigbangregions_border_generation_total");
+        }
+    }
+
+    private static void placeSurfaceBorderBlock(ServerLevel level, RegionBounds bounds, int x, int z,
+                                                net.minecraft.world.level.block.state.BlockState glassState) {
+        int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+        if (y >= bounds.getMinY() && y <= bounds.getMaxY()) {
+            placeBorderBlock(level, new BlockPos(x, y, z), glassState);
+        }
+    }
+
+    private static void placeBorderBlock(ServerLevel level, BlockPos pos,
+                                         net.minecraft.world.level.block.state.BlockState glassState) {
+        if (level.getBlockState(pos).isAir()) {
+            level.setBlock(pos, glassState, 2);
         }
     }
 
@@ -958,20 +969,51 @@ public class TerrainAllocationCoordinator {
         net.minecraft.world.level.block.Block glass = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(material);
         if (glass == null || glass == net.minecraft.world.level.block.Blocks.AIR) glass = net.minecraft.world.level.block.Blocks.GLASS;
         net.minecraft.world.level.block.state.BlockState oldState = glass.defaultBlockState();
-        for (int y = oldBounds.getMinY(); y <= oldBounds.getMaxY(); y++) {
-            for (int z = oldBounds.getMinZ(); z <= oldBounds.getMaxZ(); z++) {
-                clearExpansionWall(level, new BlockPos(oldBounds.getMinX(), y, z), oldState, targetBounds);
-                clearExpansionWall(level, new BlockPos(oldBounds.getMaxX(), y, z), oldState, targetBounds);
-            }
-            for (int x = oldBounds.getMinX(); x <= oldBounds.getMaxX(); x++) {
-                clearExpansionWall(level, new BlockPos(x, y, oldBounds.getMinZ()), oldState, targetBounds);
-                clearExpansionWall(level, new BlockPos(x, y, oldBounds.getMaxZ()), oldState, targetBounds);
-            }
+        if (level.getBlockState(new BlockPos(oldBounds.getMinX(), oldBounds.getMinY(), oldBounds.getMinZ())).equals(oldState)) {
+            clearLegacyExpansionBorder(level, oldBounds, oldState, targetBounds);
+        } else {
+            clearSurfaceExpansionBorder(level, oldBounds, oldState, targetBounds);
         }
         generateGlassBorder(level, targetBounds, border.getMaterial(), border.isCreateCeiling());
         return true;
     }
 
+    static void clearLegacyExpansionBorder(ServerLevel level, RegionBounds bounds,
+                                           net.minecraft.world.level.block.state.BlockState glass,
+                                           RegionBounds target) {
+        for (int y = bounds.getMinY(); y <= bounds.getMaxY(); y++) {
+            for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
+                clearExpansionWall(level, new BlockPos(bounds.getMinX(), y, z), glass, target);
+                clearExpansionWall(level, new BlockPos(bounds.getMaxX(), y, z), glass, target);
+            }
+            for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
+                clearExpansionWall(level, new BlockPos(x, y, bounds.getMinZ()), glass, target);
+                clearExpansionWall(level, new BlockPos(x, y, bounds.getMaxZ()), glass, target);
+            }
+        }
+    }
+
+    private static void clearSurfaceExpansionBorder(ServerLevel level, RegionBounds bounds,
+                                                    net.minecraft.world.level.block.state.BlockState glass,
+                                                    RegionBounds target) {
+        for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
+            clearSurfaceExpansionWall(level, bounds, bounds.getMinX(), z, glass, target);
+            clearSurfaceExpansionWall(level, bounds, bounds.getMaxX(), z, glass, target);
+        }
+        for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
+            clearSurfaceExpansionWall(level, bounds, x, bounds.getMinZ(), glass, target);
+            clearSurfaceExpansionWall(level, bounds, x, bounds.getMaxZ(), glass, target);
+        }
+    }
+
+    private static void clearSurfaceExpansionWall(ServerLevel level, RegionBounds bounds, int x, int z,
+                                                  net.minecraft.world.level.block.state.BlockState glass,
+                                                  RegionBounds target) {
+        int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+        if (y >= bounds.getMinY() && y <= bounds.getMaxY()) {
+            clearExpansionWall(level, new BlockPos(x, y, z), glass, target);
+        }
+    }
 
     private static void clearExpansionWall(ServerLevel level, BlockPos pos, net.minecraft.world.level.block.state.BlockState glass, RegionBounds target) {
         if (!level.getBlockState(pos).equals(glass)) return;

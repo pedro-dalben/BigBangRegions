@@ -168,22 +168,36 @@ final class RegionTerrainSnapshot {
         int maxX = bounds.getMaxX();
         int minZ = bounds.getMinZ();
         int maxZ = bounds.getMaxZ();
-        for (int y = bounds.getMinY(); y <= bounds.getMaxY(); y++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                addSnapshot(level, new BlockPos(minX, y, z), blocks, seen);
-                addSnapshot(level, new BlockPos(maxX, y, z), blocks, seen);
-            }
-            for (int x = minX; x <= maxX; x++) {
-                addSnapshot(level, new BlockPos(x, y, minZ), blocks, seen);
-                addSnapshot(level, new BlockPos(x, y, maxZ), blocks, seen);
-            }
+        for (int z = minZ; z <= maxZ; z++) {
+            addSurfaceBorderSnapshot(level, bounds, minX, z, blocks, seen);
+            addSurfaceBorderSnapshot(level, bounds, maxX, z, blocks, seen);
+        }
+        for (int x = minX; x <= maxX; x++) {
+            addSurfaceBorderSnapshot(level, bounds, x, minZ, blocks, seen);
+            addSurfaceBorderSnapshot(level, bounds, x, maxZ, blocks, seen);
+        }
+    }
+
+    private static void addSurfaceBorderSnapshot(ServerLevel level, RegionBounds bounds, int x, int z,
+                                                 ListTag blocks, Set<Long> seen) {
+        int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+        if (y < bounds.getMinY() || y > bounds.getMaxY()) {
+            return;
+        }
+
+        BlockPos pos = new BlockPos(x, y, z);
+        if (level.getBlockState(pos).isAir()) {
+            addSnapshot(level, pos, blocks, seen);
         }
     }
 
     private static void addCeiling(ServerLevel level, RegionBounds bounds, ListTag blocks, Set<Long> seen) {
         for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
             for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
-                addSnapshot(level, new BlockPos(x, bounds.getMaxY(), z), blocks, seen);
+                BlockPos pos = new BlockPos(x, bounds.getMaxY(), z);
+                if (level.getBlockState(pos).isAir()) {
+                    addSnapshot(level, pos, blocks, seen);
+                }
             }
         }
     }
