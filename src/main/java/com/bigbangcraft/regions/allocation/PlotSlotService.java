@@ -130,24 +130,14 @@ public class PlotSlotService {
     public boolean isSlotEligible(int minX, int minZ, int slotSize) {
         Config config = configManager.getConfig();
         Config.PlayerLandAllocationConfig lac = config.getPlayerLandAllocation();
-        Config.ExplorationExclusionConfig ex = lac.getExplorationExclusion();
-        int maxX = minX + slotSize - 1;
-        int maxZ = minZ + slotSize - 1;
 
-        if (ex.isExcludeFromPlayerLandAllocation()) {
-            int safetyBuffer = ex.getSafetyBuffer();
-            int exMinX = ex.getMinX() - safetyBuffer;
-            int exMaxX = ex.getMaxX() + safetyBuffer;
-            int exMinZ = ex.getMinZ() - safetyBuffer;
-            int exMaxZ = ex.getMaxZ() + safetyBuffer;
-            boolean overlapX = minX <= exMaxX && maxX >= exMinX;
-            boolean overlapZ = minZ <= exMaxZ && maxZ >= exMinZ;
-            if (overlapX && overlapZ) {
-                return false;
-            }
+        if (overlapsExplorationExclusion(minX, minZ, slotSize)) {
+            return false;
         }
 
         // Check intersection with any existing regions in cache
+        int maxX = minX + slotSize - 1;
+        int maxZ = minZ + slotSize - 1;
         RegionBounds slotBounds = new RegionBounds(lac.getTargetDimension(), minX, -64, minZ, maxX, 320, maxZ);
         for (Region region : regionCache.getAll()) {
             if (region.getBounds().intersects(slotBounds)) {
@@ -156,6 +146,24 @@ public class PlotSlotService {
         }
 
         return true;
+    }
+
+    public boolean overlapsExplorationExclusion(int minX, int minZ, int slotSize) {
+        Config.ExplorationExclusionConfig ex = configManager.getConfig()
+            .getPlayerLandAllocation().getExplorationExclusion();
+        if (!ex.isExcludeFromPlayerLandAllocation()) {
+            return false;
+        }
+
+        int maxX = minX + slotSize - 1;
+        int maxZ = minZ + slotSize - 1;
+        int safetyBuffer = ex.getSafetyBuffer();
+        int exMinX = ex.getMinX() - safetyBuffer;
+        int exMaxX = ex.getMaxX() + safetyBuffer;
+        int exMinZ = ex.getMinZ() - safetyBuffer;
+        int exMaxZ = ex.getMaxZ() + safetyBuffer;
+        return minX <= exMaxX && maxX >= exMinX
+            && minZ <= exMaxZ && maxZ >= exMinZ;
     }
 
     public List<PlotSlotCandidate> getCandidates(UUID ownerUuid, int offset, int limit) {

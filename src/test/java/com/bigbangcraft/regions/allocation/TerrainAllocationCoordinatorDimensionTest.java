@@ -12,6 +12,7 @@ import com.bigbangcraft.regions.repository.PlotSlotRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import net.minecraft.SharedConstants;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -21,6 +22,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.UUID;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -46,6 +49,7 @@ public class TerrainAllocationCoordinatorDimensionTest {
     private DatabaseManager dbManager;
     private ConfigManager configManager;
     private AllocationRequestRepository requestRepository;
+    private RegionCache regionCache;
     private TerrainAllocationCoordinator coordinator;
 
     @BeforeAll
@@ -64,7 +68,7 @@ public class TerrainAllocationCoordinatorDimensionTest {
         PlotSlotRepository plotSlotRepository = new PlotSlotRepository(dbManager);
         PlayerRegionHomeRepository homeRepository = new PlayerRegionHomeRepository(dbManager);
         RegionRepository regionRepository = new RegionRepository(dbManager);
-        RegionCache regionCache = new RegionCache();
+        regionCache = new RegionCache();
         RegionMembershipCache membershipCache = new RegionMembershipCache();
         BiomeOptionRegistry biomeOptionRegistry = new BiomeOptionRegistry(configManager);
         biomeOptionRegistry.load();
@@ -159,7 +163,7 @@ public class TerrainAllocationCoordinatorDimensionTest {
     @Test
     public void createsManualRequestCenteredAtCommandPosition() {
         UUID ownerUuid = UUID.randomUUID();
-        BlockPos commandPosition = new BlockPos(123, 80, -456);
+        BlockPos commandPosition = new BlockPos(3123, 80, -3456);
 
         String requestId = coordinator.createRequestAt(
             ownerUuid, "planicies", "minecraft:overworld", commandPosition, "test"
@@ -178,6 +182,63 @@ public class TerrainAllocationCoordinatorDimensionTest {
         assertEquals(commandPosition.getZ() - claimSize / 2, claimMinZ);
         assertTrue(commandPosition.getX() <= claimMinX + claimSize - 1);
         assertTrue(commandPosition.getZ() <= claimMinZ + claimSize - 1);
+    }
+
+    @Test
+    public void rejectsManualRequestInsideExplorationExclusion() {
+        IllegalStateException error = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalStateException.class,
+            () -> coordinator.createRequestAt(
+                UUID.randomUUID(), "planicies", "minecraft:overworld", new BlockPos(123, 80, -456), "test"
+            )
+        );
+
+        assertTrue(error.getMessage().contains("área de exploração"));
+    }
+
+    @Test
+    public void createsManualRequestUsingBiomeAtPosition() {
+        UUID ownerUuid = UUID.randomUUID();
+        BlockPos commandPosition = new BlockPos(4123, 80, -4456);
+        ServerLevel level = mock(ServerLevel.class);
+        @SuppressWarnings("unchecked")
+        Holder<Biome> plains = mock(Holder.class);
+        ResourceKey<Biome> plainsKey = ResourceKey.create(Registries.BIOME, ResourceLocation.parse("minecraft:plains"));
+        when(plains.unwrapKey()).thenReturn(Optional.of(plainsKey));
+        when(level.getBiome(commandPosition)).thenReturn(plains);
+        when(level.dimension()).thenReturn(Level.OVERWORLD);
+
+        String requestId = coordinator.createRequestAt(ownerUuid, level, commandPosition, "test");
+
+        AllocationRequest request = requestRepository.get(requestId);
+        assertEquals("planicies", request.getRequestedBiomeOption());
+        assertEquals(AllocationRequestState.VIRTUAL_VALIDATED, request.getState());
+    }
+
+    @Test
+    public void rejectsSecondRegionForOwnerWithClearMessage() {
+        UUID ownerUuid = UUID.randomUUID();
+        regionCache.add(new Region(
+            "existing-player-region",
+            "Player Region",
+            RegionType.PLAYER_REGION,
+            new RegionBounds("minecraft:overworld", 3000, -64, 3000, 3079, 320, 3079),
+            100,
+            ownerUuid,
+            ownerUuid,
+            System.currentTimeMillis(),
+            System.currentTimeMillis(),
+            "ACTIVE"
+        ));
+
+        IllegalStateException error = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalStateException.class,
+            () -> coordinator.createRequestAt(
+                ownerUuid, "planicies", "minecraft:overworld", new BlockPos(4123, 80, -4456), "test"
+            )
+        );
+
+        assertEquals("Você já possui uma região criada e não pode criar outra.", error.getMessage());
     }
 
     @Test

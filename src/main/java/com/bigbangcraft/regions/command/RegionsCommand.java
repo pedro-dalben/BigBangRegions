@@ -324,6 +324,9 @@ public class RegionsCommand {
         if (isCommandEnabled("criar")) {
             builder.then(Commands.literal("criar")
                 .requires(source -> checkPermission(source, "bigbangregions.player.create"))
+                .then(Commands.literal("aqui")
+                    .executes(RegionsCommand::createPlayerAllocationHere)
+                )
                 .then(Commands.argument("bioma", StringArgumentType.greedyString())
                     .executes(RegionsCommand::createPlayerAllocation)
                 )
@@ -1110,6 +1113,7 @@ public class RegionsCommand {
 
         try {
             configManager.load();
+            BigBangRegions.getBiomeOptionRegistry().load();
             regionRepository.reloadCaches(regionCache, BigBangRegions.getMembershipCache());
 
             UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
@@ -1192,6 +1196,31 @@ public class RegionsCommand {
         try {
             String requestId = BigBangRegions.getAllocationCoordinator().createRequest(player, biome, "player_command");
             source.sendSuccess(() -> Component.literal("§aPedido de alocação criado! ID: " + requestId)
+                .withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int createPlayerAllocationHere(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (!checkPermission(source, "bigbangregions.player.create")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+        try {
+            String requestId = BigBangRegions.getAllocationCoordinator().createRequestAt(
+                player.getUUID(), (net.minecraft.server.level.ServerLevel) player.level(),
+                player.blockPosition(), "player_command_here"
+            );
+            source.sendSuccess(() -> Component.literal("§aPedido de alocação criado na sua posição atual! ID: " + requestId)
                 .withStyle(ChatFormatting.GREEN), false);
             return 1;
         } catch (Exception e) {
@@ -1440,10 +1469,17 @@ public class RegionsCommand {
         }
         int targetSize = IntegerArgumentType.getInteger(context, "tamanho");
         try {
-            RegionExpansionOperation op = expansionCoordinator().beginExpansion(player, targetSize);
-            source.sendSuccess(() -> Component.literal("§aExpansao iniciada para " + targetSize + "x" + targetSize
-                + " blocos! Custo: " + op.getPriceGems() + " gems. ID: " + op.getOperationId())
-                .withStyle(ChatFormatting.GREEN), false);
+            player.sendSystemMessage(Component.literal("§eVerificando saldo de Gems..."));
+            expansionCoordinator().beginExpansionAsync(player, targetSize).whenComplete((op, error) ->
+                player.getServer().execute(() -> {
+                    if (error != null) {
+                        player.sendSystemMessage(Component.literal("§c" + error.getMessage()));
+                    } else {
+                        player.sendSystemMessage(Component.literal("§aExpansao iniciada para " + targetSize + "x" + targetSize
+                            + " blocos! Custo: " + op.getPriceGems() + " gems. ID: " + op.getOperationId())
+                            .withStyle(ChatFormatting.GREEN));
+                    }
+                }));
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));

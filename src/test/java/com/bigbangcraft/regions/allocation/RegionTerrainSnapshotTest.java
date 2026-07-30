@@ -16,6 +16,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -62,13 +63,15 @@ public class RegionTerrainSnapshotTest {
     }
 
     @Test
-    void capturesOnlyAirBlocksAtSurfaceBorder(@TempDir Path tempDir) throws Exception {
+    void capturesAirBlocksAlongVerticalSurfaceBorder(@TempDir Path tempDir) throws Exception {
         RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 10, 70, 10);
         Map<Long, net.minecraft.world.level.block.state.BlockState> states = new HashMap<>();
         for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
             for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
                 if (x == bounds.getMinX() || x == bounds.getMaxX() || z == bounds.getMinZ() || z == bounds.getMaxZ()) {
-                    states.put(new net.minecraft.core.BlockPos(x, 64, z).asLong(), Blocks.AIR.defaultBlockState());
+                    for (int y = 64; y <= 70; y++) {
+                        states.put(new net.minecraft.core.BlockPos(x, y, z).asLong(), Blocks.AIR.defaultBlockState());
+                    }
                 }
             }
         }
@@ -82,11 +85,54 @@ public class RegionTerrainSnapshotTest {
         ListTag blocks = root.getList("blocks", Tag.TAG_COMPOUND);
         assertTrue(blocks.stream().map(tag -> net.minecraft.core.BlockPos.of(((CompoundTag) tag).getLong("pos")))
             .anyMatch(pos -> pos.equals(new net.minecraft.core.BlockPos(0, 64, 1))));
-        assertFalse(blocks.stream().map(tag -> net.minecraft.core.BlockPos.of(((CompoundTag) tag).getLong("pos")))
-            .anyMatch(pos -> (pos.getX() == bounds.getMinX() || pos.getX() == bounds.getMaxX()
-                || pos.getZ() == bounds.getMinZ() || pos.getZ() == bounds.getMaxZ()) && pos.getY() != 64));
+        assertTrue(blocks.stream().map(tag -> net.minecraft.core.BlockPos.of(((CompoundTag) tag).getLong("pos")))
+            .anyMatch(pos -> pos.getY() == 70));
         assertFalse(blocks.stream().map(tag -> net.minecraft.core.BlockPos.of(((CompoundTag) tag).getLong("pos")))
             .anyMatch(solidSurface::equals));
+    }
+
+    @Test
+    void restoresNonFullBorderBlocksReplacedByTheWall(@TempDir Path tempDir) throws Exception {
+        RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 4, 70, 4);
+        Map<Long, BlockState> states = new HashMap<>();
+        for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
+            for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
+                if (x == bounds.getMinX() || x == bounds.getMaxX() || z == bounds.getMinZ() || z == bounds.getMaxZ()) {
+                    for (int y = 64; y <= 70; y++) {
+                        states.put(new net.minecraft.core.BlockPos(x, y, z).asLong(), Blocks.AIR.defaultBlockState());
+                    }
+                    for (int y = 60; y <= 63; y++) {
+                        states.put(new net.minecraft.core.BlockPos(x, y, z).asLong(), Blocks.WATER.defaultBlockState());
+                    }
+                }
+            }
+        }
+        net.minecraft.core.BlockPos flower = new net.minecraft.core.BlockPos(0, 63, 1);
+        net.minecraft.core.BlockPos water = new net.minecraft.core.BlockPos(0, 60, 2);
+        states.put(flower.asLong(), Blocks.DANDELION.defaultBlockState());
+        ServerChunkCache chunkSource = mock(ServerChunkCache.class);
+        when(chunkSource.getChunkNow(anyInt(), anyInt())).thenReturn(mock(LevelChunk.class));
+        ServerLevel level = mockLevel(chunkSource, states);
+
+        RegionTerrainSnapshot.capture(level, bounds,
+            new net.minecraft.core.BlockPos(2, 65, 2), "region-non-full", tempDir, false);
+
+        CompoundTag root = NbtIo.readCompressed(tempDir.resolve("region-non-full.nbt"), NbtAccounter.unlimitedHeap());
+        ListTag blocks = root.getList("blocks", Tag.TAG_COMPOUND);
+        assertTrue(blocks.stream().map(tag -> net.minecraft.core.BlockPos.of(((CompoundTag) tag).getLong("pos")))
+            .anyMatch(flower::equals));
+        assertTrue(blocks.stream().map(tag -> net.minecraft.core.BlockPos.of(((CompoundTag) tag).getLong("pos")))
+            .anyMatch(water::equals));
+
+        states.put(flower.asLong(), Blocks.GLASS.defaultBlockState());
+        states.put(water.asLong(), Blocks.GLASS.defaultBlockState());
+        Region region = new Region(
+            "region-non-full", "Player Region", RegionType.PLAYER_REGION, bounds, 100,
+            UUID.randomUUID(), UUID.randomUUID(), 0L, 0L, "ACTIVE"
+        );
+        assertTrue(RegionTerrainSnapshot.restore(level, region, tempDir));
+        assertEquals(Blocks.DANDELION.defaultBlockState(), states.get(flower.asLong()));
+        assertEquals(Blocks.WATER.defaultBlockState(), states.get(water.asLong()));
     }
 
     @Test
@@ -193,6 +239,7 @@ public class RegionTerrainSnapshotTest {
             });
         }
         when(level.getHeight(any(), anyInt(), anyInt())).thenReturn(64);
+        when(level.getMaxBuildHeight()).thenReturn(71);
         when(level.getChunkSource()).thenReturn(chunkSource);
         return level;
     }

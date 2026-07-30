@@ -26,8 +26,10 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
@@ -150,6 +152,10 @@ public class TerrainAllocationCoordinator {
         RegionBounds bounds = new RegionBounds(dimension,
             footprint.minX(), -64, footprint.minZ(), footprint.maxX(), 320, footprint.maxZ());
 
+        if (slotService.overlapsExplorationExclusion(slotMinX, slotMinZ, lac.getSlotSize())) {
+            throw new IllegalStateException("O local escolhido está dentro da área de exploração protegida.");
+        }
+
         if (overlapsBlockedPlayerRegion(bounds)) {
             throw new IllegalStateException("O terreno se sobrepõe a uma região existente e foi bloqueado pela configuração.");
         }
@@ -233,7 +239,11 @@ public class TerrainAllocationCoordinator {
                 .filter(r -> r.getType() == RegionType.PLAYER_REGION && ownerUuid.equals(r.getOwnerUuid()))
                 .count();
             if (playerRegionCount >= lac.getMaxRegionsPerOwner()) {
-                throw new IllegalStateException("Voce ja atingiu o limite maximo de " + lac.getMaxRegionsPerOwner() + " regioes");
+                if (lac.getMaxRegionsPerOwner() == 1) {
+                    throw new IllegalStateException("Você já possui uma região criada e não pode criar outra.");
+                }
+                throw new IllegalStateException("Você já atingiu o limite máximo de "
+                    + lac.getMaxRegionsPerOwner() + " regiões criadas.");
             }
         }
 
@@ -927,9 +937,10 @@ public class TerrainAllocationCoordinator {
             }
 
             if (createCeiling) {
+                int ceilingY = Math.min(bounds.getMaxY(), level.getMaxBuildHeight() - 1);
                 for (int x = minX; x <= maxX; x++) {
                     for (int z = minZ; z <= maxZ; z++) {
-                        placeBorderBlock(level, new BlockPos(x, bounds.getMaxY(), z), glassState);
+                        placeBorderBlock(level, new BlockPos(x, ceilingY, z), glassState);
                     }
                 }
             }
@@ -943,17 +954,34 @@ public class TerrainAllocationCoordinator {
 
     private static void placeSurfaceBorderBlock(ServerLevel level, RegionBounds bounds, int x, int z,
                                                 net.minecraft.world.level.block.state.BlockState glassState) {
-        int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
-        if (y >= bounds.getMinY() && y <= bounds.getMaxY()) {
+        int startY = borderStartY(level, bounds, x, z);
+        int endY = Math.min(bounds.getMaxY(), level.getMaxBuildHeight() - 1);
+        if (startY < bounds.getMinY() || startY > endY) {
+            return;
+        }
+        for (int y = startY; y <= endY; y++) {
             placeBorderBlock(level, new BlockPos(x, y, z), glassState);
         }
     }
 
+    static int borderStartY(ServerLevel level, RegionBounds bounds, int x, int z) {
+        int startY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+        while (startY > bounds.getMinY()
+            && isReplaceableBorderBlock(level, new BlockPos(x, startY - 1, z))) {
+            startY--;
+        }
+        return startY;
+    }
+
     private static void placeBorderBlock(ServerLevel level, BlockPos pos,
                                          net.minecraft.world.level.block.state.BlockState glassState) {
-        if (level.getBlockState(pos).isAir()) {
+        if (isReplaceableBorderBlock(level, pos)) {
             level.setBlock(pos, glassState, 2);
         }
+    }
+
+    static boolean isReplaceableBorderBlock(ServerLevel level, BlockPos pos) {
+        return !level.getBlockState(pos).isCollisionShapeFullBlock(level, pos);
     }
 
     public boolean refreshExpansionBorder(ServerLevel level, RegionBounds oldBounds, RegionBounds targetBounds, String regionId) {
@@ -969,13 +997,25 @@ public class TerrainAllocationCoordinator {
         net.minecraft.world.level.block.Block glass = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(material);
         if (glass == null || glass == net.minecraft.world.level.block.Blocks.AIR) glass = net.minecraft.world.level.block.Blocks.GLASS;
         net.minecraft.world.level.block.state.BlockState oldState = glass.defaultBlockState();
-        if (level.getBlockState(new BlockPos(oldBounds.getMinX(), oldBounds.getMinY(), oldBounds.getMinZ())).equals(oldState)) {
-            clearLegacyExpansionBorder(level, oldBounds, oldState, targetBounds);
-        } else {
-            clearSurfaceExpansionBorder(level, oldBounds, oldState, targetBounds);
-        }
+        clearLegacyExpansionBorder(level, oldBounds, oldState, targetBounds);
         generateGlassBorder(level, targetBounds, border.getMaterial(), border.isCreateCeiling());
         return true;
+    }
+
+    private static boolean isHomeUsable(ServerLevel level, RegionBounds bounds, PlayerRegionHome home) {
+        if (!bounds.getDimension().equals(home.getDimensionKey())) return false;
+        BlockPos stand = BlockPos.containing(home.getX(), home.getY(), home.getZ());
+        if (!bounds.contains(home.getDimensionKey(), stand.getX(), stand.getY(), stand.getZ())) return false;
+        var floor = level.getBlockState(stand.below());
+        var body = level.getBlockState(stand);
+        var head = level.getBlockState(stand.above());
+        return !floor.isAir() && !floor.is(Blocks.WATER) && !floor.is(Blocks.LAVA)
+            && !floor.is(Blocks.FIRE) && !floor.is(Blocks.CACTUS)
+            && !floor.is(Blocks.MAGMA_BLOCK) && !floor.is(Blocks.POWDER_SNOW)
+            && !body.isCollisionShapeFullBlock(level, stand)
+            && !head.isCollisionShapeFullBlock(level, stand.above())
+            && !body.getFluidState().is(FluidTags.WATER)
+            && !head.getFluidState().is(FluidTags.WATER);
     }
 
     static void clearLegacyExpansionBorder(ServerLevel level, RegionBounds bounds,
@@ -993,26 +1033,10 @@ public class TerrainAllocationCoordinator {
         }
     }
 
-    private static void clearSurfaceExpansionBorder(ServerLevel level, RegionBounds bounds,
-                                                    net.minecraft.world.level.block.state.BlockState glass,
-                                                    RegionBounds target) {
-        for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
-            clearSurfaceExpansionWall(level, bounds, bounds.getMinX(), z, glass, target);
-            clearSurfaceExpansionWall(level, bounds, bounds.getMaxX(), z, glass, target);
-        }
-        for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
-            clearSurfaceExpansionWall(level, bounds, x, bounds.getMinZ(), glass, target);
-            clearSurfaceExpansionWall(level, bounds, x, bounds.getMaxZ(), glass, target);
-        }
-    }
-
-    private static void clearSurfaceExpansionWall(ServerLevel level, RegionBounds bounds, int x, int z,
-                                                  net.minecraft.world.level.block.state.BlockState glass,
-                                                  RegionBounds target) {
-        int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
-        if (y >= bounds.getMinY() && y <= bounds.getMaxY()) {
-            clearExpansionWall(level, new BlockPos(x, y, z), glass, target);
-        }
+    static void clearSurfaceExpansionBorder(ServerLevel level, RegionBounds bounds,
+                                            net.minecraft.world.level.block.state.BlockState glass,
+                                            RegionBounds target) {
+        clearLegacyExpansionBorder(level, bounds, glass, target);
     }
 
     private static void clearExpansionWall(ServerLevel level, BlockPos pos, net.minecraft.world.level.block.state.BlockState glass, RegionBounds target) {
@@ -1100,6 +1124,19 @@ public class TerrainAllocationCoordinator {
         if (targetLevel == null) {
             throw new IllegalStateException("Dimensao invalida: " + home.getDimensionKey());
         }
+        if (!isHomeUsable(targetLevel, playerRegion.get().getBounds(), home)) {
+            LOGGER.warn("Home for region {} is no longer usable; repairing it before teleport", playerRegion.get().getId());
+            repairPlayerRegionHome(player, ownerUuid);
+            home = homeRepository.get(playerRegion.get().getId());
+            if (home == null) {
+                throw new IllegalStateException("Nao foi possivel reparar a casa da sua regiao");
+            }
+            dimensionKey = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(home.getDimensionKey()));
+            targetLevel = player.getServer().getLevel(dimensionKey);
+            if (targetLevel == null) {
+                throw new IllegalStateException("Dimensao invalida: " + home.getDimensionKey());
+            }
+        }
         player.teleportTo(targetLevel, home.getX(), home.getY(), home.getZ(), home.getYaw(), home.getPitch());
         homeTeleportCooldowns.put(ownerUuid, System.currentTimeMillis());
         return true;
@@ -1128,6 +1165,18 @@ public class TerrainAllocationCoordinator {
         ServerLevel targetLevel = admin.getServer().getLevel(dimensionKey);
         if (targetLevel == null) {
             throw new IllegalStateException("Dimensão inválida: " + home.getDimensionKey());
+        }
+        if (!isHomeUsable(targetLevel, playerRegion.get().getBounds(), home)) {
+            repairPlayerRegionHome(admin, ownerUuid);
+            home = homeRepository.get(playerRegion.get().getId());
+            if (home == null) {
+                throw new IllegalStateException("Não foi possível reparar a casa da região");
+            }
+            dimensionKey = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(home.getDimensionKey()));
+            targetLevel = admin.getServer().getLevel(dimensionKey);
+            if (targetLevel == null) {
+                throw new IllegalStateException("Dimensão inválida: " + home.getDimensionKey());
+            }
         }
 
         admin.teleportTo(targetLevel, home.getX(), home.getY(), home.getZ(), home.getYaw(), home.getPitch());

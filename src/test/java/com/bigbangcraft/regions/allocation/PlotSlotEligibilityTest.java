@@ -46,6 +46,13 @@ public class PlotSlotEligibilityTest {
         config.getPlayerLandAllocation().getExplorationExclusion().setExcludeFromPlayerLandAllocation(false);
 
         assertTrue(service.isSlotEligible(0, 0, 512));
+        assertFalse(service.overlapsExplorationExclusion(0, 0, 512));
+    }
+
+    @Test
+    public void manualLocationUsesTheSameExplorationExclusion() {
+        assertTrue(service.overlapsExplorationExclusion(1536, 1536, 512));
+        assertFalse(service.overlapsExplorationExclusion(2048, 2048, 512));
     }
 
     @Test

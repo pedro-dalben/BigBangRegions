@@ -313,7 +313,7 @@ PENDING → SEARCHING → SLOT_RESERVED → PREPARING → COMPLETED
 CANCELLED  FAILED       FAILED          FAILED
 ```
 
-1. **PENDING** — Jogador executa `/regiao criar <bioma>`
+1. **PENDING** — Jogador executa `/regiao criar <bioma>` ou `/regiao criar aqui`; a segunda forma fixa o centro na posição atual e usa o bioma atual
 2. **SEARCHING** — `AllocationScheduler` busca slots em espiral a partir da zona de exploração
 3. **SLOT_RESERVED** — Slot encontrado, reservado temporariamente (lease)
 4. **PREPARING** — Região criada no banco e no cache com tamanho inicial
@@ -350,6 +350,7 @@ CANCELLED  FAILED       FAILED          FAILED
 | Comando | Descrição | Permissão |
 |---|---|---|
 | `/regiao criar <bioma>` | Inicia pedido de alocação de terreno | `bigbangregions.player.create` |
+| `/regiao criar aqui` | Inicia pedido centrado na posição atual, usando o bioma atual | `bigbangregions.player.create` |
 | `/regiao criar status` | Status do pedido de alocação | `bigbangregions.player.create` |
 | `/regiao criar cancelar` | Cancela pedido ativo | `bigbangregions.player.create` |
 | `/regiao casa` | Teleporta para a home da região | `bigbangregions.player.home` |

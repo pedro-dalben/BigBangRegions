@@ -180,22 +180,26 @@ final class RegionTerrainSnapshot {
 
     private static void addSurfaceBorderSnapshot(ServerLevel level, RegionBounds bounds, int x, int z,
                                                  ListTag blocks, Set<Long> seen) {
-        int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
-        if (y < bounds.getMinY() || y > bounds.getMaxY()) {
+        int startY = TerrainAllocationCoordinator.borderStartY(level, bounds, x, z);
+        int endY = Math.min(bounds.getMaxY(), level.getMaxBuildHeight() - 1);
+        if (startY < bounds.getMinY() || startY > endY) {
             return;
         }
 
-        BlockPos pos = new BlockPos(x, y, z);
-        if (level.getBlockState(pos).isAir()) {
-            addSnapshot(level, pos, blocks, seen);
+        for (int y = startY; y <= endY; y++) {
+            BlockPos pos = new BlockPos(x, y, z);
+            if (TerrainAllocationCoordinator.isReplaceableBorderBlock(level, pos)) {
+                addSnapshot(level, pos, blocks, seen);
+            }
         }
     }
 
     private static void addCeiling(ServerLevel level, RegionBounds bounds, ListTag blocks, Set<Long> seen) {
+        int ceilingY = Math.min(bounds.getMaxY(), level.getMaxBuildHeight() - 1);
         for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
             for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
-                BlockPos pos = new BlockPos(x, bounds.getMaxY(), z);
-                if (level.getBlockState(pos).isAir()) {
+                BlockPos pos = new BlockPos(x, ceilingY, z);
+                if (TerrainAllocationCoordinator.isReplaceableBorderBlock(level, pos)) {
                     addSnapshot(level, pos, blocks, seen);
                 }
             }
