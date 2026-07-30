@@ -321,7 +321,9 @@ public class RegionRepository {
 
     public void saveChunkLoaderChunks(String regionId, Set<ChunkPos> chunks) {
         synchronized (dbManager) {
-            try (Connection conn = dbManager.getConnection()) {
+            Connection conn = null;
+            try {
+                conn = dbManager.getConnection();
                 conn.setAutoCommit(false);
                 try (PreparedStatement delete = conn.prepareStatement(
                     "DELETE FROM region_chunk_loader_chunks WHERE regionId = ?")) {
@@ -339,9 +341,15 @@ public class RegionRepository {
                     insert.executeBatch();
                 }
                 conn.commit();
-                conn.setAutoCommit(true);
             } catch (SQLException e) {
+                if (conn != null) {
+                    try { conn.rollback(); } catch (SQLException rollbackError) { e.addSuppressed(rollbackError); }
+                }
                 throw new IllegalStateException("Failed to save chunk loader selection", e);
+            } finally {
+                if (conn != null) {
+                    try { conn.setAutoCommit(true); } catch (SQLException ignored) { }
+                }
             }
         }
     }
