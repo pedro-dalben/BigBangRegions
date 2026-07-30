@@ -48,7 +48,7 @@ A alocação inicial continua gratuita e funciona sem BigBangEssentials. Para ex
 
 ### Comandos de Jogador
 * `/regiao info` - Mostra detalhes da região no bloco atual (papel, membros, e flags).
-* `/regiao criar aqui` - Cria a solicitação da região centrada na posição atual, usando o bioma atual.
+* `/regiao criar aqui` - Cria a solicitação da região centrada na posição atual, sem exigir que o bioma esteja na lista.
 * `/regiao expandir <tamanho>` - Inicia uma expansão paga usando Gems.
 * `/regiao expandir status|cancelar` - Consulta ou cancela antes do redimensionamento.
 * `/regiao membros listar` - Lista membros do terreno pertencente ao jogador.

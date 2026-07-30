@@ -21,6 +21,24 @@ In `config/bigbangregions/config.json`:
 {
   "journeyMap": {
     "enabled": true,
+    "memberRegion": {
+      "fillColor": 4367861,
+      "strokeColor": 4367861,
+      "fillOpacity": 0.14,
+      "strokeOpacity": 0.8
+    },
+    "publicRegion": {
+      "fillColor": 11583173,
+      "strokeColor": 11583173,
+      "fillOpacity": 0.08,
+      "strokeOpacity": 0.55
+    },
+    "staffRegion": {
+      "fillColor": 11225020,
+      "strokeColor": 11225020,
+      "fillOpacity": 0.12,
+      "strokeOpacity": 0.72
+    },
     "playerRegion": {
       "fillColor": 5220560,
       "strokeColor": 5220560,
@@ -45,6 +63,18 @@ In `config/bigbangregions/config.json`:
       "fillOpacity": 0.14,
       "strokeOpacity": 0.8
     },
+    "chunkLoaderActive": {
+      "fillColor": 4431943,
+      "strokeColor": 4431943,
+      "fillOpacity": 0.3,
+      "strokeOpacity": 1.0
+    },
+    "chunkLoaderSelected": {
+      "fillColor": 16761095,
+      "strokeColor": 16761095,
+      "fillOpacity": 0.22,
+      "strokeOpacity": 0.95
+    },
     "publicRegions": {
       "showOnMap": true
     },
@@ -65,6 +95,10 @@ Set `"enabled": false` to disable entirely without removing JourneyMap.
 | Staff with `bigbangregions.journeymap.view-all` | Yes |
 | Visitor (region marked public) | If `publicRegions.showOnMap` = true and player has `bigbangregions.journeymap.view-public` |
 | Visitor (region private) | No |
+
+### Chunk Loaders
+
+Chunk tiles are intentionally more restricted than the region outline: only the region OWNER and staff with `bigbangregions.journeymap.view-all` receive them. Members and visitors never receive chunk-loader state.
 
 ### Admin Regions
 
@@ -92,6 +126,9 @@ Set `"enabled": false` to disable entirely without removing JourneyMap.
 - Fill with configurable color and opacity
 - Stroke border with configurable color and opacity
 - Label shows region name on hover
+- At zoom 0–7, only the light area and name remain visible for map orientation
+- At zoom 8+, the full fill and chunk-loader detail are shown
+- Player-region palette follows the viewer relationship: owner, member, public, or staff
 
 ### Center Marker (waypoint)
 
@@ -99,6 +136,12 @@ Set `"enabled": false` to disable entirely without removing JourneyMap.
 - Color matches region type
 - Name matches region display name
 - Shows region type on hover
+
+### Chunk Loader Tiles
+
+- Green: a selected chunk with a ticket active in this server session
+- Yellow: a selected chunk saved in the database but without an active ticket
+- Tiles are clipped to the region boundary and grouped into two compact overlays per region
 
 ## Event-Driven Updates
 
@@ -109,12 +152,12 @@ The integration listens for these events and updates only the affected players:
 - Member role changed
 - Region status changed
 - Player joins server or changes dimension
+- Chunk loader selected, removed, activated, or released
 
 ## Known Limitations
 
 - Only works when JourneyMap mod is on the server (dedicated server mode)
 - Requires JourneyMap API v2 compatible with 1.21.1
-- Player dimension changes may require re-opening JourneyMap to refresh
 - Admin menu "Visualizar como jogador" is a planned feature
 
 ## Troubleshooting

@@ -313,7 +313,7 @@ PENDING → SEARCHING → SLOT_RESERVED → PREPARING → COMPLETED
 CANCELLED  FAILED       FAILED          FAILED
 ```
 
-1. **PENDING** — Jogador executa `/regiao criar <bioma>` ou `/regiao criar aqui`; a segunda forma fixa o centro na posição atual e usa o bioma atual
+1. **PENDING** — Jogador executa `/regiao criar <bioma>` ou `/regiao criar aqui`; a segunda forma fixa o centro na posição atual e não exige bioma da lista
 2. **SEARCHING** — `AllocationScheduler` busca slots em espiral a partir da zona de exploração
 3. **SLOT_RESERVED** — Slot encontrado, reservado temporariamente (lease)
 4. **PREPARING** — Região criada no banco e no cache com tamanho inicial
@@ -350,7 +350,7 @@ CANCELLED  FAILED       FAILED          FAILED
 | Comando | Descrição | Permissão |
 |---|---|---|
 | `/regiao criar <bioma>` | Inicia pedido de alocação de terreno | `bigbangregions.player.create` |
-| `/regiao criar aqui` | Inicia pedido centrado na posição atual, usando o bioma atual | `bigbangregions.player.create` |
+| `/regiao criar aqui` | Inicia pedido centrado na posição atual, sem exigir bioma da lista | `bigbangregions.player.create` |
 | `/regiao criar status` | Status do pedido de alocação | `bigbangregions.player.create` |
 | `/regiao criar cancelar` | Cancela pedido ativo | `bigbangregions.player.create` |
 | `/regiao casa` | Teleporta para a home da região | `bigbangregions.player.home` |
@@ -398,7 +398,7 @@ CANCELLED  FAILED       FAILED          FAILED
 
 ### Chunk Loader da Região
 
-O chunk loader é acessado pelo menu `/regiao` → `Chunk loader`. A tela representa os chunks cobertos pela região e permite navegar com setas para oeste, leste, norte e sul.
+O chunk loader é acessado pelo menu `/regiao` → `Chunk loader`. Quando o owner está dentro do terreno, a tela abre na página do chunk atual; o slot recebe brilho e indicação textual. A tela representa os chunks cobertos pela região e permite navegar com setas para oeste, leste, norte e sul. Cliques no menu nunca teleportam o jogador.
 
 #### Regra de ownership
 
@@ -425,9 +425,16 @@ bigbangregions.chunkloader.10 -> 10 chunks
 
 O sistema procura o maior nível permitido entre `.1` e `.256`. Portanto, não é necessário conceder níveis intermediários. Se o jogador tiver `.1` e receber mais 10 créditos internos, terá 11 chunks disponíveis.
 
+#### Operação no chunk atual
+
+| Comando | Descrição |
+|---|---|
+| `/regiao chunks comprar` | Seleciona e aplica o ticket ao chunk atual se ele estiver dentro da região do owner e houver quota. Se já estiver selecionado, informa o estado sem cobrar nada. |
+| `/regiao chunks ver` | Alterna a grade visual 5×5 perto do owner. Azul é o chunk atual, verde indica ticket ativo nesta sessão e amarelo indica seleção persistida sem ticket. A visualização termina ao alternar o comando novamente ou ao desconectar. |
+
 #### Menu de status
 
-O livro `Status da região` mostra o tamanho atual em blocos, total de chunks da região, chunks selecionados, chunks carregados no momento, quota da permissão, créditos extras e saldo disponível.
+O livro `Status da região` mostra o tamanho atual em blocos, total de chunks da região, chunks selecionados, tickets ativos nesta sessão, quota da permissão, créditos extras e saldo disponível.
 
 #### Comandos administrativos
 
@@ -449,7 +456,7 @@ As seleções e créditos sobrevivem a reinícios do servidor. Os tickets ativos
 ### Comandos Desabilitáveis via Config
 
 Os seguintes comandos podem ser desabilitados no `config.json` em `disabledCommands`:
-`criar`, `casa`, `sethome`, `biomas`, `limites`, `explorar`, `expandir`, `mapa`
+`criar`, `casa`, `sethome`, `biomas`, `limites`, `chunks`, `explorar`, `expandir`, `mapa`
 
 ---
 
@@ -475,7 +482,7 @@ Os seguintes comandos podem ser desabilitados no `config.json` em `disabledComma
 | Comando | Descrição | Permissão |
 |---|---|---|
 | `/regions player allocate <player> <bioma>` | Aloca terreno para jogador | `bigbangregions.admin.player.allocate` |
-| `/regions player allocatehere <player>` | Aloca terreno centrado na posição atual do administrador, usando o bioma atual | `bigbangregions.admin.player.allocate` |
+| `/regions player allocatehere <player>` | Aloca terreno centrado na posição atual do administrador, sem exigir bioma da lista | `bigbangregions.admin.player.allocate` |
 | `/regions player players [página]` | Lista jogadores que já entraram no servidor | `bigbangregions.admin.player.allocate` |
 | `/regions player allocation <player>` | Status da alocação | `bigbangregions.admin.player.allocation.inspect` |
 | `/regions player allocation <player> cancel` | Cancela alocação | `bigbangregions.admin.player.allocation.cancel` |
@@ -556,8 +563,10 @@ A integração é ativada automaticamente quando o JourneyMap está instalado no
 
 ### Funcionalidades
 - Overlay poligonal com contorno e preenchimento para cada região
+- Tiles privados de chunk loader: verde para ticket ativo e amarelo para seleção persistida; somente OWNER e `view-all` recebem esse estado
 - Marcador central com nome e tipo da região
-- Cores e opacidade configuráveis por tipo de região
+- Cores e opacidade configuráveis por relação do observador: owner, membro, público e staff
+- Visual progressivo: visão geral no zoom distante; preenchimento e chunks loader no zoom aproximado
 - Visibilidade controlada por permissões
 
 ### Permissões Específicas

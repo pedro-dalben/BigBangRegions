@@ -99,6 +99,21 @@
 4. Non-staff player checks
 5. **Expected:** Region not visible or shown as blocked
 
+### TC19 — Chunk-loader tiles show the runtime state
+1. As the owner, select one chunk with `/regiao chunks comprar`
+2. Open JourneyMap
+3. **Expected:** The selected chunk is green while its ticket is active
+4. Disconnect the owner and inspect with a staff player holding `bigbangregions.journeymap.view-all`
+5. **Expected:** The saved chunk changes to yellow; it becomes green again after the owner rejoins
+
+### TC20 — Chunk-loader privacy and local preview
+1. Give a member access to the region, but not `bigbangregions.journeymap.view-all`
+2. **Expected:** The member sees the region but no chunk-loader tiles
+3. As the owner, run `/regiao chunks ver` inside the region
+4. **Expected:** Blue marks the current chunk, green marks active tickets, and yellow marks selected chunks without tickets
+5. Disconnect and reconnect
+6. **Expected:** The local particle preview is off until explicitly enabled again, with no duplicate JourneyMap overlays
+
 ## Edge Cases
 
 - Region with invalid dimension → not rendered, logged as error

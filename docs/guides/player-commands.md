@@ -5,6 +5,7 @@
 | Comando | Descrição | Permissão |
 |---------|-----------|-----------|
 | `/regiao criar <bioma>` | Inicia pedido de alocação de terreno | `bigbangregions.player.create` |
+| `/regiao criar aqui` | Inicia pedido centrado na posição atual, sem exigir bioma da lista | `bigbangregions.player.create` |
 | `/regiao criar status` | Mostra status do pedido de alocação | `bigbangregions.player.create` |
 | `/regiao criar cancelar` | Cancela pedido de alocação ativo | `bigbangregions.player.create` |
 | `/regiao biomas` | Lista opções de bioma disponíveis | — |
@@ -54,9 +55,16 @@
 
 ## Chunk Loader
 
-Abra `/regiao` e clique em `Chunk loader`. O menu mostra os chunks da sua região em uma grade. Use as setas para navegar quando a região tiver mais chunks que o espaço do menu.
+Abra `/regiao` e clique em `Chunk loader`. Se você estiver no seu terreno, o menu abre diretamente na página do seu chunk atual. O brilho e a mensagem `VOCÊ ESTÁ ATUALMENTE NESTE CHUNK` identificam a posição; clique esquerdo ativa ou desativa o loader. O menu não teleporta jogadores.
 
 Somente o OWNER pode selecionar chunks. Membros, líderes e amigos não podem selecionar chunks e os créditos deles nunca são somados à quota do owner.
+
+| Comando | Descrição |
+|---|---|
+| `/regiao chunks comprar` | Ativa o loader no chunk atual, se ele estiver dentro do seu terreno e houver quota. |
+| `/regiao chunks ver` | Liga/desliga a grade visual 5×5 ao redor do jogador. Azul é o chunk atual; verde é um ticket ativo nesta sessão; amarelo é um chunk selecionado sem ticket. |
+
+No JourneyMap, os mesmos chunks aparecem como tiles: verde para ticket ativo e amarelo para seleção persistida. Eles são privados ao OWNER; staff com `bigbangregions.journeymap.view-all` também pode vê-los.
 
 O item de status mostra:
 
@@ -67,5 +75,5 @@ O item de status mostra:
 - créditos extras concedidos internamente;
 - créditos ainda disponíveis.
 
-Os chunks selecionados ficam salvos no SQLite. Eles deixam de receber tickets quando o owner sai do servidor e voltam a ser carregados quando ele entra novamente.
+Os chunks selecionados ficam salvos no SQLite. Eles deixam de receber tickets quando o owner sai do servidor e voltam a ser carregados quando ele entra novamente. Por isso, o menu separa `selecionado` de `ticket ativo nesta sessão`.
 | `/regiao pos1` / `pos2` | Define seleção (admin) |
