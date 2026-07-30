@@ -6,6 +6,7 @@ import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
 import com.bigbangcraft.regions.domain.RegionType;
 import com.bigbangcraft.regions.storage.DatabaseManager;
+import net.minecraft.world.level.ChunkPos;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -93,5 +95,22 @@ public class RegionRepositoryIntegrationTest {
         // Delete
         repository.delete("reg1");
         assertTrue(repository.loadAll().isEmpty());
+    }
+
+    @Test
+    public void testChunkLoaderSelectionKeepsSharedConnectionOpen() throws Exception {
+        UUID owner = UUID.randomUUID();
+        Region region = new Region(
+            "chunk-loader", "Chunk Loader", RegionType.PLAYER_REGION,
+            new RegionBounds("minecraft:overworld", 0, 0, 0, 31, 255, 31),
+            100, owner, owner, 1000L, 1000L, "ACTIVE", new HashMap<>()
+        );
+        repository.save(region);
+
+        Set<ChunkPos> chunks = Set.of(new ChunkPos(0, 0), new ChunkPos(1, 1));
+        repository.saveChunkLoaderChunks(region.getId(), chunks);
+
+        assertFalse(dbManager.getConnection().isClosed());
+        assertEquals(chunks, repository.loadChunkLoaderChunks(region.getId()));
     }
 }

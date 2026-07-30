@@ -12,7 +12,6 @@ import com.bigbangcraft.regions.repository.PlotSlotRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import net.minecraft.SharedConstants;
-import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -22,7 +21,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.biome.Biome;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +29,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.UUID;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -197,21 +194,16 @@ public class TerrainAllocationCoordinatorDimensionTest {
     }
 
     @Test
-    public void createsManualRequestUsingBiomeAtPosition() {
+    public void createsManualRequestAtBiomeOutsideConfiguredOptions() {
         UUID ownerUuid = UUID.randomUUID();
         BlockPos commandPosition = new BlockPos(4123, 80, -4456);
         ServerLevel level = mock(ServerLevel.class);
-        @SuppressWarnings("unchecked")
-        Holder<Biome> plains = mock(Holder.class);
-        ResourceKey<Biome> plainsKey = ResourceKey.create(Registries.BIOME, ResourceLocation.parse("minecraft:plains"));
-        when(plains.unwrapKey()).thenReturn(Optional.of(plainsKey));
-        when(level.getBiome(commandPosition)).thenReturn(plains);
         when(level.dimension()).thenReturn(Level.OVERWORLD);
 
         String requestId = coordinator.createRequestAt(ownerUuid, level, commandPosition, "test");
 
         AllocationRequest request = requestRepository.get(requestId);
-        assertEquals("planicies", request.getRequestedBiomeOption());
+        assertEquals(BiomeOptionRegistry.MANUAL_LOCATION_OPTION_KEY, request.getRequestedBiomeOption());
         assertEquals(AllocationRequestState.VIRTUAL_VALIDATED, request.getState());
     }
 
