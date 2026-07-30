@@ -17,7 +17,8 @@ public class PlayerRegionHomeRepository {
 
     public void save(PlayerRegionHome home) {
         synchronized (dbManager) {
-            try (Connection conn = dbManager.getConnection()) {
+            try {
+                Connection conn = dbManager.getConnection();
                 saveOnConnection(conn, home);
             } catch (SQLException e) {
                 LOGGER.error("Failed to save player region home: ", e);
@@ -46,12 +47,14 @@ public class PlayerRegionHomeRepository {
     public PlayerRegionHome get(String regionId) {
         synchronized (dbManager) {
             String sql = "SELECT * FROM player_region_homes WHERE region_id = ?;";
-            try (Connection conn = dbManager.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, regionId);
-                try (ResultSet rs = pstmt.executeQuery()) {
-                    if (rs.next()) {
-                        return mapResultSet(rs);
+            try {
+                Connection conn = dbManager.getConnection();
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, regionId);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        if (rs.next()) {
+                            return mapResultSet(rs);
+                        }
                     }
                 }
             } catch (SQLException e) {
@@ -64,10 +67,12 @@ public class PlayerRegionHomeRepository {
     public void delete(String regionId) {
         synchronized (dbManager) {
             String sql = "DELETE FROM player_region_homes WHERE region_id = ?;";
-            try (Connection conn = dbManager.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, regionId);
-                pstmt.executeUpdate();
+            try {
+                Connection conn = dbManager.getConnection();
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, regionId);
+                    pstmt.executeUpdate();
+                }
             } catch (SQLException e) {
                 LOGGER.error("Failed to delete player region home: ", e);
             }

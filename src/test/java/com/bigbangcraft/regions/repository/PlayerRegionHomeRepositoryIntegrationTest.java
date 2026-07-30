@@ -66,4 +66,21 @@ public class PlayerRegionHomeRepositoryIntegrationTest {
         repository.delete("reg1");
         assertNull(repository.get("reg1"));
     }
+
+    @Test
+    public void testHomeOperationsKeepSharedConnectionOpen() throws Exception {
+        Connection shared = dbManager.getConnection();
+        PlayerRegionHome home = new PlayerRegionHome(
+                "reg1", "minecraft:overworld", 10.5, 64.0, 10.5, 0.0f, 0.0f,
+                System.currentTimeMillis(), System.currentTimeMillis()
+        );
+
+        repository.save(home);
+        assertFalse(shared.isClosed());
+        assertNotNull(repository.get("reg1"));
+        assertFalse(shared.isClosed());
+
+        repository.delete("reg1");
+        assertFalse(shared.isClosed());
+    }
 }

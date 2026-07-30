@@ -16,6 +16,7 @@ import com.bigbangcraft.regions.storage.DatabaseManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,6 +24,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -54,6 +57,8 @@ public class RegionExpansionCoordinator {
     private final AtomicBoolean visualWorkInFlight = new AtomicBoolean();
     private final AtomicLong nextWorkAt = new AtomicLong();
     private final Set<String> paymentInFlight = ConcurrentHashMap.newKeySet();
+    private final Map<String, CompletableFuture<RegionExpansionOperation>> startWaiters = new ConcurrentHashMap<>();
+    private volatile MinecraftServer server;
 
     public RegionExpansionCoordinator(ConfigManager configManager,
                                        DatabaseManager databaseManager,
@@ -207,6 +212,28 @@ public class RegionExpansionCoordinator {
         return operation;
     }
 
+    public CompletionStage<RegionExpansionOperation> beginExpansionAsync(ServerPlayer player, int targetSize) {
+        return startPaymentAndWait(beginExpansion(player, targetSize));
+    }
+
+    public CompletionStage<RegionExpansionOperation> beginExpansionAsync(ServerPlayer player,
+                                                                          ExpansionDirection direction,
+                                                                          int increment) {
+        return startPaymentAndWait(beginExpansion(player, direction, increment));
+    }
+
+    private CompletionStage<RegionExpansionOperation> startPaymentAndWait(RegionExpansionOperation operation) {
+        CompletableFuture<RegionExpansionOperation> result = new CompletableFuture<>();
+        startWaiters.put(operation.getOperationId(), result);
+        try {
+            startPaymentReserve(operation, configManager.getConfig().getRegionExpansion());
+        } catch (Throwable error) {
+            startWaiters.remove(operation.getOperationId());
+            result.completeExceptionally(error);
+        }
+        return result;
+    }
+
     public static RegionBounds directionalBounds(RegionBounds old, ExpansionDirection direction, int increment) {
         int minX = old.getMinX(), maxX = old.getMaxX(), minZ = old.getMinZ(), maxZ = old.getMaxZ();
         if (direction == ExpansionDirection.WEST || direction == ExpansionDirection.ALL) minX -= increment;
@@ -240,6 +267,11 @@ public class RegionExpansionCoordinator {
     }
 
     public int processNextExpansion() {
+        return processNextExpansion(null);
+    }
+
+    public int processNextExpansion(MinecraftServer server) {
+        if (server != null) this.server = server;
         long now = System.currentTimeMillis();
         if (now < nextWorkAt.get() || !workInFlight.compareAndSet(false, true)) return 0;
         operationExecutor.execute(() -> {
@@ -472,9 +504,20 @@ public class RegionExpansionCoordinator {
             op.setNextRetryAt(null);
             expansionRepository.save(op);
             LOGGER.info("Expansion Gems reserved: op={}, reservationId={}", op.getOperationId(), result.getReservationId());
+            completeStartWaiter(op, null);
         } else {
             handlePaymentFailure(op, result, ec);
+            if (op.getState().isTerminal()) {
+                completeStartWaiter(op, new IllegalStateException(op.getFailureDetail()));
+            }
         }
+    }
+
+    private void completeStartWaiter(RegionExpansionOperation op, Throwable failure) {
+        CompletableFuture<RegionExpansionOperation> waiter = startWaiters.remove(op.getOperationId());
+        if (waiter == null) return;
+        if (failure == null) waiter.complete(op);
+        else waiter.completeExceptionally(failure);
     }
 
     private void submitRenew(RegionExpansionOperation op, Config.RegionExpansionConfig ec, LandPaymentRenewRequest request) {
@@ -666,6 +709,7 @@ public class RegionExpansionCoordinator {
             op.setPaymentCapturedAt(System.currentTimeMillis());
             op.transitionTo(RegionExpansionState.COMPLETED);
             expansionRepository.save(op);
+            notifyExpansionCompleted(op);
             LOGGER.info("Expansion completed: op={}, region={}, size={}x{}",
                 op.getOperationId(), op.getRegionId(), op.getTargetSize(), op.getTargetSize());
             return;
@@ -704,10 +748,10 @@ public class RegionExpansionCoordinator {
         if (result.isInsufficientBalance()) {
             if (op.getGemsReservationId() != null) {
                 return releaseBeforeResize(op, "INSUFFICIENT_BALANCE",
-                    "Saldo de Gems insuficiente. Voce precisa de " + op.getPriceGems() + " gems.");
+                    "Você não tem Gems suficientes para realizar essa expansão.");
             }
             return failOperation(op, RegionExpansionState.CANCELLED_BEFORE_RESIZE,
-                "INSUFFICIENT_BALANCE", "Saldo de Gems insuficiente. Voce precisa de " + op.getPriceGems() + " gems.");
+                "INSUFFICIENT_BALANCE", "Você não tem Gems suficientes para realizar essa expansão.");
         }
 
         if (result.getFailure() == LandPaymentFailure.RESERVATION_EXPIRED
@@ -801,6 +845,17 @@ public class RegionExpansionCoordinator {
             paymentInFlight.remove(flightKey);
             finishRelease(op, reason, failureFrom(error));
         }
+    }
+
+    private void notifyExpansionCompleted(RegionExpansionOperation op) {
+        MinecraftServer currentServer = server;
+        if (currentServer == null) return;
+        currentServer.execute(() -> {
+            ServerPlayer player = currentServer.getPlayerList().getPlayer(op.getOwnerUuid());
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("§aExpansão concluída!"));
+            }
+        });
     }
 
     private void finishRelease(RegionExpansionOperation op, String reason, LandPaymentOperationResult result) {

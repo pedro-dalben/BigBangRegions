@@ -95,8 +95,20 @@ public class RegionExpansionMenu extends ChestMenu {
             if (slot == 15) RegionGuiHandler.openExpansionSizes(sp, region, direction);
             else if (slot == 11) {
                 sp.closeContainer();
-                try { BigBangRegions.getExpansionCoordinator().beginExpansion(sp, direction, increment); sp.sendSystemMessage(Component.literal("§aExpansão iniciada.")); }
-                catch (Exception e) { sp.sendSystemMessage(Component.literal("§c" + e.getMessage())); }
+                sp.sendSystemMessage(Component.literal("§eVerificando saldo de Gems..."));
+                try {
+                    BigBangRegions.getExpansionCoordinator()
+                        .beginExpansionAsync(sp, direction, increment)
+                        .whenComplete((ignored, error) -> sp.getServer().execute(() -> {
+                            if (error != null) {
+                                sp.sendSystemMessage(Component.literal("§c" + error.getMessage()));
+                            } else {
+                                sp.sendSystemMessage(Component.literal("§aExpansão iniciada."));
+                            }
+                        }));
+                } catch (Exception e) {
+                    sp.sendSystemMessage(Component.literal("§c" + e.getMessage()));
+                }
             }
         }
     }
