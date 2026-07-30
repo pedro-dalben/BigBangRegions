@@ -10,8 +10,9 @@ This integration draws region boundaries and center markers on the JourneyMap mi
 
 ## Requirements
 
-- JourneyMap mod installed on the server (not just clients)
-- BigBangRegions with JourneyMap API dependency
+- JourneyMap mod installed on the server (not just clients). JourneyMap supplies the API implementation.
+- Do not copy `journeymap-api-fabric` alone to the server; it is a soft/development dependency and has no implementation.
+- BigBangRegions built for the same Minecraft/JourneyMap API line
 
 ## Enabling / Disabling
 
@@ -167,4 +168,4 @@ The integration listens for these events and updates only the affected players:
 | No overlays appear | JourneyMap not installed on server, or integration disabled in config |
 | Wrong players see regions | Check permission nodes and adminRegionVisibility setting |
 | Duplicate overlays after relog | Clear JourneyMap cache (`/journeymap reset`) |
-| Deprecation warnings in log | WaypointFactory API is internal — safe to ignore |
+| Deprecation warnings in log | Verify that the server is using the current JourneyMap API implementation supplied by the JourneyMap mod |

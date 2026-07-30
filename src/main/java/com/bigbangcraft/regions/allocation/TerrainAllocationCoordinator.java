@@ -162,14 +162,17 @@ public class TerrainAllocationCoordinator {
 
         int gridX = Math.floorDiv(center.getX(), lac.getSlotSize());
         int gridZ = Math.floorDiv(center.getZ(), lac.getSlotSize());
-        if (slotRepository.getByGrid(dimension, gridX, gridZ) != null) {
-            throw new IllegalStateException("Já existe um slot de alocação neste setor. Escolha outro local.");
+        PlotSlot existing = slotRepository.getByGrid(dimension, gridX, gridZ);
+        if (existing != null) {
+            if (existing.getState() != PlotSlotState.RELEASED && existing.getState() != PlotSlotState.AVAILABLE) {
+                throw new IllegalStateException("Já existe um slot de alocação neste setor. Escolha outro local.");
+            }
         }
-
         long now = System.currentTimeMillis();
-        PlotSlot slot = new PlotSlot("manual:" + request.getId(), dimension, gridX, gridZ,
+        boolean isNew = (existing == null);
+        PlotSlot slot = isNew ? new PlotSlot("manual:" + request.getId(), dimension, gridX, gridZ,
             slotMinX, slotMinZ, lac.getSlotSize(), PlotSlotState.RELEASED, null, null, null,
-            null, null, null, now, now);
+            null, null, null, now, now) : existing;
         slot.reserve(ownerUuid, request.getRequestedBiomeOption(), lac.getScheduler().getReservationLeaseSeconds() * 1000L);
         request.setPlotSlotId(slot.getId());
         request.transitionTo(AllocationRequestState.VIRTUAL_SEARCHING);
