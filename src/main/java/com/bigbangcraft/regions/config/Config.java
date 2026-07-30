@@ -644,9 +644,14 @@ public class Config {
         private boolean enabled = true;
 
         private RegionStyle playerRegion = new RegionStyle(0xFF4CAF50, 0xFF4CAF50, 0.16f, 0.85f);
+        private RegionStyle memberRegion = new RegionStyle(0xFF42A5F5, 0xFF42A5F5, 0.14f, 0.80f);
+        private RegionStyle publicRegion = new RegionStyle(0xFFB0BEC5, 0xFFB0BEC5, 0.08f, 0.55f);
+        private RegionStyle staffRegion = new RegionStyle(0xFFAB47BC, 0xFFAB47BC, 0.12f, 0.72f);
         private RegionStyle adminRegion = new RegionStyle(0xFFE53935, 0xFFE53935, 0.20f, 0.95f);
         private RegionStyle blockedRegion = new RegionStyle(0xFF757575, 0xFF757575, 0.12f, 0.70f);
         private RegionStyle maintenanceRegion = new RegionStyle(0xFFFF9800, 0xFFFF9800, 0.14f, 0.80f);
+        private RegionStyle chunkLoaderActive = new RegionStyle(0xFF43A047, 0xFF43A047, 0.30f, 1.0f);
+        private RegionStyle chunkLoaderSelected = new RegionStyle(0xFFFFC107, 0xFFFFC107, 0.22f, 0.95f);
 
         private PublicRegionsConfig publicRegions = new PublicRegionsConfig();
         private AdminRegionVisibility adminRegionVisibility = AdminRegionVisibility.STAFF_ONLY;
@@ -686,9 +691,14 @@ public class Config {
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public RegionStyle getPlayerRegion() { return playerRegion; }
+        public RegionStyle getMemberRegion() { return memberRegion; }
+        public RegionStyle getPublicRegion() { return publicRegion; }
+        public RegionStyle getStaffRegion() { return staffRegion; }
         public RegionStyle getAdminRegion() { return adminRegion; }
         public RegionStyle getBlockedRegion() { return blockedRegion; }
         public RegionStyle getMaintenanceRegion() { return maintenanceRegion; }
+        public RegionStyle getChunkLoaderActive() { return chunkLoaderActive; }
+        public RegionStyle getChunkLoaderSelected() { return chunkLoaderSelected; }
         public PublicRegionsConfig getPublicRegions() { return publicRegions; }
         public AdminRegionVisibility getAdminRegionVisibility() { return adminRegionVisibility; }
         public void setAdminRegionVisibility(AdminRegionVisibility v) { this.adminRegionVisibility = v; }

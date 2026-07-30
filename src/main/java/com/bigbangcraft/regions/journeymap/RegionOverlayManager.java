@@ -10,9 +10,12 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.ChunkPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
@@ -28,36 +31,15 @@ public class RegionOverlayManager {
     }
 
     public void showRegionOverlay(ServerPlayer player, Region region) {
+        showRegionOverlay(player, region, null);
+    }
+
+    public void showRegionOverlay(ServerPlayer player, Region region,
+                                  Config.JourneyMapConfig.RegionStyle visualStyle) {
         try {
             Config.JourneyMapConfig jmConfig = configManager.getConfig().getJourneyMap();
-            int fillColor;
-            int strokeColor;
-            float fillOpacity;
-            float strokeOpacity;
-
-            if (region.getType() == RegionType.ADMIN_REGION) {
-                fillColor = jmConfig.getAdminRegion().getFillColor();
-                strokeColor = jmConfig.getAdminRegion().getStrokeColor();
-                fillOpacity = jmConfig.getAdminRegion().getFillOpacity();
-                strokeOpacity = jmConfig.getAdminRegion().getStrokeOpacity();
-            } else if (region.getType() == RegionType.SYSTEM_REGION) {
-                fillColor = jmConfig.getMaintenanceRegion().getFillColor();
-                strokeColor = jmConfig.getMaintenanceRegion().getStrokeColor();
-                fillOpacity = jmConfig.getMaintenanceRegion().getFillOpacity();
-                strokeOpacity = jmConfig.getMaintenanceRegion().getStrokeOpacity();
-            } else {
-                fillColor = jmConfig.getPlayerRegion().getFillColor();
-                strokeColor = jmConfig.getPlayerRegion().getStrokeColor();
-                fillOpacity = jmConfig.getPlayerRegion().getFillOpacity();
-                strokeOpacity = jmConfig.getPlayerRegion().getStrokeOpacity();
-
-                if (!"ACTIVE".equals(region.getStatus())) {
-                    fillColor = jmConfig.getBlockedRegion().getFillColor();
-                    strokeColor = jmConfig.getBlockedRegion().getStrokeColor();
-                    fillOpacity = jmConfig.getBlockedRegion().getFillOpacity();
-                    strokeOpacity = jmConfig.getBlockedRegion().getStrokeOpacity();
-                }
-            }
+            Config.JourneyMapConfig.RegionStyle style = visualStyle != null
+                ? visualStyle : defaultStyle(jmConfig, region);
 
             RegionBounds bounds = region.getBounds();
             int minX = bounds.getMinX();
@@ -67,16 +49,6 @@ public class RegionOverlayManager {
 
             ResourceKey<net.minecraft.world.level.Level> dimensionKey = ResourceKey.create(
                 Registries.DIMENSION, ResourceLocation.parse(bounds.getDimension())
-            );
-
-            String overlayId = "bigbangregions:region/" + region.getId() + "/outline";
-
-            OverlayShapeProps props = new OverlayShapeProps(
-                fillColor, fillOpacity,
-                strokeColor, 2.0f, strokeOpacity,
-                10, 0, Integer.MAX_VALUE,
-                Set.of(), Set.of(),
-                "", region.getName()
             );
 
             OverlayPolygon rectangle = new OverlayPolygon(
@@ -89,29 +61,133 @@ public class RegionOverlayManager {
                 List.of()
             );
 
-            ServerPolygon serverPolygon = new ServerPolygon(
-                overlayId, dimensionKey, List.of(rectangle), props
+            // Remove the pre-zoom overlay id used by older builds before replacing it.
+            removeOverlay(player, overlayId(region, "outline"));
+            overlayApi.show(player, getModId(),
+                new ServerPolygon(overlayId(region, "outline-overview"), dimensionKey,
+                    List.of(rectangle), new OverlayShapeProps(
+                        rgb(style.getFillColor()), Math.min(style.getFillOpacity(), 0.05f),
+                        rgb(style.getStrokeColor()), 2.0f, style.getStrokeOpacity(),
+                        10, 0, 7, Set.of(), Set.of(), region.getName(), region.getName()
+                    )),
+                new ServerPolygon(overlayId(region, "outline-detail"), dimensionKey,
+                    List.of(rectangle), new OverlayShapeProps(
+                        rgb(style.getFillColor()), style.getFillOpacity(),
+                        rgb(style.getStrokeColor()), 2.0f, style.getStrokeOpacity(),
+                        10, 8, Integer.MAX_VALUE, Set.of(), Set.of(), "", region.getName()
+                    ))
             );
-
-            overlayApi.show(player, getModId(), serverPolygon);
         } catch (Exception e) {
             LOGGER.error("Failed to show overlay for region {} to player {}: {}",
                 region.getId(), player.getName().getString(), e.getMessage());
         }
     }
 
+    private static Config.JourneyMapConfig.RegionStyle defaultStyle(
+        Config.JourneyMapConfig config, Region region) {
+        if (region.getType() == RegionType.ADMIN_REGION) return config.getAdminRegion();
+        if (region.getType() == RegionType.SYSTEM_REGION) return config.getMaintenanceRegion();
+        return "ACTIVE".equals(region.getStatus()) ? config.getPlayerRegion() : config.getBlockedRegion();
+    }
+
     public void removeRegionOverlay(ServerPlayer player, Region region) {
-        try {
-            overlayApi.remove(player, getModId(), "bigbangregions:region/" + region.getId() + "/outline");
-        } catch (Exception e) {
-            LOGGER.error("Failed to remove overlay for region {}: {}", region.getId(), e.getMessage());
+        removeOverlay(player, overlayId(region, "outline"));
+        removeOverlay(player, overlayId(region, "outline-overview"));
+        removeOverlay(player, overlayId(region, "outline-detail"));
+        removeChunkLoaderOverlays(player, region);
+    }
+
+    public void showChunkLoaderOverlays(ServerPlayer player, Region region,
+                                        Set<ChunkPos> selected, Set<ChunkPos> active) {
+        List<ChunkPos> activeChunks = selected.stream()
+            .filter(active::contains)
+            .sorted(Comparator.comparingInt((ChunkPos chunk) -> chunk.x).thenComparingInt(chunk -> chunk.z))
+            .toList();
+        List<ChunkPos> selectedOnly = selected.stream()
+            .filter(chunk -> !active.contains(chunk))
+            .sorted(Comparator.comparingInt((ChunkPos chunk) -> chunk.x).thenComparingInt(chunk -> chunk.z))
+            .toList();
+        Config.JourneyMapConfig config = configManager.getConfig().getJourneyMap();
+        showChunkLoaderOverlay(player, region, "chunk-loaders-active", activeChunks,
+            config.getChunkLoaderActive(), "Chunk loaders ativos");
+        showChunkLoaderOverlay(player, region, "chunk-loaders-selected", selectedOnly,
+            config.getChunkLoaderSelected(), "Chunk loaders selecionados");
+    }
+
+    public void removeChunkLoaderOverlays(ServerPlayer player, Region region) {
+        removeOverlay(player, overlayId(region, "chunk-loaders-active"));
+        removeOverlay(player, overlayId(region, "chunk-loaders-selected"));
+    }
+
+    private void showChunkLoaderOverlay(ServerPlayer player, Region region, String suffix,
+                                        List<ChunkPos> chunks, Config.JourneyMapConfig.RegionStyle style,
+                                        String title) {
+        String id = overlayId(region, suffix);
+        if (chunks.isEmpty()) {
+            removeOverlay(player, id);
+            return;
         }
+        try {
+            RegionBounds bounds = region.getBounds();
+            List<OverlayPolygon> tiles = new ArrayList<>();
+            for (ChunkPos chunk : chunks) {
+                int minX = Math.max(bounds.getMinX(), chunk.x * 16);
+                int maxX = Math.min(bounds.getMaxX(), chunk.x * 16 + 15);
+                int minZ = Math.max(bounds.getMinZ(), chunk.z * 16);
+                int maxZ = Math.min(bounds.getMaxZ(), chunk.z * 16 + 15);
+                if (minX <= maxX && minZ <= maxZ) {
+                    tiles.add(rectangle(minX, minZ, maxX, maxZ));
+                }
+            }
+            if (tiles.isEmpty()) {
+                removeOverlay(player, id);
+                return;
+            }
+            ResourceKey<net.minecraft.world.level.Level> dimension = ResourceKey.create(
+                Registries.DIMENSION, ResourceLocation.parse(bounds.getDimension())
+            );
+            OverlayShapeProps props = new OverlayShapeProps(
+                rgb(style.getFillColor()), style.getFillOpacity(),
+                rgb(style.getStrokeColor()), 1.0f, style.getStrokeOpacity(),
+                20, 8, Integer.MAX_VALUE,
+                Set.of(), Set.of(), "", region.getName() + " - " + title
+            );
+            overlayApi.show(player, getModId(), new ServerPolygon(id, dimension, tiles, props));
+        } catch (Exception e) {
+            LOGGER.error("Failed to show {} for region {} to player {}: {}",
+                suffix, region.getId(), player.getName().getString(), e.getMessage());
+        }
+    }
+
+    private void removeOverlay(ServerPlayer player, String id) {
+        try {
+            overlayApi.remove(player, getModId(), id);
+        } catch (Exception e) {
+            LOGGER.error("Failed to remove JourneyMap overlay {}: {}", id, e.getMessage());
+        }
+    }
+
+    private static String overlayId(Region region, String suffix) {
+        return "bigbangregions:region/" + region.getId() + "/" + suffix;
+    }
+
+    private static OverlayPolygon rectangle(int minX, int minZ, int maxX, int maxZ) {
+        return new OverlayPolygon(new OverlayPoints(List.of(
+            encodeBlockPos(minX, 64, minZ),
+            encodeBlockPos(maxX, 64, minZ),
+            encodeBlockPos(maxX, 64, maxZ),
+            encodeBlockPos(minX, 64, maxZ)
+        )), List.of());
     }
 
     private static long encodeBlockPos(int x, int y, int z) {
         return ((long) x & 0x3FFFFFF) << 38
              | ((long) z & 0x3FFFFFF) << 12
              | ((long) y & 0xFFF);
+    }
+
+    private static int rgb(int color) {
+        return color & 0xFFFFFF;
     }
 
     private static String getModId() {

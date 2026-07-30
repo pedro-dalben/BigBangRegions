@@ -13,7 +13,6 @@ import journeymap.api.v2.server.IServerAPI;
 import journeymap.api.v2.server.IServerPlugin;
 import journeymap.api.v2.server.overlay.IServerOverlayAPI;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
@@ -23,7 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 @JourneyMapPlugin(apiVersion = "2.0.0")
-public class JourneyMapRegionsPlugin implements IServerPlugin, RegionChangeListener {
+public class JourneyMapRegionsPlugin implements IServerPlugin, RegionChangeListener, RegionMapIntegration {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-JM");
 
     private IServerAPI jmServerApi;
@@ -61,7 +60,7 @@ public class JourneyMapRegionsPlugin implements IServerPlugin, RegionChangeListe
         this.markerManager = new RegionMarkerManager(jmServerApi, configManager);
 
         RegionEventBus.register(this);
-        BigBangRegions.setRegionMapIntegration(this::onPlayerJoin);
+        BigBangRegions.setRegionMapIntegration(this);
 
         ServerLifecycleEvents.SERVER_STARTED.register(srv -> {
             this.server = srv;
@@ -71,18 +70,22 @@ public class JourneyMapRegionsPlugin implements IServerPlugin, RegionChangeListe
             }
         });
 
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, srv) -> {
-            if (handler.getPlayer() != null && this.server != null) {
-                syncPlayerRegions(handler.getPlayer());
-            }
-        });
-
         LOGGER.info("JourneyMap region overlay integration initialized.");
     }
 
     public void onPlayerJoin(ServerPlayer player) {
         if (jmServerApi != null && configManager.getConfig().getJourneyMap().isEnabled()) {
             syncPlayerRegions(player);
+        }
+    }
+
+    @Override
+    public void onPlayerDisconnect(ServerPlayer player) {
+        if (overlayApi != null) {
+            overlayApi.clearAll(player, getModId());
+        }
+        if (markerManager != null) {
+            markerManager.clearAll(player);
         }
     }
 
@@ -137,6 +140,11 @@ public class JourneyMapRegionsPlugin implements IServerPlugin, RegionChangeListe
                     }
                 }
             }
+            case CHUNK_LOADERS_CHANGED -> {
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    refreshChunkLoaders(player, region);
+                }
+            }
         }
     }
 
@@ -144,6 +152,9 @@ public class JourneyMapRegionsPlugin implements IServerPlugin, RegionChangeListe
         if (overlayApi == null) return;
 
         overlayApi.clearAll(player, getModId());
+        if (markerManager != null) {
+            markerManager.clearAll(player);
+        }
 
         List<Region> visible = visibilityResolver.getVisibleRegions(player, BigBangRegions.getRegionCache().getAll());
         for (Region region : visible) {
@@ -153,11 +164,12 @@ public class JourneyMapRegionsPlugin implements IServerPlugin, RegionChangeListe
 
     private void addRegionForPlayer(ServerPlayer player, Region region) {
         if (overlayManager != null) {
-            overlayManager.showRegionOverlay(player, region);
+            overlayManager.showRegionOverlay(player, region, visibilityResolver.styleFor(player, region));
         }
         if (markerManager != null) {
             markerManager.showRegionMarker(player, region);
         }
+        refreshChunkLoaders(player, region);
     }
 
     private void removeRegionFromPlayer(ServerPlayer player, Region region) {
@@ -166,6 +178,16 @@ public class JourneyMapRegionsPlugin implements IServerPlugin, RegionChangeListe
         }
         if (markerManager != null) {
             markerManager.removeRegionMarker(player, region);
+        }
+    }
+
+    private void refreshChunkLoaders(ServerPlayer player, Region region) {
+        if (overlayManager == null) return;
+        overlayManager.removeChunkLoaderOverlays(player, region);
+        if (visibilityResolver.canSeeChunkLoaders(player, region)) {
+            overlayManager.showChunkLoaderOverlays(player, region,
+                BigBangRegions.getChunkLoaderService().selected(region),
+                BigBangRegions.getChunkLoaderService().activeChunks(region));
         }
     }
 }

@@ -55,14 +55,15 @@ public class RegionMarkerManager {
 
             removeRegionMarker(player, region);
 
-            Waypoint waypoint = WaypointFactory.createClientWaypoint(
+            Waypoint waypoint = WaypointFactory.createWaypoint(
                 "bigbangregions",
                 new BlockPos(centerX, centerY, centerZ),
                 label,
-                "§7" + region.getType().name().toLowerCase().replace("_region", ""),
+                bounds.getDimension(),
                 false
             );
-            waypoint.setColor(color);
+            waypoint.setDescription("§7" + region.getType().name().toLowerCase().replace("_region", ""));
+            waypoint.setColor(color & 0xFFFFFF);
 
             serverApi.addPlayerWaypoint(player.getUUID(), waypoint);
 

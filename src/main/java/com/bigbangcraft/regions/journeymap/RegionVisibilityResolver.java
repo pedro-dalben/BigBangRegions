@@ -56,17 +56,41 @@ public class RegionVisibilityResolver {
         return result;
     }
 
+    public boolean canSeeChunkLoaders(ServerPlayer player, Region region) {
+        return canSeeRegion(player, region)
+            && region.getType() == RegionType.PLAYER_REGION
+            && (player.getUUID().equals(region.getOwnerUuid())
+                || permissionManager.hasPermission(player, "bigbangregions.journeymap.view-all"));
+    }
+
+    public Config.JourneyMapConfig.RegionStyle styleFor(ServerPlayer player, Region region) {
+        Config.JourneyMapConfig config = configManager.getConfig().getJourneyMap();
+        if (region.getType() == RegionType.ADMIN_REGION) return config.getAdminRegion();
+        if (region.getType() == RegionType.SYSTEM_REGION) return config.getMaintenanceRegion();
+        if (!"ACTIVE".equals(region.getStatus())) return config.getBlockedRegion();
+
+        RegionRole role = roleResolver.resolveRole(region, player.getUUID());
+        if (role == RegionRole.OWNER) return config.getPlayerRegion();
+        if (role == RegionRole.LEADER || role == RegionRole.MANAGER || role == RegionRole.MEMBER) {
+            return config.getMemberRegion();
+        }
+        if (permissionManager.hasPermission(player, "bigbangregions.journeymap.view-all")) {
+            return config.getStaffRegion();
+        }
+        return config.getPublicRegion();
+    }
+
     private boolean canSeePlayerRegion(ServerPlayer player, Region region, UUID playerUuid,
                                        Config.JourneyMapConfig jmConfig) {
+        if (permissionManager.hasPermission(player, "bigbangregions.journeymap.view-all")) {
+            return true;
+        }
+
         RegionRole role = roleResolver.resolveRole(region, playerUuid);
 
         if (role == RegionRole.OWNER || role == RegionRole.LEADER
             || role == RegionRole.MANAGER || role == RegionRole.MEMBER) {
             return PlayerMapPreference.isShowOwnRegion(playerUuid);
-        }
-
-        if (permissionManager.hasPermission(player, "bigbangregions.journeymap.view-all")) {
-            return true;
         }
 
         String visibility = region.getFlagValue("map-visibility");
