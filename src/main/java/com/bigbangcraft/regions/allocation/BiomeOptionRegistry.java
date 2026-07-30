@@ -12,6 +12,7 @@ import java.util.function.BooleanSupplier;
 
 public class BiomeOptionRegistry {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-BiomeOptionRegistry");
+    public static final String MANUAL_LOCATION_OPTION_KEY = "__manual_location__";
     private static final Set<String> BLOCKED_OPTION_KEYS = Set.of("oceano");
     private static final String REGIONS_UNEXPLORED_MOD_ID = "regions_unexplored";
     private static final Map<String, List<String>> REGIONS_UNEXPLORED_BIOMES = Map.ofEntries(
@@ -123,6 +124,12 @@ public class BiomeOptionRegistry {
     public Optional<BiomeOption> lookup(String query) {
         if (query == null) return Optional.empty();
         String q = query.toLowerCase().trim();
+
+        if (MANUAL_LOCATION_OPTION_KEY.equals(q)) {
+            return Optional.of(new BiomeOption(
+                MANUAL_LOCATION_OPTION_KEY, "Local escolhido", Collections.emptyList(), Collections.emptyList(), null
+            ));
+        }
 
         // Exact key match first
         BiomeOption direct = options.get(q);

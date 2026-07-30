@@ -201,15 +201,13 @@ public class TerrainAllocationCoordinator {
     }
 
     public String createRequestAt(UUID ownerUuid, ServerLevel level, BlockPos center, String source) {
-        String biomeId = level.getBiome(center).unwrapKey()
-            .map(key -> key.location().toString())
-            .orElseThrow(() -> new IllegalArgumentException("Não foi possível identificar o bioma atual."));
-        String biomeOption = biomeOptionRegistry.getAll().stream()
-            .filter(option -> option.getAcceptedBiomeIds().contains(biomeId))
-            .map(BiomeOption::getKey)
-            .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("O bioma atual (" + biomeId + ") não possui uma opção de alocação configurada."));
-        return createRequestAt(ownerUuid, biomeOption, level.dimension().location().toString(), center, source);
+        return createRequestAt(
+            ownerUuid,
+            BiomeOptionRegistry.MANUAL_LOCATION_OPTION_KEY,
+            level.dimension().location().toString(),
+            center,
+            source
+        );
     }
 
     private AllocationRequest newAllocationRequest(UUID ownerUuid, String biomeQuery, String dimension, String source) {
@@ -760,6 +758,7 @@ public class TerrainAllocationCoordinator {
 
                 regionCache.add(region);
                 membershipCache.loadFromRegion(region);
+                RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.CREATED, region));
 
                 postRegionCreationSetup(request, bounds, level, platformResult.finalStandPosition());
                 LOGGER.info("[BigBangRegions] Region created successfully request={} region={} home=(x={}, y={}, z={})",

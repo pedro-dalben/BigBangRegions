@@ -41,51 +41,47 @@ public class PreparedChunkLoadedWorldValidator implements LoadedWorldValidator {
             return LoadedWorldValidationResult.rejected(LoadedWorldFailureReason.VIRTUAL_PHYSICAL_BIOME_MISMATCH, diagnostics);
         }
 
-        Set<String> acceptedBiomes = Set.copyOf(biomeOption.get().getAcceptedBiomeIds());
-        List<int[]> samplePoints = buildPreparedChunkSamples(candidate.footprint(), preparedChunks);
+        if (!BiomeOptionRegistry.MANUAL_LOCATION_OPTION_KEY.equals(candidate.biomeOptionKey())) {
+            Set<String> acceptedBiomes = Set.copyOf(biomeOption.get().getAcceptedBiomeIds());
+            List<int[]> samplePoints = buildPreparedChunkSamples(candidate.footprint(), preparedChunks);
 
-        Config.BiomeSearchConfig biomeSearch = configManager.getConfig().getPlayerLandAllocation().getBiomeSearch();
-        int minimumMatchPercentage = biomeSearch.getMinimumMatchPercentage();
-        int minimumBorderMatchPercentage = biomeSearch.getMinimumBorderMatchPercentage();
+            Config.BiomeSearchConfig biomeSearch = configManager.getConfig().getPlayerLandAllocation().getBiomeSearch();
+            int minimumMatchPercentage = biomeSearch.getMinimumMatchPercentage();
+            int centerMatches = 0;
+            int centerTotal = 0;
+            int totalMatches = 0;
+            int totalSamples = 0;
 
-        int centerMatches = 0;
-        int centerTotal = 0;
-        int totalMatches = 0;
-        int totalSamples = 0;
+            for (int index = 0; index < samplePoints.size(); index++) {
+                int[] sample = samplePoints.get(index);
+                int surfaceY = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sample[0], sample[1]);
+                int sampleY = Math.max(surfaceY, configManager.getConfig().getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY());
+                BlockPos pos = new BlockPos(sample[0], sampleY, sample[1]);
+                ResourceKey<Biome> biomeKey = world.getBiome(pos).unwrapKey().orElse(null);
+                String biomeId = biomeKey == null ? null : biomeKey.location().toString();
+                boolean matches = biomeId != null && acceptedBiomes.contains(biomeId);
 
-        for (int index = 0; index < samplePoints.size(); index++) {
-            int[] sample = samplePoints.get(index);
-            int surfaceY = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sample[0], sample[1]);
-            int sampleY = Math.max(surfaceY, configManager.getConfig().getPlayerLandAllocation().getWorldgenSearch().getSampleBlockY());
-            BlockPos pos = new BlockPos(sample[0], sampleY, sample[1]);
-            ResourceKey<Biome> biomeKey = world.getBiome(pos).unwrapKey().orElse(null);
-            String biomeId = biomeKey == null ? null : biomeKey.location().toString();
-            boolean matches = biomeId != null && acceptedBiomes.contains(biomeId);
-
-            totalSamples++;
-            if (matches) {
-                totalMatches++;
-            }
-            if (index == 0) {
-                centerTotal++;
-                if (matches) {
-                    centerMatches++;
+                totalSamples++;
+                if (matches) totalMatches++;
+                if (index == 0) {
+                    centerTotal++;
+                    if (matches) centerMatches++;
+                } else {
+                    diagnostics.add("Sample at " + sample[0] + "," + sample[1] + "@Y" + sampleY + "=" + biomeId + (matches ? " MATCH" : " MISMATCH"));
                 }
-            } else {
-                diagnostics.add("Sample at " + sample[0] + "," + sample[1] + "@Y" + sampleY + "=" + biomeId + (matches ? " MATCH" : " MISMATCH"));
             }
-        }
 
-        if (centerTotal > 0 && centerMatches == 0) {
-            diagnostics.add("Center biome mismatch: expected " + acceptedBiomes + " but found different biome");
-            return LoadedWorldValidationResult.rejected(LoadedWorldFailureReason.INTERIOR_BIOME_MISMATCH, diagnostics);
-        }
+            if (centerTotal > 0 && centerMatches == 0) {
+                diagnostics.add("Center biome mismatch: expected " + acceptedBiomes + " but found different biome");
+                return LoadedWorldValidationResult.rejected(LoadedWorldFailureReason.INTERIOR_BIOME_MISMATCH, diagnostics);
+            }
 
-        double score = totalSamples == 0 ? 0.0 : ((double) totalMatches / (double) totalSamples) * 100.0;
-        if (score < minimumMatchPercentage) {
-            diagnostics.add(String.format("Physical biome match %.1f%% below threshold %d%% (%d/%d matches)",
-                score, minimumMatchPercentage, totalMatches, totalSamples));
-            return LoadedWorldValidationResult.rejected(LoadedWorldFailureReason.INTERIOR_BIOME_MISMATCH, diagnostics);
+            double score = totalSamples == 0 ? 0.0 : ((double) totalMatches / (double) totalSamples) * 100.0;
+            if (score < minimumMatchPercentage) {
+                diagnostics.add(String.format("Physical biome match %.1f%% below threshold %d%% (%d/%d matches)",
+                    score, minimumMatchPercentage, totalMatches, totalSamples));
+                return LoadedWorldValidationResult.rejected(LoadedWorldFailureReason.INTERIOR_BIOME_MISMATCH, diagnostics);
+            }
         }
 
         Optional<BlockPos> safeSpawn = SafeSpawnFinder.findSafeSpawn(
