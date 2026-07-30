@@ -2,6 +2,8 @@ package com.bigbangcraft.regions.chunkloader;
 
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionType;
+import com.bigbangcraft.regions.event.RegionChangeEvent;
+import com.bigbangcraft.regions.event.RegionEventBus;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.repository.RegionRepository;
 import net.minecraft.core.registries.Registries;
@@ -25,6 +27,15 @@ public class RegionChunkLoaderService {
     private final RegionRepository repository;
     private final PermissionManager permissions;
     private final Map<String, Set<ChunkPos>> active = new ConcurrentHashMap<>();
+
+    public enum ActivationResult {
+        ACTIVATED,
+        ALREADY_SELECTED,
+        QUOTA_EXHAUSTED,
+        NOT_OWNER,
+        OUTSIDE_REGION,
+        NO_OWNED_REGION
+    }
 
     public RegionChunkLoaderService(RegionRepository repository, PermissionManager permissions) {
         this.repository = repository;
@@ -55,19 +66,54 @@ public class RegionChunkLoaderService {
 
     public Set<ChunkPos> selected(Region region) { return repository.loadChunkLoaderChunks(region.getId()); }
 
+    public boolean isActive(Region region, ChunkPos chunk) {
+        return active.getOrDefault(region.getId(), Set.of()).contains(chunk);
+    }
+
+    public Set<ChunkPos> activeChunks(Region region) {
+        return Set.copyOf(active.getOrDefault(region.getId(), Set.of()));
+    }
+
+    public Region ownedRegionAt(ServerPlayer player) {
+        return ownedRegionAt(player, ownedRegions(player.getUUID()));
+    }
+
+    public ActivationResult activateCurrentChunk(ServerPlayer player) {
+        List<Region> regions = ownedRegions(player.getUUID());
+        if (regions.isEmpty()) return ActivationResult.NO_OWNED_REGION;
+        Region region = ownedRegionAt(player, regions);
+        if (region == null) return ActivationResult.OUTSIDE_REGION;
+        ChunkPos chunk = new ChunkPos(player.getBlockX() >> 4, player.getBlockZ() >> 4);
+        return activate(player, region, chunk);
+    }
+
+    public ActivationResult activate(ServerPlayer player, Region region, ChunkPos chunk) {
+        if (!isOwner(player, region)) return ActivationResult.NOT_OWNER;
+        if (!inside(region, chunk)) return ActivationResult.OUTSIDE_REGION;
+        return activate(player, region, chunk, repository.loadChunkLoaderChunks(region.getId()));
+    }
+
+    private ActivationResult activate(ServerPlayer player, Region region, ChunkPos chunk, Set<ChunkPos> selected) {
+        if (selected.contains(chunk)) return ActivationResult.ALREADY_SELECTED;
+        if (selected.size() >= quota(player)) return ActivationResult.QUOTA_EXHAUSTED;
+
+        selected.add(chunk);
+        repository.saveChunkLoaderChunks(region.getId(), selected);
+        if (player.getServer() != null) acquire(player.getServer(), region, Set.of(chunk));
+        publishState(region);
+        return ActivationResult.ACTIVATED;
+    }
+
     public boolean toggle(ServerPlayer player, Region region, ChunkPos chunk) {
         if (!isOwner(player, region) || !inside(region, chunk)) return false;
         Set<ChunkPos> selected = repository.loadChunkLoaderChunks(region.getId());
         if (selected.remove(chunk)) {
             repository.saveChunkLoaderChunks(region.getId(), selected);
             if (active.containsKey(region.getId())) release(player.getServer(), region, Set.of(chunk));
+            publishState(region);
             return true;
         }
-        if (selected.size() >= quota(player)) return false;
-        selected.add(chunk);
-        repository.saveChunkLoaderChunks(region.getId(), selected);
-        if (player.getServer() != null) acquire(player.getServer(), region, Set.of(chunk));
-        return true;
+        return activate(player, region, chunk, selected) == ActivationResult.ACTIVATED;
     }
 
     public int activateAll(ServerPlayer player, Region region) {
@@ -95,6 +141,7 @@ public class RegionChunkLoaderService {
         if (activated > 0) {
             repository.saveChunkLoaderChunks(region.getId(), selected);
             if (player.getServer() != null) acquire(player.getServer(), region, newAcquires);
+            publishState(region);
         }
         return activated;
     }
@@ -108,6 +155,7 @@ public class RegionChunkLoaderService {
         selected.clear();
         repository.saveChunkLoaderChunks(region.getId(), selected);
         if (player.getServer() != null) release(player.getServer(), region, copy);
+        publishState(region);
         return count;
     }
 
@@ -123,11 +171,17 @@ public class RegionChunkLoaderService {
                 .limit(Math.max(0, quota(player)))
                 .collect(java.util.stream.Collectors.toSet());
             if (!selected.isEmpty()) acquire(player.getServer(), region, selected);
+            if (!selected.isEmpty()) publishState(region);
         }
     }
 
     public void onDisconnect(ServerPlayer player) {
-        for (Region region : ownedRegions(player.getUUID())) release(player.getServer(), region, active.getOrDefault(region.getId(), Set.of()));
+        for (Region region : ownedRegions(player.getUUID())) {
+            if (!active.getOrDefault(region.getId(), Set.of()).isEmpty()) {
+                release(player.getServer(), region, active.getOrDefault(region.getId(), Set.of()));
+                publishState(region);
+            }
+        }
     }
 
     public void shutdown(MinecraftServer server) {
@@ -140,6 +194,7 @@ public class RegionChunkLoaderService {
     }
 
     private void acquire(MinecraftServer server, Region region, Set<ChunkPos> chunks) {
+        if (server == null) return;
         ServerLevel level = level(server, region);
         if (level == null || chunks.isEmpty()) return;
         Set<ChunkPos> current = active.computeIfAbsent(region.getId(), ignored -> ConcurrentHashMap.newKeySet());
@@ -147,6 +202,7 @@ public class RegionChunkLoaderService {
     }
 
     private void release(MinecraftServer server, Region region, Set<ChunkPos> chunks) {
+        if (server == null) return;
         ServerLevel level = level(server, region);
         if (level == null) return;
         Set<ChunkPos> current = active.get(region.getId());
@@ -170,6 +226,18 @@ public class RegionChunkLoaderService {
             && chunk.z >= (b.getMinZ() >> 4) && chunk.z <= (b.getMaxZ() >> 4);
     }
 
+    private boolean isInRegionDimension(ServerPlayer player, Region region) {
+        return player.level().dimension().location().toString().equals(region.getBounds().getDimension());
+    }
+
+    private Region ownedRegionAt(ServerPlayer player, List<Region> regions) {
+        ChunkPos chunk = new ChunkPos(player.getBlockX() >> 4, player.getBlockZ() >> 4);
+        return regions.stream()
+            .filter(region -> isInRegionDimension(player, region) && inside(region, chunk))
+            .findFirst()
+            .orElse(null);
+    }
+
     private Region ownedRegion(UUID owner) {
         return ownedRegions(owner).stream().findFirst().orElse(null);
     }
@@ -187,5 +255,9 @@ public class RegionChunkLoaderService {
             if (region != null) regions.add(region);
         }
         return regions;
+    }
+
+    private void publishState(Region region) {
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.CHUNK_LOADERS_CHANGED, region));
     }
 }

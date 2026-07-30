@@ -72,6 +72,11 @@ public class RegionGuiHandler {
             new RegionChunkLoaderMenu(id, inv, player, region, pageX, pageZ), Component.literal("§8Chunk loader")));
     }
 
+    public static void openChunkLoaderMenu(ServerPlayer player, Region region) {
+        player.openMenu(new SimpleMenuProvider((id, inv, entity) ->
+            new RegionChunkLoaderMenu(id, inv, player, region), Component.literal("§8Chunk loader")));
+    }
+
     public static void openDeleteConfirmationMenu(ServerPlayer player, Region region) {
         SimpleMenuProvider menuProvider = new SimpleMenuProvider(
             (containerId, playerInventory, playerEntity) -> new RegionDeleteConfirmMenu(containerId, playerInventory, player, region),

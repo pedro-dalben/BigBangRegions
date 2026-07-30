@@ -5,11 +5,7 @@ import com.bigbangcraft.regions.chunkloader.RegionChunkLoaderService;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
@@ -22,8 +18,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +32,10 @@ public class RegionChunkLoaderMenu extends ChestMenu {
     private final ServerPlayer player;
     private final Region region;
     private final int pageX, pageZ;
+
+    public RegionChunkLoaderMenu(int id, Inventory inventory, ServerPlayer player, Region region) {
+        this(id, inventory, player, region, initialPageX(player, region), initialPageZ(player, region));
+    }
 
     public RegionChunkLoaderMenu(int id, Inventory inventory, ServerPlayer player, Region region, int pageX, int pageZ) {
         super(MenuType.GENERIC_9x6, id, inventory, new SimpleContainer(SLOTS), ROWS);
@@ -67,6 +65,7 @@ public class RegionChunkLoaderMenu extends ChestMenu {
         int visibleZ = Math.min(VIEW_HEIGHT, maxChunkZ - pageMinChunkZ + 1);
 
         Set<ChunkPos> selected = BigBangRegions.getChunkLoaderService().selected(region);
+        RegionChunkLoaderService service = BigBangRegions.getChunkLoaderService();
 
         ChunkPos playerChunk = new ChunkPos(player.getBlockX() >> 4, player.getBlockZ() >> 4);
         boolean sameDimension = player.level().dimension().location().toString().equals(b.getDimension());
@@ -87,7 +86,8 @@ public class RegionChunkLoaderMenu extends ChestMenu {
                     if (chunkX > maxChunkX || chunkZ > maxChunkZ) continue;
 
                     ChunkPos chunk = new ChunkPos(chunkX, chunkZ);
-                    boolean isLoaded = selected.contains(chunk);
+                    boolean isSelected = selected.contains(chunk);
+                    boolean isActive = service.isActive(region, chunk);
                     boolean isHere = sameDimension && chunk.equals(playerChunk);
 
                     int slot = (startRow + gridRow) * 9 + (startCol + gridCol);
@@ -96,8 +96,10 @@ public class RegionChunkLoaderMenu extends ChestMenu {
                     int blockMinZ = chunkZ * 16;
                     int blockMaxZ = chunkZ * 16 + 15;
 
-                    String name = (isHere ? "§a📍 " : "") + (isLoaded ? "§a§lChunk Loader ATIVO" : "§c§lChunk Loader INATIVO");
-                    String stateText = isLoaded ? "§a● Ativo (Carregado na memória)" : "§c○ Inativo";
+                    String name = (isHere ? "§a📍 " : "") + (isSelected ? "§a§lChunk Loader SELECIONADO" : "§c§lChunk Loader INATIVO");
+                    String stateText = isSelected
+                        ? (isActive ? "§a● Ticket ativo nesta sessão" : "§e● Selecionado; ticket aguardando")
+                        : "§c○ Inativo";
 
                     List<String> loreLines = new ArrayList<>();
                     loreLines.add("§7Status: " + stateText);
@@ -109,11 +111,10 @@ public class RegionChunkLoaderMenu extends ChestMenu {
                     loreLines.add("§7Blocos X: §f" + blockMinX + " a " + blockMaxX);
                     loreLines.add("§7Blocos Z: §f" + blockMinZ + " a " + blockMaxZ);
                     loreLines.add("");
-                    loreLines.add("§e[Clique Esquerdo] §7para " + (isLoaded ? "DESATIVAR" : "ATIVAR"));
-                    loreLines.add("§e[Clique Direito]  §7para TELEPORTAR até o chunk");
+                    loreLines.add("§e[Clique Esquerdo] §7para " + (isSelected ? "DESATIVAR" : "ATIVAR"));
 
                     ItemStack stack = item(
-                        isLoaded ? Items.LIME_WOOL : Items.RED_WOOL,
+                        isSelected ? Items.LIME_WOOL : Items.RED_WOOL,
                         name,
                         loreLines.toArray(new String[0])
                     );
@@ -141,7 +142,6 @@ public class RegionChunkLoaderMenu extends ChestMenu {
             container.setItem(48, item(Items.ARROW, "§eLeste → Navegar", "§7Ir para a próxima página a leste"));
         }
 
-        RegionChunkLoaderService service = BigBangRegions.getChunkLoaderService();
         int permissionCredits = service.permissionCredits(player);
         int extraCredits = service.extraCredits(player.getUUID());
         int totalQuota = permissionCredits + extraCredits;
@@ -152,7 +152,7 @@ public class RegionChunkLoaderMenu extends ChestMenu {
             "§7Dimensão do terreno: §f" + (b.getMaxX() - b.getMinX() + 1) + " x " + (b.getMaxZ() - b.getMinZ() + 1) + " blocos",
             "§7Grid total de chunks: §f" + totalChunksX + " x " + totalChunksZ + " (" + (totalChunksX * totalChunksZ) + " chunks)",
             "§7Chunks selecionados: §a" + usedCount + "§7 / §f" + (totalChunksX * totalChunksZ),
-            "§7Chunks ativos no servidor: §a" + service.loadedCount(region),
+            "§7Tickets ativos nesta sessão: §a" + service.loadedCount(region),
             "",
             "§7Créditos por permissão: §e" + permissionCredits,
             "§7Créditos extras: §e" + extraCredits,
@@ -218,7 +218,7 @@ public class RegionChunkLoaderMenu extends ChestMenu {
             if (added > 0) {
                 sp.sendSystemMessage(Component.literal("§aForam ativados " + added + " chunks no seu terreno!"));
             } else {
-                sp.sendSystemMessage(Component.literal("§cSem créditos suficientes ou todos os chunks já estão ativos."));
+                sp.sendSystemMessage(Component.literal("§cSem créditos suficientes ou todos os chunks já estão selecionados."));
             }
             RegionGuiHandler.openChunkLoaderMenu(sp, region, pageX, pageZ);
             return;
@@ -247,22 +247,7 @@ public class RegionChunkLoaderMenu extends ChestMenu {
             int targetChunkZ = pageMinChunkZ + gridRow;
 
             if (targetChunkX <= maxChunkX && targetChunkZ <= maxChunkZ) {
-                // Right click teleport
-                if (button == 1) {
-                    ResourceKey<Level> levelKey = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(b.getDimension()));
-                    ServerLevel level = sp.getServer() != null ? sp.getServer().getLevel(levelKey) : null;
-                    if (level != null) {
-                        int tpX = targetChunkX * 16 + 8;
-                        int tpZ = targetChunkZ * 16 + 8;
-                        int tpY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, tpX, tpZ) + 1;
-                        sp.teleportTo(level, tpX + 0.5, tpY, tpZ + 0.5, sp.getYRot(), sp.getXRot());
-                        sp.sendSystemMessage(Component.literal("§aTeleportado para o chunk (" + targetChunkX + ", " + targetChunkZ + ")!"));
-                        sp.closeContainer();
-                    }
-                    return;
-                }
-
-                // Left click toggle
+                if (clickType != ClickType.PICKUP || button != 0) return;
                 ChunkPos chunk = new ChunkPos(targetChunkX, targetChunkZ);
                 if (!BigBangRegions.getChunkLoaderService().toggle(sp, region, chunk)) {
                     sp.sendSystemMessage(Component.literal("§cSem créditos de chunk loader disponíveis ou chunk inválido."));
@@ -282,6 +267,23 @@ public class RegionChunkLoaderMenu extends ChestMenu {
         stack.set(DataComponents.LORE, new ItemLore(lore));
         return stack;
     }
-}
 
+    private static int initialPageX(ServerPlayer player, Region region) {
+        return initialPage(player, region, true);
+    }
+
+    private static int initialPageZ(ServerPlayer player, Region region) {
+        return initialPage(player, region, false);
+    }
+
+    private static int initialPage(ServerPlayer player, Region region, boolean xAxis) {
+        RegionBounds bounds = region.getBounds();
+        if (!player.level().dimension().location().toString().equals(bounds.getDimension())) return 0;
+        int chunk = (xAxis ? player.getBlockX() : player.getBlockZ()) >> 4;
+        int minChunk = (xAxis ? bounds.getMinX() : bounds.getMinZ()) >> 4;
+        int maxChunk = (xAxis ? bounds.getMaxX() : bounds.getMaxZ()) >> 4;
+        if (chunk < minChunk || chunk > maxChunk) return 0;
+        return (chunk - minChunk) / (xAxis ? VIEW_WIDTH : VIEW_HEIGHT);
+    }
+}
 

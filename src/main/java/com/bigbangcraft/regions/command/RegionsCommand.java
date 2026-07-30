@@ -3,6 +3,7 @@ package com.bigbangcraft.regions.command;
 import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.audit.AuditService;
 import com.bigbangcraft.regions.cache.RegionCache;
+import com.bigbangcraft.regions.chunkloader.RegionChunkLoaderService;
 import com.bigbangcraft.regions.allocation.BiomeOption;
 import com.bigbangcraft.regions.event.RegionChangeEvent;
 import com.bigbangcraft.regions.event.RegionEventBus;
@@ -346,6 +347,16 @@ public class RegionsCommand {
                 )
                 .then(Commands.literal("off")
                     .executes(context -> setBoundaries(context, false))
+                )
+            );
+        }
+        if (isCommandEnabled("chunks")) {
+            builder.then(Commands.literal("chunks")
+                .then(Commands.literal("comprar")
+                    .executes(RegionsCommand::activateCurrentChunkLoader)
+                )
+                .then(Commands.literal("ver")
+                    .executes(RegionsCommand::toggleChunkVisualization)
                 )
             );
         }
@@ -1408,6 +1419,64 @@ public class RegionsCommand {
         } else {
             source.sendSuccess(() -> Component.literal("§eLimites visiveis desativados.").withStyle(ChatFormatting.YELLOW), false);
         }
+        return 1;
+    }
+
+    private static int activateCurrentChunkLoader(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+
+        RegionChunkLoaderService.ActivationResult result = BigBangRegions.getChunkLoaderService().activateCurrentChunk(player);
+        return switch (result) {
+            case ACTIVATED -> {
+                source.sendSuccess(() -> Component.literal("§aChunk loader ativado para o chunk atual."), false);
+                yield 1;
+            }
+            case ALREADY_SELECTED -> {
+                source.sendFailure(Component.literal("§eEste chunk já possui um chunk loader."));
+                yield 0;
+            }
+            case QUOTA_EXHAUSTED -> {
+                source.sendFailure(Component.literal("§cSua quota de chunk loaders acabou."));
+                yield 0;
+            }
+            case NO_OWNED_REGION -> {
+                source.sendFailure(Component.literal("§cVocê não possui uma região de jogador ativa."));
+                yield 0;
+            }
+            case OUTSIDE_REGION -> {
+                source.sendFailure(Component.literal("§cVocê precisa estar dentro da sua própria região."));
+                yield 0;
+            }
+            case NOT_OWNER -> {
+                source.sendFailure(Component.literal("§cApenas o dono pode ativar chunk loaders."));
+                yield 0;
+            }
+        };
+    }
+
+    private static int toggleChunkVisualization(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Apenas jogadores podem usar este comando."));
+            return 0;
+        }
+        if (BigBangRegions.getChunkLoaderService().ownedRegionAt(player) == null) {
+            source.sendFailure(Component.literal("§cVocê precisa estar dentro da sua própria região."));
+            return 0;
+        }
+
+        UUID uuid = player.getUUID();
+        boolean enabled = !BigBangRegions.getBoundaryRenderer().isChunkVisibilityEnabled(uuid);
+        BigBangRegions.getBoundaryRenderer().setChunkVisibility(uuid, enabled);
+        source.sendSuccess(() -> Component.literal(enabled
+            ? "§aVisualização dos chunks ativada. Azul: atual; verde: ticket ativo; amarelo: selecionado."
+            : "§eVisualização dos chunks desativada."), false);
         return 1;
     }
 

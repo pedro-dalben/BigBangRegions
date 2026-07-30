@@ -127,7 +127,7 @@ public class RegionMainMenu extends ChestMenu {
         } else if (slotId == 19 && serverPlayer.getUUID().equals(region.getOwnerUuid())) {
             RegionGuiHandler.openExpansionDirections(serverPlayer, region);
         } else if (slotId == 21 && serverPlayer.getUUID().equals(region.getOwnerUuid())) {
-            RegionGuiHandler.openChunkLoaderMenu(serverPlayer, region, 0, 0);
+            RegionGuiHandler.openChunkLoaderMenu(serverPlayer, region);
         } else if (slotId == 26) {
             RegionGuiHandler.openInviteInboxMenu(serverPlayer);
         } else if (slotId == 22) {

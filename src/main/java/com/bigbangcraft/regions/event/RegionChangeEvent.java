@@ -15,7 +15,8 @@ public class RegionChangeEvent {
         MEMBER_JOINED,
         MEMBER_REMOVED,
         ROLE_CHANGED,
-        OWNER_TRANSFERRED
+        OWNER_TRANSFERRED,
+        CHUNK_LOADERS_CHANGED
     }
 
     private final ChangeType type;
