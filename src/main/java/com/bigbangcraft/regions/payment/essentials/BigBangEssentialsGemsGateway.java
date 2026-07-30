@@ -50,18 +50,23 @@ public final class BigBangEssentialsGemsGateway implements LandPaymentGateway {
                 return false;
             }
             integration = candidate;
+            LandPaymentProviderStatus previousStatus = status;
             status = mapStatus(snapshot);
             lastFailure = snapshot.failure();
             if (status == LandPaymentProviderStatus.READY) {
                 readinessBackoffMs = INITIAL_RETRY_MS;
                 nextReadinessCheckAt = now + 5_000L;
-                LOGGER.info("Gems provider readiness: READY (API v{}, database={})",
-                    snapshot.apiVersion(), snapshot.databaseType());
+                if (previousStatus != status) {
+                    LOGGER.info("Gems provider readiness: READY (API v{}, database={})",
+                        snapshot.apiVersion(), snapshot.databaseType());
+                }
             } else {
                 nextReadinessCheckAt = now + readinessBackoffMs;
                 readinessBackoffMs = Math.min(MAX_RETRY_MS, readinessBackoffMs * 2L);
-                LOGGER.info("Gems provider readiness: {} (databaseReady={}, failure={})",
-                    status, snapshot.databaseReady(), snapshot.failure());
+                if (previousStatus != status) {
+                    LOGGER.info("Gems provider readiness: {} (databaseReady={}, failure={})",
+                        status, snapshot.databaseReady(), snapshot.failure());
+                }
             }
             return isAvailable();
         } catch (LinkageError e) {

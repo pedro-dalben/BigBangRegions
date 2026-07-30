@@ -87,6 +87,7 @@ public class BigBangRegions implements ModInitializer {
     private static RegionInviteService inviteService;
     private static RegionAccessService regionAccessService;
     private static TerrainAllocationCoordinator allocationCoordinator;
+    private static BiomeOptionRegistry biomeOptionRegistry;
     private static AllocationScheduler allocationScheduler;
     private static RegionCache regionCache;
     private static ExplorationZoneService explorationZoneService;
@@ -152,6 +153,10 @@ public class BigBangRegions implements ModInitializer {
 
     public static TerrainAllocationCoordinator getAllocationCoordinator() {
         return allocationCoordinator;
+    }
+
+    public static BiomeOptionRegistry getBiomeOptionRegistry() {
+        return biomeOptionRegistry;
     }
 
     public static RegionCache getRegionCache() {
@@ -239,7 +244,7 @@ public class BigBangRegions implements ModInitializer {
         RegionInviteRepository regionInviteRepository = new RegionInviteRepository(databaseManager);
 
         // 6. Allocation services
-        BiomeOptionRegistry biomeOptionRegistry = new BiomeOptionRegistry(configManager);
+        biomeOptionRegistry = new BiomeOptionRegistry(configManager);
         biomeOptionRegistry.load();
         BiomeSearchService biomeSearchService = new BiomeSearchService(configManager);
         PlotSlotService plotSlotService = new PlotSlotService(configManager, plotSlotRepository, regionCache);
@@ -331,7 +336,7 @@ public class BigBangRegions implements ModInitializer {
             }
             if (expansionCoordinator != null) {
                 expansionCoordinator.reconcileExpansionVisuals(server);
-                expansionCoordinator.processNextExpansion();
+                expansionCoordinator.processNextExpansion(server);
             }
             if (entryExitService != null) {
                 for (ServerPlayer p : server.getPlayerList().getPlayers()) {
