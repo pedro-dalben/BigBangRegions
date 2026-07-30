@@ -39,6 +39,7 @@ dependencies {
 
 	// JourneyMap API (optional — compile only, not bundled)
 	modCompileOnly "info.journeymap:journeymap-api-fabric:2.0.0-1.21.1-SNAPSHOT"
+	modRuntimeOnly "info.journeymap:journeymap-api-fabric:2.0.0-1.21.1-SNAPSHOT"
 
 	// BigBang Essentials public API only. The exact artifact is intentionally pinned.
 	def essentialsApiJar = file(providers.gradleProperty('bigbangessentials_api_jar').orElse(

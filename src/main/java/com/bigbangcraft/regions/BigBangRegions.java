@@ -297,7 +297,7 @@ public class BigBangRegions implements ModInitializer {
         explorationZoneService = new ExplorationZoneService(configManager);
 
         // 10. Region Boundary Renderer (visual particles)
-        boundaryRenderer = new RegionBoundaryRenderer(regionCache, roleResolver);
+        boundaryRenderer = new RegionBoundaryRenderer(regionCache, roleResolver, chunkLoaderService);
 
         // 10.5 Region Containment Service
         containmentService = new RegionContainmentService(configManager, regionCache, roleResolver);
@@ -370,13 +370,16 @@ public class BigBangRegions implements ModInitializer {
                     entryExitService.removePlayer(uuid);
                 }
                 if (boundaryRenderer != null) {
-                    boundaryRenderer.setVisibility(uuid, false);
+                    boundaryRenderer.clearVisibility(uuid);
                 }
                 if (containmentService != null) {
                     containmentService.removePlayer(uuid);
                 }
                 if (chunkLoaderService != null) {
                     chunkLoaderService.onDisconnect(handler.getPlayer());
+                }
+                if (regionMapIntegration != null) {
+                    regionMapIntegration.onPlayerDisconnect(handler.getPlayer());
                 }
                 PlayerMapPreference.removePlayer(uuid);
             }
