@@ -142,6 +142,23 @@ public class PlotSlotRepository {
         }
     }
 
+    public List<PlotSlot> loadAll() {
+        synchronized (dbManager) {
+            List<PlotSlot> list = new ArrayList<>();
+            String sql = "SELECT * FROM plot_slots;";
+            try (Connection conn = dbManager.getConnection();
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) {
+                    list.add(mapResultSet(rs));
+                }
+            } catch (SQLException e) {
+                LOGGER.error("Failed to load all plot slots: ", e);
+            }
+            return list;
+        }
+    }
+
     public List<PlotSlot> getAvailableByDimension(String dimensionKey) {
         synchronized (dbManager) {
             List<PlotSlot> list = new ArrayList<>();

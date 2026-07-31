@@ -15,7 +15,8 @@
 		"ExplosionMixin",
 		"PistonStructureResolverMixin",
 		"LeavesBlockMixin",
-		"IceBlockMixin"
+		"IceBlockMixin",
+		"ServerLevelMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
