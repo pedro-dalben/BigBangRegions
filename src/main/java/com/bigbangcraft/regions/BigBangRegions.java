@@ -488,19 +488,26 @@ public class BigBangRegions implements ModInitializer {
         return api;
     }
 
+    public static boolean hasBypass(ServerPlayer player, String flagId) {
+        if (player == null) return false;
+        if (permissionManager != null) {
+            return permissionManager.hasBypass(player, flagId);
+        }
+        try {
+            if (flagId != null && me.lucko.fabric.api.permissions.v0.Permissions.check(player, "bigbangregions.bypass." + flagId.toLowerCase(), false)) {
+                return true;
+            }
+            if (me.lucko.fabric.api.permissions.v0.Permissions.check(player, "bigbangregions.bypass", false)) {
+                return true;
+            }
+        } catch (Throwable ignored) {}
+        return player.hasPermissions(2);
+    }
+
     public static boolean handlePlayerAction(ServerPlayer player, BlockPos pos, RegionAction action) {
         String dimension = player.level().dimension().location().toString();
         if (isBoundaryBlock(dimension, pos)) {
-            boolean hasBypass = false;
-            try {
-                hasBypass = me.lucko.fabric.api.permissions.v0.Permissions.check(player, "bigbangregions.bypass.boundary", false);
-                if (!hasBypass) {
-                    hasBypass = me.lucko.fabric.api.permissions.v0.Permissions.check(player, "bigbangregions.bypass", false);
-                }
-            } catch (Throwable t) {
-                hasBypass = player.hasPermissions(2);
-            }
-            if (!hasBypass) {
+            if (!hasBypass(player, "boundary")) {
                 player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cVocê não pode modificar as fronteiras do terreno."));
                 return false;
             }
@@ -512,13 +519,15 @@ public class BigBangRegions implements ModInitializer {
         ProtectionResult result = protectionService.check(context);
 
         if (result.getDecision() == ProtectionDecision.NO_REGION) {
-            if (action == RegionAction.BLOCK_BREAK && configManager.getConfig().getWorldProtection().isBlockBreakOutsideRegions()) {
-                sendTipWithCooldown(player, "mine-blocked", "§cVocê só pode minerar dentro de uma região");
-                return false;
-            }
-            if (action == RegionAction.BLOCK_PLACE && configManager.getConfig().getWorldProtection().isBlockPlaceOutsideRegions()) {
-                sendTipWithCooldown(player, "build-blocked", "§cVocê só pode construir dentro de uma região");
-                return false;
+            if (!hasBypass(player, action != null ? action.getFlagId() : null)) {
+                if (action == RegionAction.BLOCK_BREAK && configManager.getConfig().getWorldProtection().isBlockBreakOutsideRegions()) {
+                    sendTipWithCooldown(player, "mine-blocked", "§cVocê só pode minerar dentro de uma região");
+                    return false;
+                }
+                if (action == RegionAction.BLOCK_PLACE && configManager.getConfig().getWorldProtection().isBlockPlaceOutsideRegions()) {
+                    sendTipWithCooldown(player, "build-blocked", "§cVocê só pode construir dentro de uma região");
+                    return false;
+                }
             }
             return true;
         }
