@@ -756,6 +756,7 @@ public class RegionsCommand {
         
         regionRepository.save(region);
         regionCache.add(region);
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.CREATED, region));
         auditService.log(id, uuid, "CREATE_REGION", null, "ADMIN_REGION", null);
 
         source.sendSuccess(() -> Component.literal("Região administrativa '" + id + "' criada com sucesso! Prioridade: " + priority).withStyle(ChatFormatting.GREEN), false);
@@ -806,6 +807,7 @@ public class RegionsCommand {
 
         regionRepository.save(region);
         regionCache.add(region);
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.CREATED, region));
         auditService.log(regionId, uuid, "CREATE_REGION", null, "ADMIN_REGION", null);
 
         String finalRegionId = regionId;
@@ -2067,6 +2069,7 @@ public class RegionsCommand {
         regionRepository.save(region);
         regionCache.add(region);
         BigBangRegions.getMembershipCache().loadFromRegion(region);
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.CREATED, region));
 
         auditService.log(id, uuid, "CREATE_PLAYER_REGION", null, "PLAYER_REGION", "{\"ownerUuid\":\"" + ownerUuid + "\"}");
 
