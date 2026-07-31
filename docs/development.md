@@ -24,3 +24,5 @@ O build utiliza o Gradle com o plugin `fabric-loom` para remapear o código font
 * **Remapeamento**: Loom remapeia automaticamente classes internas do Minecraft para nomes de produção em runtime.
 * **Testes**: Executados através de JUnit 5 com `./gradlew test`.
 * **Empacotamento**: O comando `./gradlew build` gera o jar remapeado final em `build/libs/`.
+
+BigBangRegions compila contra o BigMonCraft `0.1.0` como `modCompileOnly`. Em um checkout novo, gere primeiro `../BigMonCraft/build/libs/bigmoncraft-0.1.0.jar` ou informe `-Pbigmoncraft_api_jar=<caminho-do-jar>`.

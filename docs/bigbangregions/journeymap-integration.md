@@ -6,13 +6,14 @@
 
 ## Overview
 
-This integration draws region boundaries and center markers on the JourneyMap minimap and fullscreen map for authorized players. Regions are never sent to unauthorized clients.
+This integration draws region boundaries and center markers on the JourneyMap minimap and fullscreen map for authorized players. BigBangRegions builds a `ServerMapSnapshot` through the optional BigMonCraft API; BigMonCraft's JourneyMap server bridge sends native polygons and waypoints to the client.
 
 ## Requirements
 
-- JourneyMap mod installed on the server (not just clients). JourneyMap supplies the API implementation.
-- Do not copy `journeymap-api-fabric` alone to the server; it is a soft/development dependency and has no implementation.
-- BigBangRegions built for the same Minecraft/JourneyMap API line
+- BigBangRegions and BigMonCraft 0.1.0 installed on the server.
+- JourneyMap 1.21.1-6.0.2 installed on the server and on clients that should receive region overlays.
+- BigMonCraft may be distributed in the client modpack as the universal base mod; BigBangRegions remains server-only.
+- Without BigMonCraft or JourneyMap, protection and region management continue normally and only the map is disabled.
 
 ## Enabling / Disabling
 
@@ -84,7 +85,7 @@ In `config/bigbangregions/config.json`:
 }
 ```
 
-Set `"enabled": false` to disable entirely without removing JourneyMap.
+Set `"enabled": false` to disable entirely without removing JourneyMap. The source ID registered by BigBangRegions is `bigbangregions`.
 
 ## Visibility Rules
 
@@ -157,15 +158,14 @@ The integration listens for these events and updates only the affected players:
 
 ## Known Limitations
 
-- Only works when JourneyMap mod is on the server (dedicated server mode)
-- Requires JourneyMap API v2 compatible with 1.21.1
+- Requires BigMonCraft 0.1.0 and JourneyMap 6.0.2 on the server for the bridge
 - Admin menu "Visualizar como jogador" is a planned feature
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
-| No overlays appear | JourneyMap not installed on server, or integration disabled in config |
+| No overlays appear | BigMonCraft/JourneyMap missing on the server or client, bridge unavailable, or integration disabled in server config |
 | Wrong players see regions | Check permission nodes and adminRegionVisibility setting |
-| Duplicate overlays after relog | Clear JourneyMap cache (`/journeymap reset`) |
-| Deprecation warnings in log | Verify that the server is using the current JourneyMap API implementation supplied by the JourneyMap mod |
+| Duplicate overlays after relog | The bridge replaces the `bigbangregions` source; check for another mod using the same source ID |
+| Bridge missing | Confirm `BigMonCraft JourneyMap server bridge initialized` and `BigBangRegions map source registered` in the server log |

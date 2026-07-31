@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Fabric server with BigBangRegions + JourneyMap installed
+- Fabric server with BigBangRegions + BigMonCraft 0.1.0 + JourneyMap 1.21.1-6.0.2 installed, plus a test client with JourneyMap installed
 - OP on the server or relevant permissions
 
 ## Test Cases
@@ -10,12 +10,12 @@
 ### TC01 — BigBangRegions starts without JourneyMap
 1. Remove or disable JourneyMap from mods folder
 2. Start server
-3. **Expected:** BigBangRegions loads normally, no crash, log shows no JM-related activity
+3. **Expected:** BigBangRegions loads normally, no crash, and only the map integration is unavailable
 
-### TC02 — JourneyMap present activates integration
-1. Install JourneyMap on server
-2. Start server
-3. **Expected:** Log shows "JourneyMap region overlay integration initialized"
+### TC02 — JourneyMap client activates integration
+1. Install JourneyMap on the test client (BigBangRegions is server-only)
+2. Start the client and join the server
+3. **Expected:** Server log shows `BigMonCraft JourneyMap server bridge initialized` and `BigBangRegions map source registered`; no BigBangRegions client entrypoint is required
 
 ### TC03 — Create player region generates overlay + marker
 1. Create a player claim via `/regiao criar <bioma>`
@@ -85,8 +85,8 @@
 3. **Expected:** Single overlay and marker per visible region
 
 ### TC16 — Client without JourneyMap is unaffected
-1. Player connects with vanilla client (no JourneyMap)
-2. **Expected:** No errors, no logs about missing JM for that player
+1. Player connects with a client without JourneyMap
+2. **Expected:** No errors and no region map is shown for that client
 
 ### TC17 — Private data not sent to unauthorized players
 1. Use network sniffer or mod log
