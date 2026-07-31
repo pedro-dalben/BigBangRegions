@@ -152,6 +152,7 @@ public class RegionMainMenu extends ChestMenu {
         } else if (slotId == 20) {
             boolean show = PlayerMapPreference.isShowOwnRegion(serverPlayer.getUUID());
             PlayerMapPreference.setShowOwnRegion(serverPlayer.getUUID(), !show);
+            BigBangRegions.refreshRegionMap(serverPlayer);
             RegionGuiHandler.openMainMenu(serverPlayer, region);
         }
     }
