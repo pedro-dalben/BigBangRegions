@@ -556,10 +556,10 @@ Se o `fabric-permissions-api` (LuckPerms) não estiver presente, o mod usa o ní
 
 ## 11. Integração JourneyMap (Opcional)
 
-O mod possui integração opcional com o JourneyMap via API v2 (`journeymap-api-fabric:2.0.0-1.21.1`).
+O mod possui integração opcional com o BigMonCraft (`0.1.0`), que usa a API nativa de servidor do JourneyMap 6.0.2.
 
 ### Ativação
-A integração é ativada automaticamente quando o JourneyMap está instalado no servidor e a configuração `journeyMap.enabled` está como `true`.
+A integração é ativada automaticamente quando BigMonCraft e JourneyMap 6.0.2 estão instalados no servidor e a configuração `journeyMap.enabled` está como `true`. Os clientes precisam apenas do JourneyMap para visualizar os polígonos enviados pelo servidor.
 
 ### Funcionalidades
 - Overlay poligonal com contorno e preenchimento para cada região
