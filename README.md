@@ -9,6 +9,7 @@ BigBang Regions é a fundação funcional do sistema de proteção territorial p
 * **Loader:** Fabric
 * **Ambiente:** Server-only (não precisa ser instalado pelos jogadores)
 * **Dependência Opcional:** `fabric-permissions-api` ( LuckPerms )
+* **Mapa Opcional:** BigMonCraft `0.1.0` no servidor e JourneyMap `1.21.1-6.0.2` no servidor/clientes; sem eles apenas a visualização do mapa é desativada.
 * **Gems opcional:** BigBangEssentials com `DATABASE`/MySQL e Gems habilitado — usado somente para expansão paga.
 
 ## Instalação
