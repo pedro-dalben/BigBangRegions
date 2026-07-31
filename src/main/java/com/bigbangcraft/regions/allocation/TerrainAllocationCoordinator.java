@@ -1,7 +1,9 @@
 package com.bigbangcraft.regions.allocation;
 
+import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.cache.RegionCache;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
+import com.bigbangcraft.regions.cache.PlotSlotCache;
 import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
@@ -125,6 +127,13 @@ public class TerrainAllocationCoordinator {
         this.biomeAnchorLocator = new WorldgenBiomeAnchorLocator();
     }
 
+    private void syncSlotCache(PlotSlot slot) {
+        PlotSlotCache cache = BigBangRegions.getPlotSlotCache();
+        if (cache != null && slot != null) {
+            cache.upsert(slot);
+        }
+    }
+
     public String createRequest(ServerPlayer player, String biomeQuery, String source) {
         AllocationRequest request = newAllocationRequest(
             player.getUUID(), biomeQuery, configManager.getConfig().getPlayerLandAllocation().getTargetDimension(), source
@@ -198,6 +207,7 @@ public class TerrainAllocationCoordinator {
             }
         }
 
+        syncSlotCache(slot);
         creationCooldowns.put(ownerUuid, now);
         LOGGER.info("Allocation request created at command location: id={}, owner={}, center={},{}", request.getId(), ownerUuid, center.getX(), center.getZ());
         return request.getId();
@@ -731,7 +741,9 @@ public class TerrainAllocationCoordinator {
             Region region = null;
             try {
                 long now = System.currentTimeMillis();
-                region = new Region(regionId, "Player Region", RegionType.PLAYER_REGION,
+                ServerPlayer owner = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
+                String ownerName = owner != null ? owner.getGameProfile().getName() : request.getOwnerUuid().toString().replace("-", "").substring(0, 8);
+                region = new Region(regionId, "Region de " + ownerName, RegionType.PLAYER_REGION,
                     bounds, 100, request.getOwnerUuid(), request.getOwnerUuid(), now, now, "ACTIVE");
                 regionRepository.saveOnConnection(conn, region);
                 regionRepository.saveMembersOnConnection(conn, regionId, Collections.emptyMap());
@@ -761,6 +773,7 @@ public class TerrainAllocationCoordinator {
 
                 regionCache.add(region);
                 membershipCache.loadFromRegion(region);
+                syncSlotCache(slot);
                 RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.CREATED, region));
 
                 postRegionCreationSetup(request, bounds, level, platformResult.finalStandPosition());
@@ -1314,6 +1327,7 @@ public class TerrainAllocationCoordinator {
         for (PlotSlot slot : expired) {
             slot.release();
             slotRepository.save(slot);
+            syncSlotCache(slot);
             LOGGER.info("Expired reservation released: slotId={}", slot.getId());
         }
     }
@@ -1336,6 +1350,7 @@ public class TerrainAllocationCoordinator {
         if (slot != null && (slot.getState() == PlotSlotState.ALLOCATED || slot.getState() == PlotSlotState.OCCUPIED)) {
             slot.retire();
             slotRepository.save(slot);
+            syncSlotCache(slot);
             LOGGER.info("Slot {} retired for region {}", slot.getId(), regionId);
         }
     }
@@ -1345,6 +1360,7 @@ public class TerrainAllocationCoordinator {
         if (slot != null) {
             slot.forceRelease();
             slotRepository.save(slot);
+            syncSlotCache(slot);
             LOGGER.info("Slot {} released for deleted region {}", slot.getId(), regionId);
         }
     }
@@ -1391,6 +1407,7 @@ public class TerrainAllocationCoordinator {
         }
         slot.recycle();
         slotRepository.save(slot);
+        syncSlotCache(slot);
         LOGGER.info("Slot {} recycled", slotId);
     }
 
@@ -1703,6 +1720,7 @@ public class TerrainAllocationCoordinator {
         }
         slot.reserve(request.getOwnerUuid(), request.getRequestedBiomeOption(), sc.getReservationLeaseSeconds() * 1000L);
         slotRepository.save(slot);
+        syncSlotCache(slot);
         request.setPlotSlotId(slotId);
         request.transitionTo(AllocationRequestState.VIRTUAL_VALIDATED);
         requestRepository.save(request);
@@ -2085,6 +2103,7 @@ public class TerrainAllocationCoordinator {
         if (slot != null) {
             slot.markInvalidated(reason);
             slotRepository.save(slot);
+            syncSlotCache(slot);
         }
     }
 
@@ -2095,6 +2114,7 @@ public class TerrainAllocationCoordinator {
             if (slot != null && (slot.getState() == PlotSlotState.RESERVED || slot.getState() == PlotSlotState.PLAYER_RESERVED || slot.getState() == PlotSlotState.PREPARING)) {
                 slot.forceRelease();
                 slotRepository.save(slot);
+                syncSlotCache(slot);
             }
         }
     }

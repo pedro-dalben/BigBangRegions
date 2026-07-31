@@ -16,11 +16,22 @@ public class Config {
     private DefaultPriorities defaultPriorities = new DefaultPriorities();
     private Permissions permissions = new Permissions();
     private Defaults defaults = new Defaults();
+    private WorldProtectionConfig worldProtection = new WorldProtectionConfig();
     private PlayerRegionsConfig playerRegions = new PlayerRegionsConfig();
     private PlayerLandAllocationConfig playerLandAllocation = new PlayerLandAllocationConfig();
     private RegionExpansionConfig regionExpansion = new RegionExpansionConfig();
     private Map<String, BiomeOptionConfig> biomeOptions = new HashMap<>();
     private Set<String> disabledCommands = new HashSet<>();
+
+    public WorldProtectionConfig getWorldProtection() { return worldProtection; }
+
+    public static class WorldProtectionConfig {
+        private boolean blockBreakOutsideRegions = true;
+        private boolean blockPlaceOutsideRegions = true;
+
+        public boolean isBlockBreakOutsideRegions() { return blockBreakOutsideRegions; }
+        public boolean isBlockPlaceOutsideRegions() { return blockPlaceOutsideRegions; }
+    }
 
     public boolean isCommandDisabled(String command) {
         return disabledCommands.contains(command);
@@ -244,6 +255,7 @@ public class Config {
         private int futureMaximumClaimSize = 240;
         private int slotInternalMargin = 8;
         private int maxRegionsPerOwner = 1;
+        private boolean blockSpawnsInSlotBuffer = true;
         private ExplorationExclusionConfig explorationExclusion = new ExplorationExclusionConfig();
         private BiomeSearchConfig biomeSearch = new BiomeSearchConfig();
         private WorldgenSearchConfig worldgenSearch = new WorldgenSearchConfig();
@@ -288,6 +300,9 @@ public class Config {
             if (payment == null) payment = new PaymentConfig();
             return payment;
         }
+        public boolean isBlockSpawnsInSlotBuffer() { return blockSpawnsInSlotBuffer; }
+        public void setBlockSpawnsInSlotBuffer(boolean blockSpawnsInSlotBuffer) { this.blockSpawnsInSlotBuffer = blockSpawnsInSlotBuffer; }
+
         public BorderConfig getBorder() {
             if (border == null) border = new BorderConfig();
             return border;
@@ -650,8 +665,8 @@ public class Config {
         private RegionStyle adminRegion = new RegionStyle(0xFFE53935, 0xFFE53935, 0.20f, 0.95f);
         private RegionStyle blockedRegion = new RegionStyle(0xFF757575, 0xFF757575, 0.12f, 0.70f);
         private RegionStyle maintenanceRegion = new RegionStyle(0xFFFF9800, 0xFFFF9800, 0.14f, 0.80f);
-        private RegionStyle chunkLoaderActive = new RegionStyle(0xFF43A047, 0xFF43A047, 0.30f, 1.0f);
-        private RegionStyle chunkLoaderSelected = new RegionStyle(0xFFFFC107, 0xFFFFC107, 0.22f, 0.95f);
+        private RegionStyle chunkLoaderActive = new RegionStyle(0xFF00BCD4, 0xFF00BCD4, 0.35f, 1.0f);
+        private RegionStyle chunkLoaderSelected = new RegionStyle(0xFFFFCA28, 0xFFFFCA28, 0.28f, 0.95f);
 
         private PublicRegionsConfig publicRegions = new PublicRegionsConfig();
         private AdminRegionVisibility adminRegionVisibility = AdminRegionVisibility.STAFF_ONLY;
