@@ -302,6 +302,53 @@ public class RegionRepository {
         }
     }
 
+    public void deleteAll() {
+        synchronized (dbManager) {
+            Connection conn = null;
+            try {
+                conn = dbManager.getConnection();
+                conn.setAutoCommit(false);
+
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.executeUpdate("DELETE FROM region_chunk_loader_chunks;");
+                    stmt.executeUpdate("DELETE FROM region_audit_logs;");
+                    stmt.executeUpdate("DELETE FROM player_region_allocation_requests;");
+                    stmt.executeUpdate("DELETE FROM region_expansion_operations;");
+                    stmt.executeUpdate("DELETE FROM allocation_request_preparation;");
+                    stmt.executeUpdate("DELETE FROM allocation_search_cursor;");
+                    stmt.executeUpdate("DELETE FROM player_chunk_loader_credits;");
+                    stmt.executeUpdate("DELETE FROM plot_slot_biome_options;");
+                    stmt.executeUpdate("DELETE FROM region_invites;");
+                    stmt.executeUpdate("DELETE FROM region_flags;");
+                    stmt.executeUpdate("DELETE FROM region_members;");
+                    stmt.executeUpdate("DELETE FROM player_region_homes;");
+                    stmt.executeUpdate("DELETE FROM plot_slots;");
+                    stmt.executeUpdate("DELETE FROM regions;");
+                }
+
+                conn.commit();
+                LOGGER.info("All regions and related data deleted from database.");
+            } catch (SQLException e) {
+                LOGGER.error("Failed to delete all regions from database: ", e);
+                if (conn != null) {
+                    try {
+                        conn.rollback();
+                    } catch (SQLException ex) {
+                        LOGGER.error("Error rolling back transaction: ", ex);
+                    }
+                }
+            } finally {
+                if (conn != null) {
+                    try {
+                        conn.setAutoCommit(true);
+                    } catch (SQLException e) {
+                        LOGGER.error("Failed to reset auto-commit: ", e);
+                    }
+                }
+            }
+        }
+    }
+
     public void updateFlags(Region region) {
         save(region);
     }

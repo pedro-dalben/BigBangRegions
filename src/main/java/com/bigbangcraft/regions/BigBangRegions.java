@@ -237,6 +237,10 @@ public class BigBangRegions implements ModInitializer {
         return chunkLoaderService;
     }
 
+    public static RegionMapIntegration getRegionMapIntegration() {
+        return regionMapIntegration;
+    }
+
     @Override
     public void onInitialize() {
         initializeServer();

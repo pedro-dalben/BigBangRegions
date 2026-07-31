@@ -57,6 +57,19 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
     }
 
     @Override
+    public void clearAllPlayers(net.minecraft.server.MinecraftServer server) {
+        ServerMapApi mapApi = BigMonCraftApi.serverMap();
+        if (!mapApi.isAvailable()) return;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            try {
+                mapApi.clear(player, SOURCE_ID);
+            } catch (RuntimeException exception) {
+                LOGGER.warn("Failed to clear map for {}: {}", player.getGameProfile().getName(), exception.getMessage());
+            }
+        }
+    }
+
+    @Override
     public void onRegionChange(RegionChangeEvent event) {
         String excludedId = event.getType() == RegionChangeEvent.ChangeType.DELETED
             ? event.getRegion().getId() : null;

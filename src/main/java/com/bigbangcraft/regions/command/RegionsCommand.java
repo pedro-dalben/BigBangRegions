@@ -225,6 +225,10 @@ public class RegionsCommand {
                     .executes(RegionsCommand::deleteRegion)
                 )
             )
+            .then(Commands.literal("deletetodas")
+                .requires(source -> checkPermission(source, "bigbangregions.admin.delete"))
+                .executes(RegionsCommand::deleteAllRegions)
+            )
             .then(Commands.literal("rename")
                 .requires(source -> checkPermission(source, "bigbangregions.admin.create"))
                 .then(Commands.argument("newName", StringArgumentType.greedyString())
@@ -853,6 +857,47 @@ public class RegionsCommand {
             int deletedCount = deleted;
             source.sendSuccess(() -> Component.literal(deletedCount + " regiões deletadas com sucesso.").withStyle(ChatFormatting.GREEN), false);
         }
+        return 1;
+    }
+
+    private static int deleteAllRegions(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!checkPermission(source, "bigbangregions.admin.delete")) {
+            source.sendFailure(Component.literal("Você não tem permissão para usar este comando."));
+            return 0;
+        }
+
+        Collection<Region> regions = new ArrayList<>(regionCache.getAll());
+        if (regions.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("Nenhuma região para deletar.").withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        }
+
+        int total = regions.size();
+        int deleted = 0;
+        UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
+
+        for (Region region : regions) {
+            ServerLevel level = null;
+            if (region.getType() == RegionType.PLAYER_REGION) {
+                ResourceKey<Level> dimensionKey = ResourceKey.create(
+                    Registries.DIMENSION,
+                    ResourceLocation.parse(region.getBounds().getDimension())
+                );
+                level = source.getServer().getLevel(dimensionKey);
+            }
+
+            BigBangRegions.getChunkLoaderService().onRegionDeleted(source.getServer(), region);
+            BigBangRegions.getAllocationCoordinator().deleteRegionAsAdmin(region, level, actorUuid);
+            auditService.log(region.getId(), actorUuid, "DELETE_REGION", region.getType().name(), null, null);
+            deleted++;
+        }
+
+        regionCache.clear();
+        BigBangRegions.getRegionMapIntegration().clearAllPlayers(source.getServer());
+
+        int deletedCount = deleted;
+        source.sendSuccess(() -> Component.literal("Todas as " + deletedCount + " regiões foram deletadas com sucesso.").withStyle(ChatFormatting.GREEN), false);
         return 1;
     }
 
