@@ -36,6 +36,7 @@ import com.bigbangcraft.regions.util.MessageHelper;
 import com.bigbangcraft.regions.util.SelectionManager;
 import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.journeymap.PlayerMapPreference;
+import com.bigbangcraft.regions.journeymap.RegionVisibilityResolver;
 import com.bigbangcraft.regions.journeymap.RegionMapIntegration;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -90,6 +91,10 @@ public class BigBangRegions implements ModInitializer {
     private static BiomeOptionRegistry biomeOptionRegistry;
     private static AllocationScheduler allocationScheduler;
     private static RegionCache regionCache;
+    private static com.bigbangcraft.regions.cache.PlotSlotCache plotSlotCache;
+    private static PlotSlotRepository plotSlotRepository;
+    private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> spawnBufferDimKey;
+    private static String spawnBufferDimStr;
     private static ExplorationZoneService explorationZoneService;
     private static RegionEntryExitService entryExitService;
     private static RegionBoundaryRenderer boundaryRenderer;
@@ -127,6 +132,27 @@ public class BigBangRegions implements ModInitializer {
         regionMapIntegration = integration;
     }
 
+    public static void refreshRegionMap(ServerPlayer player) {
+        if (regionMapIntegration != null) {
+            regionMapIntegration.onPlayerJoin(player);
+        }
+    }
+
+    private static void initializeRegionMapIntegration(net.minecraft.server.MinecraftServer server) {
+        if (!FabricLoader.getInstance().isModLoaded("bigmoncraft")) {
+            LOGGER.info("BigMonCraft not present; JourneyMap map integration disabled.");
+            return;
+        }
+        try {
+            regionMapIntegration = new com.bigbangcraft.regions.bigmoncraft.BigMonCraftRegionMapIntegration(
+                server, regionCache,
+                new RegionVisibilityResolver(configManager, roleResolver, membershipCache, permissionManager),
+                chunkLoaderService);
+        } catch (LinkageError error) {
+            LOGGER.warn("BigMonCraft map integration unavailable: {}", error.toString());
+        }
+    }
+
     public static RegionMembershipCache getMembershipCache() {
         return membershipCache;
     }
@@ -161,6 +187,14 @@ public class BigBangRegions implements ModInitializer {
 
     public static RegionCache getRegionCache() {
         return regionCache;
+    }
+
+    public static com.bigbangcraft.regions.cache.PlotSlotCache getPlotSlotCache() {
+        return plotSlotCache;
+    }
+
+    public static PlotSlotRepository getPlotSlotRepository() {
+        return plotSlotRepository;
     }
 
     public static RegionRepository getRegionRepository() {
@@ -205,6 +239,10 @@ public class BigBangRegions implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        initializeServer();
+    }
+
+    private void initializeServer() {
         LOGGER.info("Initializing BigBang Regions...");
 
         Path configDir = FabricLoader.getInstance().getConfigDir().resolve("bigbangregions");
@@ -239,9 +277,14 @@ public class BigBangRegions implements ModInitializer {
 
         // 5. Allocation repositories
         AllocationRequestRepository allocationRequestRepository = new AllocationRequestRepository(databaseManager);
-        PlotSlotRepository plotSlotRepository = new PlotSlotRepository(databaseManager);
+        plotSlotRepository = new PlotSlotRepository(databaseManager);
         PlayerRegionHomeRepository playerRegionHomeRepository = new PlayerRegionHomeRepository(databaseManager);
         RegionInviteRepository regionInviteRepository = new RegionInviteRepository(databaseManager);
+
+        // 5b. Plot slot cache (player region buffer anti-spawn lookups)
+        plotSlotCache = new com.bigbangcraft.regions.cache.PlotSlotCache();
+        plotSlotCache.reload(plotSlotRepository.loadAll());
+        LOGGER.info("Loaded {} plot slots into cache for spawn-buffer enforcement.", plotSlotCache.getAll().size());
 
         // 6. Allocation services
         biomeOptionRegistry = new BiomeOptionRegistry(configManager);
@@ -316,6 +359,16 @@ public class BigBangRegions implements ModInitializer {
 
         // 11. Server tick scheduler for allocation processing + entry/exit tracking
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            if (regionMapIntegration == null) {
+                initializeRegionMapIntegration(server);
+            }
+            {
+                String dimStr = configManager.getConfig().getPlayerLandAllocation().getTargetDimension();
+                spawnBufferDimKey = net.minecraft.resources.ResourceKey.create(
+                    net.minecraft.core.registries.Registries.DIMENSION,
+                    net.minecraft.resources.ResourceLocation.parse(dimStr));
+                spawnBufferDimStr = dimStr;
+            }
             LOGGER.info("Server started. Running land operation recovery...");
             paymentGateway.refreshReadiness();
             if (recoveryService != null) {
@@ -418,6 +471,7 @@ public class BigBangRegions implements ModInitializer {
             if (expansionRecoveryService != null) {
                 expansionRecoveryService.shutdown();
             }
+            if (regionMapIntegration != null) regionMapIntegration.close();
             if (databaseManager != null) {
                 databaseManager.close();
             }
@@ -454,13 +508,13 @@ public class BigBangRegions implements ModInitializer {
         ProtectionResult result = protectionService.check(context);
 
         if (result.getDecision() == ProtectionDecision.NO_REGION) {
-            if (dimension.equals("minecraft:overworld")) {
-                if (action == RegionAction.BLOCK_PLACE) {
-                    sendTipWithCooldown(player, "build", "§cPara construir digite /region e escolha um terreno");
-                }
-                if (action == RegionAction.BLOCK_BREAK) {
-                    sendTipWithCooldown(player, "mine", "§cPara minerar digite /minerar");
-                }
+            if (action == RegionAction.BLOCK_BREAK && configManager.getConfig().getWorldProtection().isBlockBreakOutsideRegions()) {
+                sendTipWithCooldown(player, "mine-blocked", "§cVocê só pode minerar dentro de uma região");
+                return false;
+            }
+            if (action == RegionAction.BLOCK_PLACE && configManager.getConfig().getWorldProtection().isBlockPlaceOutsideRegions()) {
+                sendTipWithCooldown(player, "build-blocked", "§cVocê só pode construir dentro de uma região");
+                return false;
             }
             return true;
         }
@@ -720,5 +774,36 @@ public class BigBangRegions implements ModInitializer {
     public static boolean isPistonAllowed(Level level, BlockPos pos, net.minecraft.core.Direction direction) {
         BlockPos dest = pos.relative(direction);
         return canWorldAction(level, pos, dest, RegionAction.PISTON_MOVE);
+    }
+
+    public static boolean isSpawnBlockedInSlotBuffer(Level world, BlockPos pos) {
+        if (configManager == null || world == null || pos == null) return false;
+        Config config = configManager.getConfig();
+        if (config == null) return false;
+        if (!config.getPlayerLandAllocation().isBlockSpawnsInSlotBuffer()) return false;
+        if (spawnBufferDimKey == null) return false;
+
+        if (world.dimension() != spawnBufferDimKey) return false;
+
+        RegionCache rCache = getRegionCache();
+        com.bigbangcraft.regions.cache.PlotSlotCache slotCache = getPlotSlotCache();
+        if (rCache == null || slotCache == null) return false;
+
+        int slotSize = config.getPlayerLandAllocation().getSlotSize();
+        if (slotSize <= 0) return false;
+        int gridX = Math.floorDiv(pos.getX(), slotSize);
+        int gridZ = Math.floorDiv(pos.getZ(), slotSize);
+        com.bigbangcraft.regions.allocation.PlotSlot slot = slotCache.get(spawnBufferDimStr, gridX, gridZ);
+        if (slot == null) return false;
+        if (slot.getRegionId() == null) return false;
+        if (!slot.getState().isOccupied()) return false;
+
+        Region region = rCache.get(slot.getRegionId());
+        if (region == null) return false;
+        if (region.getType() != com.bigbangcraft.regions.domain.RegionType.PLAYER_REGION) return false;
+
+        if (region.contains(spawnBufferDimStr, pos.getX(), pos.getY(), pos.getZ())) return false;
+
+        return true;
     }
 }
