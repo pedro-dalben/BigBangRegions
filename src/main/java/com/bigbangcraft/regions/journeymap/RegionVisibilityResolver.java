@@ -80,6 +80,10 @@ public class RegionVisibilityResolver {
         return config.getPublicRegion();
     }
 
+    public Config.JourneyMapConfig config() {
+        return configManager.getConfig().getJourneyMap();
+    }
+
     private boolean canSeePlayerRegion(ServerPlayer player, Region region, UUID playerUuid,
                                        Config.JourneyMapConfig jmConfig) {
         if (permissionManager.hasPermission(player, "bigbangregions.journeymap.view-all")) {

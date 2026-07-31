@@ -7,4 +7,7 @@ public interface RegionMapIntegration {
 
     default void onPlayerDisconnect(ServerPlayer player) {
     }
+
+    default void close() {
+    }
 }
