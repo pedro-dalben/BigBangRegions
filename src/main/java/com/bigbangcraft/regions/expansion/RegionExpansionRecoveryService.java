@@ -9,6 +9,8 @@ import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.payment.api.*;
 import com.bigbangcraft.regions.repository.PlotSlotRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
+import com.bigbangcraft.regions.event.RegionChangeEvent;
+import com.bigbangcraft.regions.event.RegionEventBus;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -245,6 +247,7 @@ public class RegionExpansionRecoveryService {
 
                 conn.commit();
                 regionCache.add(region);
+                RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.RESIZED, region));
                 membershipCache.loadFromRegion(region);
 
                 LOGGER.info("Expansion recovery: resize applied for op={}", op.getOperationId());

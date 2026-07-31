@@ -13,6 +13,8 @@ import com.bigbangcraft.regions.payment.api.*;
 import com.bigbangcraft.regions.repository.PlotSlotRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
+import com.bigbangcraft.regions.event.RegionChangeEvent;
+import com.bigbangcraft.regions.event.RegionEventBus;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -657,6 +659,7 @@ public class RegionExpansionCoordinator {
                 conn.commit();
 
                 regionCache.add(region);
+                RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.RESIZED, region));
 
                 LOGGER.info("Expansion applied: op={}, region={}, {}x{}→{}x{}",
                     op.getOperationId(), op.getRegionId(), op.getCurrentSize(), op.getCurrentSize(),
