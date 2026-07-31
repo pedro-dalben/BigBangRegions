@@ -161,10 +161,17 @@ public class RegionRepository {
     }
 
     public void saveOnConnection(Connection conn, Region region) throws SQLException {
-        String sql = "INSERT OR REPLACE INTO regions (" +
+        String sql = "INSERT INTO regions (" +
                 "id, name, type, dimensionKey, minX, minY, minZ, maxX, maxY, maxZ, " +
                 "priority, ownerUuid, createdByUuid, createdAt, updatedAt, status" +
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" +
+                " ON CONFLICT(id) DO UPDATE SET " +
+                "name = excluded.name, type = excluded.type, dimensionKey = excluded.dimensionKey, " +
+                "minX = excluded.minX, minY = excluded.minY, minZ = excluded.minZ, " +
+                "maxX = excluded.maxX, maxY = excluded.maxY, maxZ = excluded.maxZ, " +
+                "priority = excluded.priority, ownerUuid = excluded.ownerUuid, " +
+                "createdByUuid = excluded.createdByUuid, createdAt = excluded.createdAt, " +
+                "updatedAt = excluded.updatedAt, status = excluded.status;";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, region.getId());
             pstmt.setString(2, region.getName());
