@@ -109,7 +109,6 @@ class TerrainAllocationCoordinatorBorderTest {
     @Test
     void clearsLegacyWallWhenTheTerrainExpands() {
         RegionBounds oldBounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 2, 2, 2);
-        RegionBounds targetBounds = new RegionBounds("minecraft:overworld", -1, 0, -1, 3, 2, 3);
         Map<Long, BlockState> states = new HashMap<>();
         for (int x = oldBounds.getMinX(); x <= oldBounds.getMaxX(); x++) {
             for (int y = oldBounds.getMinY(); y <= oldBounds.getMaxY(); y++) {
@@ -134,7 +133,7 @@ class TerrainAllocationCoordinatorBorderTest {
         });
 
         TerrainAllocationCoordinator.clearLegacyExpansionBorder(
-            level, oldBounds, Blocks.GLASS.defaultBlockState(), targetBounds);
+            level, oldBounds, Blocks.GLASS.defaultBlockState());
 
         assertTrue(states.values().stream().noneMatch(state -> state.equals(Blocks.GLASS.defaultBlockState())));
     }
@@ -142,7 +141,6 @@ class TerrainAllocationCoordinatorBorderTest {
     @Test
     void clearsVerticalSurfaceWallWhenTheTerrainExpands() {
         RegionBounds oldBounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 2, 70, 2);
-        RegionBounds targetBounds = new RegionBounds("minecraft:overworld", -1, 0, -1, 3, 70, 3);
         Map<Long, BlockState> states = new HashMap<>();
         for (int x = oldBounds.getMinX(); x <= oldBounds.getMaxX(); x++) {
             for (int z = oldBounds.getMinZ(); z <= oldBounds.getMaxZ(); z++) {
@@ -169,13 +167,13 @@ class TerrainAllocationCoordinatorBorderTest {
         });
 
         TerrainAllocationCoordinator.clearSurfaceExpansionBorder(
-            level, oldBounds, Blocks.GLASS.defaultBlockState(), targetBounds);
+            level, oldBounds, Blocks.GLASS.defaultBlockState());
 
         assertTrue(states.values().stream().noneMatch(state -> state.equals(Blocks.GLASS.defaultBlockState())));
     }
 
     @Test
-    void keepsOldWallThatIsStillTheTargetBoundary() {
+    void rebuildsOldWallThatIsStillTheTargetBoundary() {
         RegionBounds oldBounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 2, 10, 2);
         RegionBounds targetBounds = new RegionBounds("minecraft:overworld", 0, 0, -1, 2, 10, 3);
         Map<Long, BlockState> states = new HashMap<>();
@@ -191,9 +189,12 @@ class TerrainAllocationCoordinatorBorderTest {
         }
 
         ServerLevel level = mock(ServerLevel.class);
+        when(level.getHeight(any(), anyInt(), anyInt())).thenReturn(0);
+        when(level.getMaxBuildHeight()).thenReturn(11);
         when(level.getBlockState(any(BlockPos.class))).thenAnswer(invocation -> {
             BlockPos pos = invocation.getArgument(0);
-            return states.getOrDefault(pos.asLong(), Blocks.DIRT.defaultBlockState());
+            return states.getOrDefault(pos.asLong(), pos.getY() >= 0 && pos.getY() <= 10
+                ? Blocks.AIR.defaultBlockState() : Blocks.DIRT.defaultBlockState());
         });
         when(level.setBlock(any(BlockPos.class), any(BlockState.class), anyInt())).thenAnswer(invocation -> {
             BlockPos pos = invocation.getArgument(0);
@@ -202,11 +203,56 @@ class TerrainAllocationCoordinatorBorderTest {
         });
 
         TerrainAllocationCoordinator.clearSurfaceExpansionBorder(
-            level, oldBounds, Blocks.GLASS.defaultBlockState(), targetBounds);
+            level, oldBounds, Blocks.GLASS.defaultBlockState());
+
+        assertEquals(Blocks.AIR.defaultBlockState(), states.get(new BlockPos(0, 5, 1).asLong()));
+        assertEquals(Blocks.AIR.defaultBlockState(), states.get(new BlockPos(2, 5, 1).asLong()));
+
+        TerrainAllocationCoordinator.generateGlassBorder(level, targetBounds, "minecraft:glass", false);
 
         assertEquals(Blocks.GLASS.defaultBlockState(), states.get(new BlockPos(0, 5, 1).asLong()));
         assertEquals(Blocks.GLASS.defaultBlockState(), states.get(new BlockPos(2, 5, 1).asLong()));
         assertEquals(Blocks.AIR.defaultBlockState(), states.get(new BlockPos(1, 5, 0).asLong()));
         assertEquals(Blocks.AIR.defaultBlockState(), states.get(new BlockPos(1, 5, 2).asLong()));
+        assertEquals(Blocks.GLASS.defaultBlockState(), states.get(new BlockPos(1, 5, -1).asLong()));
+        assertEquals(Blocks.GLASS.defaultBlockState(), states.get(new BlockPos(1, 5, 3).asLong()));
+    }
+
+    @Test
+    void allSidesExpansionByTenDoesNotLeaveOldCornerPillars() {
+        RegionBounds oldBounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 2, 10, 2);
+        RegionBounds targetBounds = new RegionBounds("minecraft:overworld", -10, 0, -10, 12, 10, 12);
+        Map<Long, BlockState> states = new HashMap<>();
+        for (int y = oldBounds.getMinY(); y <= oldBounds.getMaxY(); y++) {
+            states.put(new BlockPos(0, y, 0).asLong(), Blocks.GLASS.defaultBlockState());
+            states.put(new BlockPos(0, y, 2).asLong(), Blocks.GLASS.defaultBlockState());
+            states.put(new BlockPos(2, y, 0).asLong(), Blocks.GLASS.defaultBlockState());
+            states.put(new BlockPos(2, y, 2).asLong(), Blocks.GLASS.defaultBlockState());
+        }
+
+        ServerLevel level = mock(ServerLevel.class);
+        when(level.getHeight(any(), anyInt(), anyInt())).thenReturn(0);
+        when(level.getMaxBuildHeight()).thenReturn(11);
+        when(level.getBlockState(any(BlockPos.class))).thenAnswer(invocation -> {
+            BlockPos pos = invocation.getArgument(0);
+            return states.getOrDefault(pos.asLong(), pos.getY() >= 0 && pos.getY() <= 10
+                ? Blocks.AIR.defaultBlockState() : Blocks.DIRT.defaultBlockState());
+        });
+        when(level.setBlock(any(BlockPos.class), any(BlockState.class), anyInt())).thenAnswer(invocation -> {
+            BlockPos pos = invocation.getArgument(0);
+            states.put(pos.asLong(), invocation.getArgument(1));
+            return true;
+        });
+
+        TerrainAllocationCoordinator.clearLegacyExpansionBorder(
+            level, oldBounds, Blocks.GLASS.defaultBlockState());
+        TerrainAllocationCoordinator.generateGlassBorder(level, targetBounds, "minecraft:glass", false);
+
+        assertEquals(Blocks.AIR.defaultBlockState(), states.get(new BlockPos(0, 5, 0).asLong()));
+        assertEquals(Blocks.AIR.defaultBlockState(), states.get(new BlockPos(0, 5, 2).asLong()));
+        assertEquals(Blocks.AIR.defaultBlockState(), states.get(new BlockPos(2, 5, 0).asLong()));
+        assertEquals(Blocks.AIR.defaultBlockState(), states.get(new BlockPos(2, 5, 2).asLong()));
+        assertEquals(Blocks.GLASS.defaultBlockState(), states.get(new BlockPos(-10, 5, -10).asLong()));
+        assertEquals(Blocks.GLASS.defaultBlockState(), states.get(new BlockPos(12, 5, 12).asLong()));
     }
 }

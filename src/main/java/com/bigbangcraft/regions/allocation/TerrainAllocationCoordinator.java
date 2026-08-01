@@ -1012,7 +1012,7 @@ public class TerrainAllocationCoordinator {
         net.minecraft.world.level.block.Block glass = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(material);
         if (glass == null || glass == net.minecraft.world.level.block.Blocks.AIR) glass = net.minecraft.world.level.block.Blocks.GLASS;
         net.minecraft.world.level.block.state.BlockState oldState = glass.defaultBlockState();
-        clearLegacyExpansionBorder(level, oldBounds, oldState, targetBounds);
+        clearLegacyExpansionBorder(level, oldBounds, oldState);
         generateGlassBorder(level, targetBounds, border.getMaterial(), border.isCreateCeiling());
         return true;
     }
@@ -1034,31 +1034,27 @@ public class TerrainAllocationCoordinator {
     }
 
     static void clearLegacyExpansionBorder(ServerLevel level, RegionBounds bounds,
-                                           net.minecraft.world.level.block.state.BlockState glass,
-                                           RegionBounds target) {
+                                           net.minecraft.world.level.block.state.BlockState glass) {
         for (int y = bounds.getMinY(); y <= bounds.getMaxY(); y++) {
             for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
-                clearExpansionWall(level, new BlockPos(bounds.getMinX(), y, z), glass, target);
-                clearExpansionWall(level, new BlockPos(bounds.getMaxX(), y, z), glass, target);
+                clearExpansionWall(level, new BlockPos(bounds.getMinX(), y, z), glass);
+                clearExpansionWall(level, new BlockPos(bounds.getMaxX(), y, z), glass);
             }
             for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
-                clearExpansionWall(level, new BlockPos(x, y, bounds.getMinZ()), glass, target);
-                clearExpansionWall(level, new BlockPos(x, y, bounds.getMaxZ()), glass, target);
+                clearExpansionWall(level, new BlockPos(x, y, bounds.getMinZ()), glass);
+                clearExpansionWall(level, new BlockPos(x, y, bounds.getMaxZ()), glass);
             }
         }
     }
 
     static void clearSurfaceExpansionBorder(ServerLevel level, RegionBounds bounds,
-                                            net.minecraft.world.level.block.state.BlockState glass,
-                                            RegionBounds target) {
-        clearLegacyExpansionBorder(level, bounds, glass, target);
+                                            net.minecraft.world.level.block.state.BlockState glass) {
+        clearLegacyExpansionBorder(level, bounds, glass);
     }
 
-    private static void clearExpansionWall(ServerLevel level, BlockPos pos, net.minecraft.world.level.block.state.BlockState glass, RegionBounds target) {
+    private static void clearExpansionWall(ServerLevel level, BlockPos pos, net.minecraft.world.level.block.state.BlockState glass) {
         if (!level.getBlockState(pos).equals(glass)) return;
-        boolean targetWall = pos.getX() == target.getMinX() || pos.getX() == target.getMaxX()
-            || pos.getZ() == target.getMinZ() || pos.getZ() == target.getMaxZ();
-        if (!targetWall) level.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 2);
+        level.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 2);
     }
 
     private void applyRegionBiome(ServerLevel level, RegionBounds bounds, String biomeOptionKey) {
