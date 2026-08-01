@@ -35,6 +35,7 @@ import com.bigbangcraft.regions.storage.DatabaseManager;
 import com.bigbangcraft.regions.util.MessageHelper;
 import com.bigbangcraft.regions.util.SelectionManager;
 import com.bigbangcraft.regions.config.Config;
+import com.bigbangcraft.regions.cobblemon.CobblemonSpawnGuard;
 import com.bigbangcraft.regions.journeymap.PlayerMapPreference;
 import com.bigbangcraft.regions.journeymap.RegionVisibilityResolver;
 import com.bigbangcraft.regions.journeymap.RegionMapIntegration;
@@ -150,6 +151,16 @@ public class BigBangRegions implements ModInitializer {
                 chunkLoaderService);
         } catch (LinkageError error) {
             LOGGER.warn("BigMonCraft map integration unavailable: {}", error.toString());
+        }
+    }
+
+    private static void initializeCobblemonSpawnGuard() {
+        if (!FabricLoader.getInstance().isModLoaded("cobblemon")) return;
+        try {
+            CobblemonSpawnGuard.register();
+            LOGGER.info("Cobblemon spawn-buffer guard registered.");
+        } catch (LinkageError error) {
+            LOGGER.warn("Cobblemon spawn-buffer guard unavailable: {}", error.toString());
         }
     }
 
@@ -360,6 +371,7 @@ public class BigBangRegions implements ModInitializer {
 
         // 11. Register Event Listeners
         registerListeners();
+        initializeCobblemonSpawnGuard();
 
         // 11. Server tick scheduler for allocation processing + entry/exit tracking
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {

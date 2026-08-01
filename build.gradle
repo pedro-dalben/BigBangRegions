@@ -8,6 +8,12 @@ group = project.maven_group
 
 repositories {
 	mavenCentral()
+	maven {
+		url "https://artefacts.cobblemon.com/releases/"
+		content {
+			includeGroup "com.cobblemon"
+		}
+	}
 }
 
 def bigmoncraftApiJar = file(providers.gradleProperty('bigmoncraft_api_jar').orElse(
@@ -44,6 +50,11 @@ dependencies {
 
 	// Optional public API only. BigMonCraft remains absent at runtime without disabling regions.
 	modCompileOnly files(bigmoncraftApiJar)
+	testRuntimeOnly files(bigmoncraftApiJar)
+
+	// Cobblemon supplies this API at runtime; do not bundle it into BigBang Regions.
+	modCompileOnly "com.cobblemon:fabric:${project.cobblemon_version}"
+	compileOnly "org.jetbrains.kotlin:kotlin-stdlib:2.2.20"
 
 	// BigBang Essentials public API only. The exact artifact is intentionally pinned.
 	def essentialsApiJar = file(providers.gradleProperty('bigbangessentials_api_jar').orElse(

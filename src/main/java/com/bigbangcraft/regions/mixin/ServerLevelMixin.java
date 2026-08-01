@@ -11,6 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(net.minecraft.server.level.ServerLevel.class)
 public class ServerLevelMixin {
+    private static final String COBBLEMON_POKEMON_ENTITY = "com.cobblemon.mod.common.entity.pokemon.PokemonEntity";
 
     @Inject(method = "addFreshEntity", at = @At("HEAD"), cancellable = true)
     private void bigbangregions$blockSpawnInPlayerBuffer(Entity entity, CallbackInfoReturnable<Boolean> cir) {
@@ -19,9 +20,14 @@ public class ServerLevelMixin {
         if (level == null || level.isClientSide()) return;
 
         if (!(entity instanceof Mob)) return;
+        if (isCobblemonPokemon(entity.getClass().getName())) return;
 
         if (BigBangRegions.isSpawnBlockedInSlotBuffer(level, entity.blockPosition())) {
             cir.setReturnValue(false);
         }
+    }
+
+    private static boolean isCobblemonPokemon(String entityClassName) {
+        return COBBLEMON_POKEMON_ENTITY.equals(entityClassName);
     }
 }
