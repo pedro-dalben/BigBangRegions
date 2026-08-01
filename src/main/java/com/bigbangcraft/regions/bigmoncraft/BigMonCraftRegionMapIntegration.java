@@ -148,8 +148,8 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
         return visibilityResolver.config();
     }
 
-    private static ServerMapSnapshot.Style toStyle(Config.JourneyMapConfig.RegionStyle style) {
-        return new ServerMapSnapshot.Style(style.getFillColor(), style.getFillOpacity(),
+    static ServerMapSnapshot.Style toStyle(Config.JourneyMapConfig.RegionStyle style) {
+        return new ServerMapSnapshot.Style(style.getFillColor(), 0.0f,
             style.getStrokeColor(), 2.0f, style.getStrokeOpacity(), 10, 0, Integer.MAX_VALUE);
     }
 
