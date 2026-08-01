@@ -87,6 +87,8 @@ In `config/bigbangregions/config.json`:
 
 Set `"enabled": false` to disable entirely without removing JourneyMap. The source ID registered by BigBangRegions is `bigbangregions`.
 
+The `fillOpacity` fields remain accepted for configuration compatibility, but region and chunk-loader overlays are rendered without interior fill; only their colored borders are shown.
+
 ## Visibility Rules
 
 ### Player Regions
@@ -125,11 +127,9 @@ Chunk tiles are intentionally more restricted than the region outline: only the 
 ### Polygon Overlay (region boundary)
 
 - Full rectangle from `minX,minZ` to `maxX,maxZ`
-- Fill with configurable color and opacity
-- Stroke border with configurable color and opacity
+- No interior fill; only the colored border is rendered
+- Stroke border uses the configured color and opacity
 - Label shows region name on hover
-- At zoom 0–7, only the light area and name remain visible for map orientation
-- At zoom 8+, the full fill and chunk-loader detail are shown
 - Player-region palette follows the viewer relationship: owner, member, public, or staff
 
 ### Center Marker (waypoint)
@@ -141,9 +141,9 @@ Chunk tiles are intentionally more restricted than the region outline: only the 
 
 ### Chunk Loader Tiles
 
-- Green: a selected chunk with a ticket active in this server session
-- Yellow: a selected chunk saved in the database but without an active ticket
-- Tiles are clipped to the region boundary and grouped into two compact overlays per region
+- Green border: a selected chunk with a ticket active in this server session
+- Yellow border: a selected chunk saved in the database but without an active ticket
+- Tiles are clipped to the region boundary, rendered without fill, and grouped into two compact overlays per region
 
 ## Event-Driven Updates
 
