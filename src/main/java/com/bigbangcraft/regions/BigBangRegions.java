@@ -532,11 +532,13 @@ public class BigBangRegions implements ModInitializer {
 
         if (result.getDecision() == ProtectionDecision.NO_REGION) {
             if (!hasBypass(player, action != null ? action.getFlagId() : null)) {
-                if (action == RegionAction.BLOCK_BREAK && configManager.getConfig().getWorldProtection().isBlockBreakOutsideRegions()) {
+                String targetDim = configManager.getConfig().getPlayerLandAllocation().getTargetDimension();
+                boolean inTargetWorld = dimension.equals(targetDim);
+                if (action == RegionAction.BLOCK_BREAK && configManager.getConfig().getWorldProtection().isBlockBreakOutsideRegions() && inTargetWorld) {
                     sendTipWithCooldown(player, "mine-blocked", "§cVocê só pode minerar dentro de uma região");
                     return false;
                 }
-                if (action == RegionAction.BLOCK_PLACE && configManager.getConfig().getWorldProtection().isBlockPlaceOutsideRegions()) {
+                if (action == RegionAction.BLOCK_PLACE && configManager.getConfig().getWorldProtection().isBlockPlaceOutsideRegions() && inTargetWorld) {
                     sendTipWithCooldown(player, "build-blocked", "§cVocê só pode construir dentro de uma região");
                     return false;
                 }
