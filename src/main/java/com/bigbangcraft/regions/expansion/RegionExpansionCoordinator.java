@@ -1,6 +1,7 @@
 package com.bigbangcraft.regions.expansion;
 
 import com.bigbangcraft.regions.BigBangRegions;
+import com.bigbangcraft.regions.allocation.TerrainAllocationCoordinator;
 import com.bigbangcraft.regions.cache.RegionCache;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
 import com.bigbangcraft.regions.config.Config;
@@ -32,6 +33,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.TimeUnit;
 
 public class RegionExpansionCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-RegionExpansionCoordinator");
@@ -57,6 +59,7 @@ public class RegionExpansionCoordinator {
     });
     private final AtomicBoolean workInFlight = new AtomicBoolean();
     private final AtomicBoolean visualWorkInFlight = new AtomicBoolean();
+    private final AtomicBoolean shuttingDown = new AtomicBoolean();
     private final AtomicLong nextWorkAt = new AtomicLong();
     private final Set<String> paymentInFlight = ConcurrentHashMap.newKeySet();
     private final Map<String, CompletableFuture<RegionExpansionOperation>> startWaiters = new ConcurrentHashMap<>();
@@ -273,6 +276,7 @@ public class RegionExpansionCoordinator {
     }
 
     public int processNextExpansion(MinecraftServer server) {
+        if (shuttingDown.get()) return 0;
         if (server != null) this.server = server;
         long now = System.currentTimeMillis();
         if (now < nextWorkAt.get() || !workInFlight.compareAndSet(false, true)) return 0;
@@ -296,40 +300,57 @@ public class RegionExpansionCoordinator {
     }
 
     public void shutdown() {
-        operationExecutor.shutdownNow();
+        if (!shuttingDown.compareAndSet(false, true)) return;
+        TerrainAllocationCoordinator allocation = BigBangRegions.getAllocationCoordinator();
+        if (allocation != null) allocation.shutdownExpansionVisuals();
+        operationExecutor.shutdown();
+        try {
+            int timeout = configManager.getConfig().getRegionExpansionPerformance().getShutdownTimeoutSeconds();
+            if (!operationExecutor.awaitTermination(timeout, TimeUnit.SECONDS)) {
+                LOGGER.warn("Expansion operation executor still has work after {}s; no interrupt was issued.", timeout);
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            LOGGER.warn("Interrupted while waiting for expansion operation executor shutdown.");
+        }
     }
 
     public void reconcileExpansionVisuals(MinecraftServer server) {
+        TerrainAllocationCoordinator allocation = BigBangRegions.getAllocationCoordinator();
+        if (allocation != null) allocation.tickExpansionVisuals(server);
+        if (shuttingDown.get()) return;
         if (!visualWorkInFlight.compareAndSet(false, true)) return;
-        operationExecutor.execute(() -> {
-            List<RegionExpansionOperation> pending = new ArrayList<>();
-            try {
-                long now = System.currentTimeMillis();
-                pending.addAll(expansionRepository.getActiveOperations().stream()
-                    .filter(op -> op.getState() == RegionExpansionState.RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING)
-                    .filter(op -> op.getBorderAppliedAt() == null)
-                    .filter(op -> op.getNextRetryAt() == null || op.getNextRetryAt() <= now)
-                    .filter(op -> visualReconciliationsInFlight.add(op.getOperationId()))
-                    .toList());
-                if (!pending.isEmpty()) server.execute(() -> applyExpansionVisuals(server, pending));
-            } catch (Throwable error) {
-                pending.forEach(op -> visualReconciliationsInFlight.remove(op.getOperationId()));
-                LOGGER.warn("Failed to load expansion visuals off the server thread", error);
-            } finally {
-                visualWorkInFlight.set(false);
-            }
-        });
+        try {
+            operationExecutor.execute(() -> {
+                List<RegionExpansionOperation> pending = new ArrayList<>();
+                try {
+                    long now = System.currentTimeMillis();
+                    pending.addAll(expansionRepository.getActiveOperations().stream()
+                        .filter(op -> op.getState() == RegionExpansionState.RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING)
+                        .filter(op -> op.getBorderAppliedAt() == null)
+                        .filter(op -> op.getNextRetryAt() == null || op.getNextRetryAt() <= now)
+                        .filter(op -> visualReconciliationsInFlight.add(op.getOperationId()))
+                        .toList());
+                    if (!pending.isEmpty()) server.execute(() -> applyExpansionVisuals(server, pending));
+                } catch (Throwable error) {
+                    pending.forEach(op -> visualReconciliationsInFlight.remove(op.getOperationId()));
+                    LOGGER.warn("Failed to load expansion visuals off the server thread", error);
+                } finally {
+                    visualWorkInFlight.set(false);
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException rejected) {
+            visualWorkInFlight.set(false);
+        }
     }
 
     private void applyExpansionVisuals(MinecraftServer server, List<RegionExpansionOperation> pending) {
         for (RegionExpansionOperation op : pending) {
             try {
-                ServerLevel level = server.getLevel(net.minecraft.resources.ResourceKey.create(
-                    net.minecraft.core.registries.Registries.DIMENSION,
-                    net.minecraft.resources.ResourceLocation.parse(op.getDimensionKey())));
                 Region region = regionCache.get(op.getRegionId());
-                if (level == null || region == null) {
-                    scheduleVisualRetry(op, "Mundo ou regiao indisponivel para aplicar a borda.");
+                if (region == null) {
+                    submitVisualOutcome(op.getOperationId(), op.getResizeAppliedAt(), false,
+                        "WORLD_OR_REGION_UNAVAILABLE", "Regiao indisponivel para aplicar a borda.");
                     continue;
                 }
                 RegionBounds current = region.getBounds();
@@ -337,25 +358,63 @@ public class RegionExpansionCoordinator {
                     || current.getMaxX() != op.getTargetMaxX() || current.getMaxZ() != op.getTargetMaxZ()) {
                     failOperation(op, RegionExpansionState.BLOCKED_FOR_MANUAL_RECONCILIATION,
                         "VISUAL_BOUNDS_MISMATCH", "Bounds da regiao nao correspondem ao resize pendente.");
+                    visualReconciliationsInFlight.remove(op.getOperationId());
                     continue;
                 }
                 RegionBounds oldBounds = new RegionBounds(op.getDimensionKey(), op.getOldMinX(), current.getMinY(),
                     op.getOldMinZ(), op.getOldMaxX(), current.getMaxY(), op.getOldMaxZ());
-                if (BigBangRegions.getAllocationCoordinator().refreshExpansionBorder(level, oldBounds, current, region.getId())) {
-                    op.setBorderAppliedAt(System.currentTimeMillis());
-                    op.setNextRetryAt(null);
-                    op.setFailureCode(null);
-                    op.setFailureDetail(null);
-                    expansionRepository.save(op);
-                } else {
-                    scheduleVisualRetry(op, "Falha ao aplicar a borda; nova tentativa sera feita.");
+                long generation = op.getResizeAppliedAt() == null ? op.getUpdatedAt() : op.getResizeAppliedAt();
+                TerrainAllocationCoordinator allocation = BigBangRegions.getAllocationCoordinator();
+                if (allocation == null) {
+                    submitVisualOutcome(op.getOperationId(), generation, false,
+                        "VISUAL_PIPELINE_UNAVAILABLE", "Pipeline visual indisponivel para aplicar a borda.");
+                    continue;
+                }
+                TerrainAllocationCoordinator.ExpansionVisualRequestStatus status = allocation.scheduleExpansionVisual(
+                    oldBounds, current, region.getId(), op.getOperationId(), generation,
+                    outcome -> submitVisualOutcome(outcome.operationId(), outcome.generation(), outcome.succeeded(),
+                        outcome.failureStage(), outcome.failureDetail())
+                );
+                if (status == TerrainAllocationCoordinator.ExpansionVisualRequestStatus.REJECTED) {
+                    submitVisualOutcome(op.getOperationId(), generation, false,
+                        "VISUAL_PIPELINE_REJECTED", "Pipeline visual esta sendo encerrado ou saturado.");
                 }
             } catch (Throwable error) {
                 LOGGER.warn("Failed to apply expansion border for op={}", op.getOperationId(), error);
-                scheduleVisualRetry(op, "Erro ao aplicar a borda; nova tentativa sera feita.");
-            } finally {
-                visualReconciliationsInFlight.remove(op.getOperationId());
+                submitVisualOutcome(op.getOperationId(), op.getResizeAppliedAt(), false,
+                    "VISUAL_PIPELINE", "Erro ao planejar a borda; nova tentativa sera feita.");
             }
+        }
+    }
+
+    private void submitVisualOutcome(String operationId, Long generation, boolean succeeded,
+                                     String failureStage, String failureDetail) {
+        try {
+            operationExecutor.execute(() -> {
+                try {
+                    RegionExpansionOperation op = expansionRepository.get(operationId);
+                    if (op == null || op.getState() != RegionExpansionState.RESIZE_APPLIED_PAYMENT_CAPTURE_PENDING
+                        || op.getBorderAppliedAt() != null
+                        || generation == null || !generation.equals(op.getResizeAppliedAt())) {
+                        LOGGER.warn("Discarded obsolete expansion visual outcome: op={}, generation={}", operationId, generation);
+                        return;
+                    }
+                    if (succeeded) {
+                        op.setBorderAppliedAt(System.currentTimeMillis());
+                        op.setNextRetryAt(null);
+                        op.setFailureCode(null);
+                        op.setFailureDetail(null);
+                        expansionRepository.save(op);
+                    } else {
+                        scheduleVisualRetry(op, (failureStage == null ? "VISUAL_PIPELINE" : failureStage)
+                            + ": " + (failureDetail == null ? "falha desconhecida" : failureDetail));
+                    }
+                } finally {
+                    visualReconciliationsInFlight.remove(operationId);
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException rejected) {
+            visualReconciliationsInFlight.remove(operationId);
         }
     }
 
