@@ -20,6 +20,7 @@ public class Config {
     private PlayerRegionsConfig playerRegions = new PlayerRegionsConfig();
     private PlayerLandAllocationConfig playerLandAllocation = new PlayerLandAllocationConfig();
     private RegionExpansionConfig regionExpansion = new RegionExpansionConfig();
+    private RegionExpansionPerformanceConfig regionExpansionPerformance = new RegionExpansionPerformanceConfig();
     private Map<String, BiomeOptionConfig> biomeOptions = new HashMap<>();
     private Set<String> disabledCommands = new HashSet<>();
 
@@ -655,6 +656,37 @@ public class Config {
         }
     }
 
+    /** Limits server-thread visual work and the dedicated expansion snapshot writer. */
+    public static class RegionExpansionPerformanceConfig {
+        private int snapshotCaptureBudgetMs = 3;
+        private int snapshotCaptureMaxBlocksPerTick = 250;
+        private int borderApplicationBudgetMs = 3;
+        private int borderApplicationMaxBlocksPerTick = 250;
+        private int persistenceWorkers = 1;
+        private int persistenceQueueCapacity = 32;
+        private int shutdownTimeoutSeconds = 10;
+
+        public int getSnapshotCaptureBudgetMs() { return bounded(snapshotCaptureBudgetMs, 1, 20); }
+        public int getSnapshotCaptureMaxBlocksPerTick() { return bounded(snapshotCaptureMaxBlocksPerTick, 1, 5_000); }
+        public int getBorderApplicationBudgetMs() { return bounded(borderApplicationBudgetMs, 1, 20); }
+        public int getBorderApplicationMaxBlocksPerTick() { return bounded(borderApplicationMaxBlocksPerTick, 1, 5_000); }
+        public int getPersistenceWorkers() { return bounded(persistenceWorkers, 1, 2); }
+        public int getPersistenceQueueCapacity() { return bounded(persistenceQueueCapacity, 1, 256); }
+        public int getShutdownTimeoutSeconds() { return bounded(shutdownTimeoutSeconds, 1, 60); }
+
+        public void setSnapshotCaptureBudgetMs(int value) { snapshotCaptureBudgetMs = value; }
+        public void setSnapshotCaptureMaxBlocksPerTick(int value) { snapshotCaptureMaxBlocksPerTick = value; }
+        public void setBorderApplicationBudgetMs(int value) { borderApplicationBudgetMs = value; }
+        public void setBorderApplicationMaxBlocksPerTick(int value) { borderApplicationMaxBlocksPerTick = value; }
+        public void setPersistenceWorkers(int value) { persistenceWorkers = value; }
+        public void setPersistenceQueueCapacity(int value) { persistenceQueueCapacity = value; }
+        public void setShutdownTimeoutSeconds(int value) { shutdownTimeoutSeconds = value; }
+
+        private static int bounded(int value, int minimum, int maximum) {
+            return Math.max(minimum, Math.min(maximum, value));
+        }
+    }
+
     public static class JourneyMapConfig {
         private boolean enabled = true;
 
@@ -732,6 +764,10 @@ public class Config {
         return playerLandAllocation;
     }
     public RegionExpansionConfig getRegionExpansion() { return regionExpansion; }
+    public RegionExpansionPerformanceConfig getRegionExpansionPerformance() {
+        if (regionExpansionPerformance == null) regionExpansionPerformance = new RegionExpansionPerformanceConfig();
+        return regionExpansionPerformance;
+    }
     public Map<String, BiomeOptionConfig> getBiomeOptions() { return biomeOptions; }
     public JourneyMapConfig getJourneyMap() { return journeyMap; }
 }
