@@ -13,6 +13,8 @@ import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
@@ -26,14 +28,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class RegionTerrainSnapshot {
     private static final String MUTATION_FORMAT = "mutation_snapshot_v2";
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-RegionTerrainSnapshot");
+    private static final Map<Path, Object> EXPANSION_WRITE_LOCKS = new ConcurrentHashMap<>();
 
     private RegionTerrainSnapshot() {
     }
@@ -72,37 +78,91 @@ final class RegionTerrainSnapshot {
         Files.deleteIfExists(snapshotPath(directory, regionId));
     }
 
-    /** Adds newly exposed border blocks without replacing the original snapshot. */
-    static void captureExpansionBorder(
-        ServerLevel level,
-        RegionBounds bounds,
-        String regionId,
-        Path directory,
-        boolean createCeiling
-    ) throws IOException {
-        Files.createDirectories(directory);
-        Path target = snapshotPath(directory, regionId);
-        CompoundTag root = Files.exists(target)
-            ? NbtIo.readCompressed(target, NbtAccounter.unlimitedHeap())
-            : new CompoundTag();
-        root.putString("regionId", regionId);
-        root.putString("dimension", bounds.getDimension());
-        root.putString("format", MUTATION_FORMAT);
-        ListTag blocks = root.contains("blocks", Tag.TAG_LIST)
-            ? root.getList("blocks", Tag.TAG_COMPOUND) : new ListTag();
-        Set<Long> seen = new HashSet<>();
-        for (int i = 0; i < blocks.size(); i++) {
-            Tag tag = blocks.get(i);
-            if (tag instanceof CompoundTag entry && entry.contains("pos", Tag.TAG_LONG)) {
-                seen.add(entry.getLong("pos"));
+    /**
+     * Captures one world block into data that has no live world/chunk/block-entity
+     * reference. This is intentionally called only from the server-thread job.
+     */
+    static CapturedExpansionBlock captureExpansionBlock(ServerLevel level, BlockPos pos, BlockState state) {
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        CompoundTag blockEntityData = blockEntity == null
+            ? null : blockEntity.saveWithFullMetadata(level.registryAccess()).copy();
+        return new CapturedExpansionBlock(pos.asLong(), stateData(state), blockEntityData);
+    }
+
+    /**
+     * Runs on the bounded snapshot I/O executor. It receives only copied DTO
+     * data, merges it into the durable restoration snapshot and never touches a
+     * Minecraft world.
+     */
+    static PersistenceResult persistExpansion(ExpansionCapture capture) throws IOException {
+        Path target = capture.target();
+        Object lock = EXPANSION_WRITE_LOCKS.computeIfAbsent(target.toAbsolutePath().normalize(), ignored -> new Object());
+        synchronized (lock) {
+            long startedAt = System.nanoTime();
+            Files.createDirectories(target.getParent());
+            CompoundTag root = Files.exists(target)
+                ? NbtIo.readCompressed(target, NbtAccounter.unlimitedHeap())
+                : new CompoundTag();
+            long persistedGeneration = root.contains("expansionGeneration", Tag.TAG_LONG)
+                ? root.getLong("expansionGeneration") : 0L;
+            if (persistedGeneration > capture.generation()) {
+                return PersistenceResult.discarded(System.nanoTime() - startedAt);
+            }
+
+            ListTag blocks = root.contains("blocks", Tag.TAG_LIST)
+                ? root.getList("blocks", Tag.TAG_COMPOUND) : new ListTag();
+            Set<Long> seen = new HashSet<>();
+            for (int i = 0; i < blocks.size(); i++) {
+                Tag tag = blocks.get(i);
+                if (tag instanceof CompoundTag entry && entry.contains("pos", Tag.TAG_LONG)) {
+                    seen.add(entry.getLong("pos"));
+                }
+            }
+
+            long serializationStartedAt = System.nanoTime();
+            for (CapturedExpansionBlock block : capture.blocks()) {
+                if (!seen.add(block.pos())) continue;
+                CompoundTag entry = new CompoundTag();
+                entry.putLong("pos", block.pos());
+                entry.put("state", block.state().toNbt());
+                if (block.blockEntityData() != null) {
+                    entry.put("blockEntity", block.blockEntityData().copy());
+                }
+                blocks.add(entry);
+            }
+            root.putString("regionId", capture.regionId());
+            root.putString("dimension", capture.dimension());
+            root.putString("format", MUTATION_FORMAT);
+            root.putLong("regionVolume", capture.regionVolume());
+            root.putLong("expansionGeneration", capture.generation());
+            root.putInt("blockCount", blocks.size());
+            root.put("blocks", blocks);
+            long serializationNanos = System.nanoTime() - serializationStartedAt;
+
+            long writeStartedAt = System.nanoTime();
+            writeAtomically(root, target);
+            long writeNanos = System.nanoTime() - writeStartedAt;
+            return new PersistenceResult(false, blocks.size(), Files.size(target), serializationNanos,
+                writeNanos, System.nanoTime() - startedAt);
+        }
+    }
+
+    static void recoverIncompleteFiles(Path directory) throws IOException {
+        if (!Files.isDirectory(directory)) return;
+        try (var files = Files.list(directory)) {
+            for (Path file : files.toList()) {
+                String name = file.getFileName().toString();
+                if (name.contains(".tmp-")) {
+                    Files.deleteIfExists(file);
+                    continue;
+                }
+                int backup = name.indexOf(".bak-");
+                if (backup < 0) continue;
+                Path target = file.resolveSibling(name.substring(0, backup));
+                if (Files.exists(target)) Files.deleteIfExists(file);
+                else Files.move(file, target, StandardCopyOption.REPLACE_EXISTING);
             }
         }
-        addBorderShell(level, bounds, blocks, seen);
-        if (createCeiling) addCeiling(level, bounds, blocks, seen);
-        root.putInt("blockCount", blocks.size());
-        root.put("blocks", blocks);
-        root.putLong("regionVolume", bounds.volume());
-        writeAtomically(root, target);
     }
 
     static boolean restore(ServerLevel level, Region region, Path directory) throws IOException {
@@ -254,6 +314,7 @@ final class RegionTerrainSnapshot {
 
         for (SnapshotBlock block : blocks) {
             level.setBlock(block.pos(), block.state(), 2);
+            restoreBlockEntity(level, block.pos(), block.blockEntityData());
         }
         AllocationMetrics.add("bigbangregions_snapshot_restore_blocks_total", blocks.size());
         return true;
@@ -272,9 +333,19 @@ final class RegionTerrainSnapshot {
                 LOGGER.warn("Skipping snapshot because block {} lies outside region bounds {}", pos, bounds);
                 return null;
             }
-            blocks.add(new SnapshotBlock(pos, NbtUtils.readBlockState(blockRegistry, entry.getCompound("state"))));
+            CompoundTag blockEntityData = entry.contains("blockEntity", Tag.TAG_COMPOUND)
+                ? entry.getCompound("blockEntity").copy() : null;
+            blocks.add(new SnapshotBlock(pos, NbtUtils.readBlockState(blockRegistry, entry.getCompound("state")), blockEntityData));
         }
         return blocks;
+    }
+
+    private static void restoreBlockEntity(ServerLevel level, BlockPos pos, CompoundTag data) {
+        if (data == null) return;
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        if (blockEntity == null) return;
+        blockEntity.loadWithComponents(data.copy(), level.registryAccess());
+        blockEntity.setChanged();
     }
 
     private static boolean areSnapshotChunksLoaded(ServerLevel level, List<SnapshotBlock> blocks) {
@@ -361,17 +432,38 @@ final class RegionTerrainSnapshot {
         return true;
     }
 
-    private static void writeAtomically(CompoundTag root, Path target) throws IOException {
+    static void writeAtomically(CompoundTag root, Path target) throws IOException {
+        writeAtomically(root, target, NbtIo::writeCompressed, RegionTerrainSnapshot::move);
+    }
+
+    static void writeAtomically(CompoundTag root, Path target, SnapshotWriter writer, SnapshotMover mover) throws IOException {
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp-" + UUID.randomUUID());
+        Path backup = null;
         try {
-            NbtIo.writeCompressed(root, temporary);
+            writer.write(root, temporary);
             try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                mover.move(temporary, target, true);
             } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+                backup = target.resolveSibling(target.getFileName() + ".bak-" + UUID.randomUUID());
+                if (Files.exists(target)) mover.move(target, backup, false);
+                try {
+                    mover.move(temporary, target, false);
+                    Files.deleteIfExists(backup);
+                } catch (IOException failure) {
+                    if (Files.exists(backup) && !Files.exists(target)) mover.move(backup, target, false);
+                    throw failure;
+                }
             }
         } finally {
             Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static void move(Path source, Path target, boolean atomic) throws IOException {
+        if (atomic) {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } else {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -379,7 +471,68 @@ final class RegionTerrainSnapshot {
         return directory.resolve(regionId + ".nbt");
     }
 
-    private record SnapshotBlock(BlockPos pos, BlockState state) {
+    private static StateData stateData(BlockState state) {
+        String id = String.valueOf(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()));
+        Map<String, String> properties = new LinkedHashMap<>();
+        for (Property<?> property : state.getProperties()) {
+            addProperty(state, property, properties);
+        }
+        return new StateData(id, properties);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void addProperty(BlockState state, Property property, Map<String, String> properties) {
+        properties.put(property.getName(), property.getName((Comparable) state.getValue(property)));
+    }
+
+    record ExpansionCapture(String regionId, String dimension, long generation, long regionVolume,
+                            Path target, List<CapturedExpansionBlock> blocks) {
+        ExpansionCapture {
+            blocks = List.copyOf(blocks);
+        }
+    }
+
+    record CapturedExpansionBlock(long pos, StateData state, CompoundTag blockEntityData) {
+        CapturedExpansionBlock {
+            blockEntityData = blockEntityData == null ? null : blockEntityData.copy();
+        }
+    }
+
+    record StateData(String blockId, Map<String, String> properties) {
+        StateData {
+            properties = Map.copyOf(properties);
+        }
+
+        CompoundTag toNbt() {
+            CompoundTag state = new CompoundTag();
+            state.putString("Name", blockId);
+            if (!properties.isEmpty()) {
+                CompoundTag values = new CompoundTag();
+                properties.forEach(values::putString);
+                state.put("Properties", values);
+            }
+            return state;
+        }
+    }
+
+    record PersistenceResult(boolean discarded, int blockCount, long compressedBytes,
+                             long serializationNanos, long compressionAndWriteNanos, long totalNanos) {
+        static PersistenceResult discarded(long totalNanos) {
+            return new PersistenceResult(true, 0, 0, 0, 0, totalNanos);
+        }
+    }
+
+    @FunctionalInterface
+    interface SnapshotWriter {
+        void write(CompoundTag root, Path target) throws IOException;
+    }
+
+    @FunctionalInterface
+    interface SnapshotMover {
+        void move(Path source, Path target, boolean atomic) throws IOException;
+    }
+
+    private record SnapshotBlock(BlockPos pos, BlockState state, CompoundTag blockEntityData) {
     }
 
     private static final class ChunkKey {
