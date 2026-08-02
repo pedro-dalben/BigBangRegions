@@ -54,6 +54,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
 
 public class TerrainAllocationCoordinator {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-TerrainAllocationCoordinator");
@@ -86,9 +87,16 @@ public class TerrainAllocationCoordinator {
     private final ChunkPreparationService chunkPreparationService;
     private final LoadedWorldValidator loadedWorldValidator;
     private final BiomeAnchorLocator biomeAnchorLocator;
+    private ExpansionVisualPipeline expansionVisualPipeline;
 
     private final Map<UUID, Long> creationCooldowns = new ConcurrentHashMap<>();
     private final Map<UUID, Long> homeTeleportCooldowns = new ConcurrentHashMap<>();
+
+    public enum ExpansionVisualRequestStatus { STARTED, DUPLICATE, REJECTED }
+
+    public record ExpansionVisualOutcome(String regionId, String operationId, long generation, boolean succeeded,
+                                         String failureStage, String failureDetail) {
+    }
 
     private enum LocalAnchorSearchResult {
         RESERVED,
@@ -999,22 +1007,46 @@ public class TerrainAllocationCoordinator {
         return !level.getBlockState(pos).isCollisionShapeFullBlock(level, pos);
     }
 
-    public boolean refreshExpansionBorder(ServerLevel level, RegionBounds oldBounds, RegionBounds targetBounds, String regionId) {
-        Config.BorderConfig border = configManager.getConfig().getPlayerLandAllocation().getBorder();
-        try {
-            RegionTerrainSnapshot.captureExpansionBorder(level, targetBounds, regionId,
-                getRestoreDirectory(), border.isCreateCeiling());
-        } catch (Exception e) {
-            LOGGER.error("Failed to capture expansion border snapshot", e);
-            return false;
+    /** Schedules the expansion-only visual pipeline; world access occurs later on server ticks. */
+    public ExpansionVisualRequestStatus scheduleExpansionVisual(
+        RegionBounds oldBounds,
+        RegionBounds targetBounds,
+        String regionId,
+        String operationId,
+        long generation,
+        Consumer<ExpansionVisualOutcome> completion
+    ) {
+        ExpansionVisualPipeline pipeline = expansionVisualPipeline();
+        ExpansionVisualPipeline.Plan plan = ExpansionVisualPipeline.plan(regionId, operationId, generation,
+            oldBounds, targetBounds, configManager.getConfig().getPlayerLandAllocation().getBorder(), getRestoreDirectory());
+        return switch (pipeline.request(plan, result -> completion.accept(new ExpansionVisualOutcome(
+            result.regionId(), result.operationId(), result.generation(), result.succeeded(),
+            result.failureStage(), result.failureDetail()
+        )))) {
+            case STARTED -> ExpansionVisualRequestStatus.STARTED;
+            case DUPLICATE -> ExpansionVisualRequestStatus.DUPLICATE;
+            case REJECTED -> ExpansionVisualRequestStatus.REJECTED;
+        };
+    }
+
+    public void tickExpansionVisuals(MinecraftServer server) {
+        if (expansionVisualPipeline != null) {
+            expansionVisualPipeline.tick(server, configManager.getConfig().getRegionExpansionPerformance());
         }
-        ResourceLocation material = ResourceLocation.parse(border.getMaterial());
-        net.minecraft.world.level.block.Block glass = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(material);
-        if (glass == null || glass == net.minecraft.world.level.block.Blocks.AIR) glass = net.minecraft.world.level.block.Blocks.GLASS;
-        net.minecraft.world.level.block.state.BlockState oldState = glass.defaultBlockState();
-        clearLegacyExpansionBorder(level, oldBounds, oldState);
-        generateGlassBorder(level, targetBounds, border.getMaterial(), border.isCreateCeiling());
-        return true;
+    }
+
+    public void shutdownExpansionVisuals() {
+        if (expansionVisualPipeline != null) {
+            expansionVisualPipeline.shutdown(configManager.getConfig().getRegionExpansionPerformance().getShutdownTimeoutSeconds());
+        }
+    }
+
+    private ExpansionVisualPipeline expansionVisualPipeline() {
+        if (expansionVisualPipeline == null) {
+            expansionVisualPipeline = new ExpansionVisualPipeline(
+                getRestoreDirectory(), configManager.getConfig().getRegionExpansionPerformance());
+        }
+        return expansionVisualPipeline;
     }
 
     private static boolean isHomeUsable(ServerLevel level, RegionBounds bounds, PlayerRegionHome home) {
