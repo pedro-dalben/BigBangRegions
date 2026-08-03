@@ -6,7 +6,7 @@
 
 ## Overview
 
-This integration draws region boundaries and center markers on the JourneyMap minimap and fullscreen map for authorized players. BigBangRegions builds a `ServerMapSnapshot` through the optional BigMonCraft API; BigMonCraft's JourneyMap server bridge sends native polygons and waypoints to the client.
+This integration draws region boundaries on the JourneyMap minimap and fullscreen map for authorized players. BigBangRegions builds a `ServerMapSnapshot` through the optional BigMonCraft API; BigMonCraft's JourneyMap server bridge sends native polygons to the client.
 
 ## Requirements
 
@@ -131,13 +131,6 @@ Chunk tiles are intentionally more restricted than the region outline: only the 
 - Stroke border uses the configured color and opacity
 - Label shows region name on hover
 - Player-region palette follows the viewer relationship: owner, member, public, or staff
-
-### Center Marker (waypoint)
-
-- Placed at center of region bounds
-- Color matches region type
-- Name matches region display name
-- Shows region type on hover
 
 ### Chunk Loader Tiles
 
