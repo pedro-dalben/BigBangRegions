@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -370,6 +371,39 @@ final class RegionTerrainSnapshot {
         }
     }
 
+    /** Reads immutable snapshot data off-thread; block registry/world access stays in {@link RestoreCursor}. */
+    static RestoreData readMutationSnapshot(Region region, Path directory) throws IOException {
+        Path file = snapshotPath(directory, region.getId());
+        if (!Files.exists(file)) return RestoreData.missing();
+
+        CompoundTag root = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap());
+        String snapshotDimension = root.getString("dimension");
+        if (!snapshotDimension.isEmpty() && !snapshotDimension.equals(region.getBounds().getDimension())) {
+            throw new IOException("Snapshot dimension differs from region dimension");
+        }
+        if (!MUTATION_FORMAT.equals(root.getString("format"))) {
+            throw new IOException("Snapshot is not in resumable mutation format");
+        }
+
+        List<SerializedSnapshotBlock> blocks = new ArrayList<>();
+        Set<Long> chunks = new LinkedHashSet<>();
+        ListTag tags = root.getList("blocks", Tag.TAG_COMPOUND);
+        for (int i = 0; i < tags.size(); i++) {
+            Tag tag = tags.get(i);
+            if (!(tag instanceof CompoundTag entry) || !entry.contains("state", Tag.TAG_COMPOUND)) {
+                throw new IOException("Snapshot contains an invalid block entry");
+            }
+            BlockPos pos = BlockPos.of(entry.getLong("pos"));
+            if (!region.getBounds().contains(region.getBounds().getDimension(), pos.getX(), pos.getY(), pos.getZ())) {
+                throw new IOException("Snapshot block lies outside region bounds");
+            }
+            blocks.add(new SerializedSnapshotBlock(pos.asLong(), entry.getCompound("state").copy(),
+                entry.contains("blockEntity", Tag.TAG_COMPOUND) ? entry.getCompound("blockEntity").copy() : null));
+            chunks.add(ChunkKey.pack(pos.getX() >> 4, pos.getZ() >> 4));
+        }
+        return new RestoreData(file, Files.size(file), List.copyOf(blocks), List.copyOf(chunks));
+    }
+
     private static ListTag captureMutationBlocks(
         ServerLevel level,
         RegionBounds bounds,
@@ -482,6 +516,63 @@ final class RegionTerrainSnapshot {
         }
         AllocationMetrics.add("bigbangregions_snapshot_restore_blocks_total", blocks.size());
         return true;
+    }
+
+    /** Server-thread cursor with a preflight phase so a missing chunk cannot cause a partial restore. */
+    static final class RestoreCursor {
+        private enum Stage { PREFLIGHT, APPLYING, COMPLETED, FAILED }
+
+        private final RestoreData data;
+        private final HolderGetter<net.minecraft.world.level.block.Block> blockRegistry;
+        private int chunkIndex;
+        private int blockIndex;
+        private Stage stage = Stage.PREFLIGHT;
+        private String failure;
+
+        RestoreCursor(ServerLevel level, RestoreData data) {
+            this.data = data;
+            this.blockRegistry = level.registryAccess().lookupOrThrow(Registries.BLOCK);
+        }
+
+        boolean isComplete() { return stage == Stage.COMPLETED; }
+        boolean isFailed() { return stage == Stage.FAILED; }
+        String failure() { return failure; }
+        int totalBlocks() { return data.blocks().size(); }
+        int restoredBlocks() { return blockIndex; }
+        long fileBytes() { return data.fileBytes(); }
+
+        /** Executes one small read/check/set operation on the server thread. */
+        void advance(ServerLevel level) {
+            if (stage == Stage.PREFLIGHT) {
+                if (chunkIndex >= data.chunks().size()) {
+                    stage = Stage.APPLYING;
+                    return;
+                }
+                long packed = data.chunks().get(chunkIndex++);
+                if (level.getChunkSource().getChunkNow(ChunkKey.x(packed), ChunkKey.z(packed)) == null) {
+                    fail("Required snapshot chunk is not loaded");
+                }
+                return;
+            }
+            if (stage != Stage.APPLYING) return;
+            if (blockIndex >= data.blocks().size()) {
+                stage = Stage.COMPLETED;
+                return;
+            }
+            try {
+                SerializedSnapshotBlock block = data.blocks().get(blockIndex++);
+                BlockPos pos = BlockPos.of(block.pos());
+                level.setBlock(pos, NbtUtils.readBlockState(blockRegistry, block.state()), 2);
+                restoreBlockEntity(level, pos, block.blockEntityData());
+            } catch (RuntimeException error) {
+                fail(error.getMessage());
+            }
+        }
+
+        private void fail(String detail) {
+            stage = Stage.FAILED;
+            failure = detail == null ? "Unknown restore error" : detail;
+        }
     }
 
     private static List<SnapshotBlock> decodeBlocks(ServerLevel level, RegionBounds bounds, ListTag tags) {
@@ -659,6 +750,19 @@ final class RegionTerrainSnapshot {
     record CreationCapture(CompoundTag root, Path target, int blockCount) {
         CreationCapture {
             root = root.copy();
+        }
+    }
+
+    record RestoreData(Path file, long fileBytes, List<SerializedSnapshotBlock> blocks, List<Long> chunks) {
+        static RestoreData missing() { return new RestoreData(null, 0L, List.of(), List.of()); }
+        boolean exists() { return file != null; }
+        int blockCount() { return blocks.size(); }
+    }
+
+    private record SerializedSnapshotBlock(long pos, CompoundTag state, CompoundTag blockEntityData) {
+        private SerializedSnapshotBlock {
+            state = state.copy();
+            blockEntityData = blockEntityData == null ? null : blockEntityData.copy();
         }
     }
 

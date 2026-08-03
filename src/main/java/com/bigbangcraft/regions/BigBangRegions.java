@@ -428,6 +428,9 @@ public class BigBangRegions implements ModInitializer {
             if (allocationScheduler != null) {
                 allocationScheduler.tick(server);
             }
+            if (allocationCoordinator != null) {
+                allocationCoordinator.tickDeletionRestores();
+            }
             if (expansionCoordinator != null) {
                 expansionCoordinator.reconcileExpansionVisuals(server);
                 expansionCoordinator.processNextExpansion(server);

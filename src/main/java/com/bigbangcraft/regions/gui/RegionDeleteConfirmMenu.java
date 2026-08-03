@@ -84,7 +84,6 @@ public class RegionDeleteConfirmMenu extends ChestMenu {
         if (slotId == 15) {
             try {
                 serverPlayer.closeContainer();
-                BigBangRegions.getChunkLoaderService().onRegionDeleted(serverPlayer.getServer(), region);
                 boolean restored = BigBangRegions.getAllocationCoordinator().deletePlayerOwnedRegion(serverPlayer, region);
                 if (BigBangRegions.getAuditService() != null) {
                     try {
@@ -93,7 +92,9 @@ public class RegionDeleteConfirmMenu extends ChestMenu {
                         // Audit must not block deletion feedback.
                     }
                 }
-                if (restored) {
+                if (BigBangRegions.getAllocationCoordinator().isDeletionPending(region.getId())) {
+                    serverPlayer.sendSystemMessage(Component.literal("§aExclusão agendada; a restauração será concluída em etapas."));
+                } else if (restored) {
                     serverPlayer.sendSystemMessage(Component.literal("§aSeu terreno foi excluido e o terreno original foi restaurado."));
                 } else {
                     serverPlayer.sendSystemMessage(Component.literal("§eSeu terreno foi excluido, mas a restauracao completa nao concluiu."));

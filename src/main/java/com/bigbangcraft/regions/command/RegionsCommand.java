@@ -861,17 +861,16 @@ public class RegionsCommand {
             }
 
             UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
-            BigBangRegions.getChunkLoaderService().onRegionDeleted(source.getServer(), region);
             BigBangRegions.getAllocationCoordinator().deleteRegionAsAdmin(region, level, actorUuid);
             auditService.log(region.getId(), actorUuid, "DELETE_REGION", region.getType().name(), null, null);
             deleted++;
         }
 
         if (deleted == 1) {
-            source.sendSuccess(() -> Component.literal("Região deletada com sucesso.").withStyle(ChatFormatting.GREEN), false);
+            source.sendSuccess(() -> Component.literal("Exclusão da região agendada.").withStyle(ChatFormatting.GREEN), false);
         } else {
             int deletedCount = deleted;
-            source.sendSuccess(() -> Component.literal(deletedCount + " regiões deletadas com sucesso.").withStyle(ChatFormatting.GREEN), false);
+            source.sendSuccess(() -> Component.literal(deletedCount + " exclusões de região agendadas.").withStyle(ChatFormatting.GREEN), false);
         }
         return 1;
     }
@@ -903,17 +902,13 @@ public class RegionsCommand {
                 level = source.getServer().getLevel(dimensionKey);
             }
 
-            BigBangRegions.getChunkLoaderService().onRegionDeleted(source.getServer(), region);
             BigBangRegions.getAllocationCoordinator().deleteRegionAsAdmin(region, level, actorUuid);
             auditService.log(region.getId(), actorUuid, "DELETE_REGION", region.getType().name(), null, null);
             deleted++;
         }
 
-        regionCache.clear();
-        BigBangRegions.getRegionMapIntegration().clearAllPlayers(source.getServer());
-
         int deletedCount = deleted;
-        source.sendSuccess(() -> Component.literal("Todas as " + deletedCount + " regiões foram deletadas com sucesso.").withStyle(ChatFormatting.GREEN), false);
+        source.sendSuccess(() -> Component.literal("Todas as " + deletedCount + " exclusões foram agendadas.").withStyle(ChatFormatting.GREEN), false);
         return 1;
     }
 

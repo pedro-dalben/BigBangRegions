@@ -72,6 +72,7 @@ public class TerrainAllocationCoordinator {
     private final Map<String, String> lastProgressSignatures = new ConcurrentHashMap<>();
     private final Map<String, Long> lastSignatureChangedAt = new ConcurrentHashMap<>();
     private final Map<String, CreationSnapshotWork> creationSnapshots = new ConcurrentHashMap<>();
+    private final Map<String, PendingDeletion> pendingDeletions = new ConcurrentHashMap<>();
     private final ExecutorService creationSnapshotExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "BigBangRegions-AllocationSnapshotIO");
         thread.setDaemon(true);
@@ -1139,6 +1140,56 @@ public class TerrainAllocationCoordinator {
         }
     }
 
+    /** Advances one deletion restore under the same configurable visual-work budget. */
+    public void tickDeletionRestores() {
+        PendingDeletion deletion = pendingDeletions.values().stream().findFirst().orElse(null);
+        if (deletion == null) return;
+        int timeoutSeconds = configManager.getConfig().getRegionExpansionPerformance().getDeletionRestoreTimeoutSeconds();
+        if (System.currentTimeMillis() - deletion.startedAt > TimeUnit.SECONDS.toMillis(timeoutSeconds)) {
+            failDeletion(deletion, "Tempo limite de restauração excedido");
+            return;
+        }
+        try {
+            if (deletion.snapshotRead == null) {
+                deletion.snapshotRead = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return RegionTerrainSnapshot.readMutationSnapshot(deletion.region, getRestoreDirectory());
+                    } catch (IOException error) {
+                        throw new IllegalStateException(error);
+                    }
+                }, creationSnapshotExecutor);
+                return;
+            }
+            if (deletion.cursor == null) {
+                if (!deletion.snapshotRead.isDone()) return;
+                RegionTerrainSnapshot.RestoreData data = deletion.snapshotRead.getNow(null);
+                if (data == null || !data.exists()) {
+                    failDeletion(deletion, "Snapshot de restauração não encontrado");
+                    return;
+                }
+                deletion.cursor = new RegionTerrainSnapshot.RestoreCursor(deletion.level, data);
+            }
+
+            Config.RegionExpansionPerformanceConfig performance = configManager.getConfig().getRegionExpansionPerformance();
+            long startedAt = System.nanoTime();
+            long deadline = startedAt + TimeUnit.MILLISECONDS.toNanos(performance.getBorderApplicationBudgetMs());
+            int steps = 0;
+            while (steps < performance.getBorderApplicationMaxBlocksPerTick() && System.nanoTime() < deadline
+                && !deletion.cursor.isComplete() && !deletion.cursor.isFailed()) {
+                deletion.cursor.advance(deletion.level);
+                steps++;
+            }
+            AllocationMetrics.add("bigbangregions_snapshot_restore_nanos_total", System.nanoTime() - startedAt);
+            if (deletion.cursor.isFailed()) {
+                failDeletion(deletion, deletion.cursor.failure());
+            } else if (deletion.cursor.isComplete()) {
+                completeDeletion(deletion);
+            }
+        } catch (RuntimeException error) {
+            failDeletion(deletion, error.getMessage());
+        }
+    }
+
     public void shutdownExpansionVisuals() {
         if (expansionVisualPipeline != null) {
             expansionVisualPipeline.shutdown(configManager.getConfig().getRegionExpansionPerformance().getShutdownTimeoutSeconds());
@@ -1505,6 +1556,10 @@ public class TerrainAllocationCoordinator {
 
     public boolean deleteRegionAsAdmin(Region region, ServerLevel level, UUID actorUuid) {
         return deleteRegionInternal(region, level, actorUuid, true);
+    }
+
+    public boolean isDeletionPending(String regionId) {
+        return pendingDeletions.containsKey(regionId);
     }
 
     public boolean deletePlayerOwnedRegion(ServerPlayer player, Region region) {
@@ -2332,17 +2387,55 @@ public class TerrainAllocationCoordinator {
         if (region == null) {
             throw new IllegalArgumentException("Regiao nao encontrada.");
         }
+        if (BigBangRegions.getExpansionCoordinator() != null
+            && BigBangRegions.getExpansionCoordinator().hasActiveExpansion(region.getId())) {
+            throw new IllegalStateException("A região possui uma expansão em andamento.");
+        }
 
-        boolean restored = false;
         if (region.getType() == RegionType.PLAYER_REGION) {
             if (restoreTerrain && level != null) {
-                removeEntitiesInRegion(level, region.getBounds());
-                restored = restorePlayerRegionTerrain(region, level);
+                PendingDeletion deletion = new PendingDeletion(region, level, actorUuid);
+                if (pendingDeletions.putIfAbsent(region.getId(), deletion) != null) {
+                    throw new IllegalStateException("Já existe uma exclusão em andamento para esta região.");
+                }
+                LOGGER.info("Region deletion queued for incremental restore: id={}, actor={}", region.getId(), actorUuid);
+                return false;
             } else if (restoreTerrain) {
                 LOGGER.warn("Skipping terrain restore for deleted region {} because target level is unavailable", region.getId());
             }
         }
 
+        completeRegionDeletion(region, level, actorUuid);
+        return false;
+    }
+
+    private void completeDeletion(PendingDeletion deletion) {
+        try {
+            removeEntitiesInRegion(deletion.level, deletion.region.getBounds());
+            RegionTerrainSnapshot.discard(deletion.region.getId(), getRestoreDirectory());
+            AllocationMetrics.add("bigbangregions_snapshot_restore_blocks_total", deletion.cursor.restoredBlocks());
+            AllocationMetrics.add("bigbangregions_snapshot_restore_bytes_total", deletion.cursor.fileBytes());
+            completeRegionDeletion(deletion.region, deletion.level, deletion.actorUuid);
+            pendingDeletions.remove(deletion.region.getId(), deletion);
+            ServerPlayer actor = deletion.actorUuid == null ? null : deletion.level.getServer().getPlayerList().getPlayer(deletion.actorUuid);
+            if (actor != null) actor.sendSystemMessage(Component.literal("§aSeu terreno foi excluído e o terreno original foi restaurado."));
+            LOGGER.info("Region deletion restore completed: id={}, blocks={}", deletion.region.getId(), deletion.cursor.restoredBlocks());
+        } catch (Exception error) {
+            failDeletion(deletion, error.getMessage());
+        }
+    }
+
+    private void failDeletion(PendingDeletion deletion, String detail) {
+        pendingDeletions.remove(deletion.region.getId(), deletion);
+        LOGGER.error("Region deletion restore failed; region remains protected id={}, detail={}", deletion.region.getId(), detail);
+        ServerPlayer actor = deletion.actorUuid == null ? null : deletion.level.getServer().getPlayerList().getPlayer(deletion.actorUuid);
+        if (actor != null) actor.sendSystemMessage(Component.literal("§cA restauração da região falhou; ela continua protegida. Contate a administração."));
+    }
+
+    private void completeRegionDeletion(Region region, ServerLevel level, UUID actorUuid) {
+        if (BigBangRegions.getChunkLoaderService() != null && level != null) {
+            BigBangRegions.getChunkLoaderService().onRegionDeleted(level.getServer(), region);
+        }
         regionRepository.delete(region.getId());
         if (BigBangRegions.getVirtualPastureService() != null) {
             BigBangRegions.getVirtualPastureService().forgetRegion(region.getId());
@@ -2356,7 +2449,21 @@ public class TerrainAllocationCoordinator {
         }
 
         LOGGER.info("Region deleted: id={}, type={}, actor={}", region.getId(), region.getType(), actorUuid);
-        return restored;
+    }
+
+    private static final class PendingDeletion {
+        private final Region region;
+        private final ServerLevel level;
+        private final UUID actorUuid;
+        private final long startedAt = System.currentTimeMillis();
+        private CompletableFuture<RegionTerrainSnapshot.RestoreData> snapshotRead;
+        private RegionTerrainSnapshot.RestoreCursor cursor;
+
+        private PendingDeletion(Region region, ServerLevel level, UUID actorUuid) {
+            this.region = region;
+            this.level = level;
+            this.actorUuid = actorUuid;
+        }
     }
 
     private void removeEntitiesInRegion(ServerLevel level, RegionBounds bounds) {

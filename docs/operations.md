@@ -56,3 +56,11 @@ disco. Veja o guia completo em [`docs/bigbangregions/chunky-pregen.md`](bigbangr
 
 Ajustes de tempo por tick ficam em `config.json` > `playerLandAllocation.scheduler`:
 `maxCandidateEvaluationsPerTick` (hard cap) e `maxBiomeSearchMillisPerTick` (limite por tempo).
+
+Snapshots, bordas e restaurações usam `regionExpansionPerformance`: por padrão cada lote usa
+3 ms e 250 passos. `deletionRestoreTimeoutSeconds` (120 por padrão) cancela uma restauração
+que não consegue terminar sem remover a região do banco.
+
+Uma exclusão de terreno de jogador é confirmada como **agendada**. A região continua protegida
+até a restauração terminar; em caso de falha ou timeout, o snapshot e a região são preservados
+para uma nova tentativa administrativa.

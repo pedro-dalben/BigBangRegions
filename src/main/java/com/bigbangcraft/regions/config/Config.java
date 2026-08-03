@@ -705,6 +705,7 @@ public class Config {
         private int persistenceWorkers = 1;
         private int persistenceQueueCapacity = 32;
         private int shutdownTimeoutSeconds = 10;
+        private int deletionRestoreTimeoutSeconds = 120;
 
         public int getSnapshotCaptureBudgetMs() { return bounded(snapshotCaptureBudgetMs, 1, 20); }
         public int getSnapshotCaptureMaxBlocksPerTick() { return bounded(snapshotCaptureMaxBlocksPerTick, 1, 5_000); }
@@ -713,6 +714,7 @@ public class Config {
         public int getPersistenceWorkers() { return bounded(persistenceWorkers, 1, 2); }
         public int getPersistenceQueueCapacity() { return bounded(persistenceQueueCapacity, 1, 256); }
         public int getShutdownTimeoutSeconds() { return bounded(shutdownTimeoutSeconds, 1, 60); }
+        public int getDeletionRestoreTimeoutSeconds() { return bounded(deletionRestoreTimeoutSeconds, 30, 1_800); }
 
         public void setSnapshotCaptureBudgetMs(int value) { snapshotCaptureBudgetMs = value; }
         public void setSnapshotCaptureMaxBlocksPerTick(int value) { snapshotCaptureMaxBlocksPerTick = value; }
@@ -721,6 +723,7 @@ public class Config {
         public void setPersistenceWorkers(int value) { persistenceWorkers = value; }
         public void setPersistenceQueueCapacity(int value) { persistenceQueueCapacity = value; }
         public void setShutdownTimeoutSeconds(int value) { shutdownTimeoutSeconds = value; }
+        public void setDeletionRestoreTimeoutSeconds(int value) { deletionRestoreTimeoutSeconds = value; }
 
         private static int bounded(int value, int minimum, int maximum) {
             return Math.max(minimum, Math.min(maximum, value));

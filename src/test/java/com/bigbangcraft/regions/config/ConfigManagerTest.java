@@ -65,6 +65,7 @@ public class ConfigManagerTest {
         assertEquals(2, config.getVirtualPasture().getMaxPerRegion());
         assertEquals(2, config.getVirtualPasture().getMaxPerPlayer());
         assertEquals(1, config.getVirtualPasture().getMaxPerChunk());
+        assertEquals(120, config.getRegionExpansionPerformance().getDeletionRestoreTimeoutSeconds());
 
         // 2. Corrupt file with invalid JSON
         Files.writeString(configFile, "{ invalid json garbage }");

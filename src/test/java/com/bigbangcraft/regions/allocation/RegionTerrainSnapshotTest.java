@@ -178,6 +178,48 @@ public class RegionTerrainSnapshotTest {
     }
 
     @Test
+    void restoresMutationSnapshotIncrementallyOnlyAfterChunkPreflight(@TempDir Path tempDir) throws Exception {
+        ServerChunkCache chunkSource = mock(ServerChunkCache.class);
+        when(chunkSource.getChunkNow(anyInt(), anyInt())).thenReturn(mock(LevelChunk.class));
+        Map<Long, BlockState> states = new HashMap<>();
+        ServerLevel level = mockLevel(chunkSource, states);
+        RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 4, 70, 4);
+        Region region = new Region("region-cursor", "Player Region", RegionType.PLAYER_REGION, bounds, 100,
+            UUID.randomUUID(), UUID.randomUUID(), 0L, 0L, "ACTIVE");
+
+        RegionTerrainSnapshot.capture(level, bounds, new net.minecraft.core.BlockPos(2, 65, 2), "region-cursor", tempDir, false);
+        RegionTerrainSnapshot.RestoreData data = RegionTerrainSnapshot.readMutationSnapshot(region, tempDir);
+        RegionTerrainSnapshot.RestoreCursor cursor = new RegionTerrainSnapshot.RestoreCursor(level, data);
+        for (int step = 0; step < 10_000 && !cursor.isComplete() && !cursor.isFailed(); step++) cursor.advance(level);
+
+        assertTrue(cursor.isComplete());
+        assertFalse(cursor.isFailed());
+        assertEquals(data.blockCount(), cursor.restoredBlocks());
+        verify(level, atLeastOnce()).setBlock(any(net.minecraft.core.BlockPos.class), any(), anyInt());
+    }
+
+    @Test
+    void incrementalPreflightFailsBeforeChangingAnyBlock(@TempDir Path tempDir) throws Exception {
+        ServerChunkCache loadedChunks = mock(ServerChunkCache.class);
+        when(loadedChunks.getChunkNow(anyInt(), anyInt())).thenReturn(mock(LevelChunk.class));
+        RegionBounds bounds = new RegionBounds("minecraft:overworld", 0, 0, 0, 4, 70, 4);
+        Region region = new Region("region-preflight", "Player Region", RegionType.PLAYER_REGION, bounds, 100,
+            UUID.randomUUID(), UUID.randomUUID(), 0L, 0L, "ACTIVE");
+        RegionTerrainSnapshot.capture(mockLevel(loadedChunks), bounds, new net.minecraft.core.BlockPos(2, 65, 2),
+            "region-preflight", tempDir, false);
+
+        ServerChunkCache missingChunks = mock(ServerChunkCache.class);
+        when(missingChunks.getChunkNow(anyInt(), anyInt())).thenReturn(null);
+        ServerLevel restoreLevel = mockLevel(missingChunks, new HashMap<>());
+        RegionTerrainSnapshot.RestoreCursor cursor = new RegionTerrainSnapshot.RestoreCursor(restoreLevel,
+            RegionTerrainSnapshot.readMutationSnapshot(region, tempDir));
+        cursor.advance(restoreLevel);
+
+        assertTrue(cursor.isFailed());
+        verify(restoreLevel, org.mockito.Mockito.never()).setBlock(any(net.minecraft.core.BlockPos.class), any(), anyInt());
+    }
+
+    @Test
     void keepsLegacyBlockSnapshotsReadable(@TempDir Path tempDir) throws Exception {
         ServerChunkCache chunkSource = mock(ServerChunkCache.class);
         when(chunkSource.getChunkNow(anyInt(), anyInt())).thenReturn(mock(LevelChunk.class));

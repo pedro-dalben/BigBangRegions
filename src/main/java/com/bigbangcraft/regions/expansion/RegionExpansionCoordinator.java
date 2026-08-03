@@ -110,6 +110,10 @@ public class RegionExpansionCoordinator {
         }
 
         Region region = playerRegion.get();
+        if (BigBangRegions.getAllocationCoordinator() != null
+            && BigBangRegions.getAllocationCoordinator().isDeletionPending(region.getId())) {
+            throw new IllegalStateException("A região está sendo excluída.");
+        }
         RegionBounds bounds = region.getBounds();
         int currentSize = bounds.getMaxX() - bounds.getMinX() + 1;
 
@@ -186,6 +190,10 @@ public class RegionExpansionCoordinator {
         Region region = regionCache.getAll().stream()
             .filter(r -> r.getType() == RegionType.PLAYER_REGION && ownerUuid.equals(r.getOwnerUuid()) && "ACTIVE".equals(r.getStatus()))
             .findFirst().orElseThrow(() -> new IllegalStateException("Você não possui uma região ativa para expandir."));
+        if (BigBangRegions.getAllocationCoordinator() != null
+            && BigBangRegions.getAllocationCoordinator().isDeletionPending(region.getId())) {
+            throw new IllegalStateException("A região está sendo excluída.");
+        }
         if (expansionRepository.getActiveByRegion(region.getId()) != null) {
             throw new IllegalStateException("Já existe uma expansão ativa para esta região.");
         }
@@ -255,6 +263,10 @@ public class RegionExpansionCoordinator {
                 && "ACTIVE".equals(r.getStatus()))
             .findFirst();
         return playerRegion.map(region -> expansionRepository.getActiveByRegion(region.getId())).orElse(null);
+    }
+
+    public boolean hasActiveExpansion(String regionId) {
+        return regionId != null && expansionRepository.getActiveByRegion(regionId) != null;
     }
 
     public void cancelExpansion(ServerPlayer player) {
