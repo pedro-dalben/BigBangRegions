@@ -18,6 +18,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.Heightmap;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -196,6 +197,26 @@ public class RegionTerrainSnapshotTest {
         assertFalse(cursor.isFailed());
         assertEquals(data.blockCount(), cursor.restoredBlocks());
         verify(level, atLeastOnce()).setBlock(any(net.minecraft.core.BlockPos.class), any(), anyInt());
+    }
+
+    @Test
+    void buildsSpawnPlatformIncrementally() {
+        Map<Long, BlockState> states = new HashMap<>();
+        ServerLevel level = mockLevel(mock(ServerChunkCache.class), states);
+        when(level.getHeight(any(Heightmap.Types.class), anyInt(), anyInt())).thenReturn(65);
+        net.minecraft.core.BlockPos home = new net.minecraft.core.BlockPos(2, 66, 2);
+        RegionTerrainSnapshot.SpawnPlatformCursor cursor = RegionTerrainSnapshot.beginSpawnPlatform(home);
+
+        cursor.advance(level);
+        assertFalse(cursor.isComplete());
+        verify(level, org.mockito.Mockito.never()).setBlock(any(net.minecraft.core.BlockPos.class), any(), anyInt());
+        for (int step = 0; step < 1_000 && !cursor.isComplete() && !cursor.isFailed(); step++) cursor.advance(level);
+
+        assertTrue(cursor.isComplete());
+        assertFalse(cursor.isFailed());
+        assertEquals(new net.minecraft.core.BlockPos(2, 66, 2), cursor.result().finalStandPosition());
+        assertEquals(Blocks.GLOWSTONE.defaultBlockState(), states.get(new net.minecraft.core.BlockPos(2, 65, 2).asLong()));
+        assertEquals(Blocks.AIR.defaultBlockState(), states.get(new net.minecraft.core.BlockPos(2, 66, 2).asLong()));
     }
 
     @Test

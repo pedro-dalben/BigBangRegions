@@ -33,8 +33,6 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.AABB;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,7 +70,9 @@ public class TerrainAllocationCoordinator {
     private final Map<String, String> lastProgressSignatures = new ConcurrentHashMap<>();
     private final Map<String, Long> lastSignatureChangedAt = new ConcurrentHashMap<>();
     private final Map<String, CreationSnapshotWork> creationSnapshots = new ConcurrentHashMap<>();
+    private final Map<String, CreationPlatformWork> creationPlatforms = new ConcurrentHashMap<>();
     private final Map<String, PendingDeletion> pendingDeletions = new ConcurrentHashMap<>();
+    private final Map<String, PendingCreationRollback> pendingCreationRollbacks = new ConcurrentHashMap<>();
     private final ExecutorService creationSnapshotExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "BigBangRegions-AllocationSnapshotIO");
         thread.setDaemon(true);
@@ -548,12 +548,32 @@ public class TerrainAllocationCoordinator {
                 return recoverCreatingFromSqlite(request);
             }
 
+            if (isTimedOut(request, sc)) {
+                if (creationPlatforms.containsKey(request.getId())) {
+                    queueCreationRollback(request, creationRollbackRegion(request, lac), level,
+                        "Tempo limite excedido durante a criacao da plataforma");
+                } else {
+                    discardTerrainSnapshot(request.getRegionId());
+                    handlePreparationFailure(request, level, AllocationRequestState.FAILED,
+                        "Tempo limite excedido durante a criacao da regiao");
+                }
+                return 1;
+            }
+
             if (!ensureCreationSnapshot(request, lac, level, validation)) {
                 return 0;
             }
 
+            SpawnPlatformResult platform = ensureCreationPlatform(request, level, validation);
+            if (platform == null) return 0;
+            if (!platform.success()) {
+                String reason = "Falha na criacao da plataforma: " + String.join("; ", platform.diagnostics());
+                queueCreationRollback(request, creationRollbackRegion(request, lac), level, reason);
+                return 1;
+            }
+
             try {
-                createRegionInSingleTransaction(request, lac, level, validation);
+                createRegionInSingleTransaction(request, lac, level, validation, platform);
             } catch (Exception e) {
                 LOGGER.error("Failed to create region in transaction for request={}: {}", request.getId(), e.getMessage(), e);
                 pauseForRecovery(request, "Falha durante criacao da regiao: " + e.getMessage(), validation.failureReason().name());
@@ -739,7 +759,8 @@ public class TerrainAllocationCoordinator {
     private void createRegionInSingleTransaction(AllocationRequest request,
                                                  Config.PlayerLandAllocationConfig lac,
                                                  ServerLevel level,
-                                                 LoadedWorldValidationResult validation) throws SQLException {
+                                                 LoadedWorldValidationResult validation,
+                                                 SpawnPlatformResult platformResult) throws SQLException {
         PlotSlot slot = slotRepository.get(request.getPlotSlotId());
         if (slot == null) {
             throw new SQLException("Slot nao encontrado durante criacao: " + request.getPlotSlotId());
@@ -753,18 +774,6 @@ public class TerrainAllocationCoordinator {
             claimFootprint.minX(), -64, claimFootprint.minZ(),
             claimFootprint.maxX(), 320, claimFootprint.maxZ()
         );
-        boolean snapshotEnabled = lac.getBorder().isRestoreOnDelete();
-
-        SpawnPlatformResult platformResult = buildSpawnPlatform(level, homePos);
-        if (!platformResult.success()) {
-            discardTerrainSnapshot(regionId);
-            LOGGER.error("[BigBangRegions] Failed to build spawn platform for request={}: {}",
-                request.getId(), String.join("; ", platformResult.diagnostics()));
-            pauseForRecovery(request, "Falha na criacao da plataforma: " + String.join("; ", platformResult.diagnostics()),
-                "failed_platform_generation");
-            return;
-        }
-
         synchronized (databaseManager) {
             Connection conn = databaseManager.getConnection();
             boolean wasAutoCommit = conn.getAutoCommit();
@@ -803,6 +812,10 @@ public class TerrainAllocationCoordinator {
                 conn.commit();
                 committed = true;
 
+                if (!lac.getBorder().isRestoreOnDelete()) {
+                    discardTerrainSnapshot(regionId);
+                }
+
                 regionCache.add(region);
                 membershipCache.loadFromRegion(region);
                 syncSlotCache(slot);
@@ -816,23 +829,40 @@ public class TerrainAllocationCoordinator {
                     platformResult.finalStandPosition().getX(), platformResult.finalStandPosition().getY(), platformResult.finalStandPosition().getZ());
             } catch (Exception e) {
                 try { conn.rollback(); } catch (SQLException ignored) {}
-                if (!committed && snapshotEnabled && region != null) {
-                    try {
-                        RegionTerrainSnapshot.restore(level, region, getRestoreDirectory());
-                    } catch (Exception restoreError) {
-                        LOGGER.error("[BigBangRegions] Failed to restore pre-creation terrain after transaction failure for request={}: {}",
-                            request.getId(), restoreError.getMessage(), restoreError);
-                    }
+                if (!committed && region != null) {
+                    queueCreationRollback(request, region, level,
+                        "Falha na transacao de criacao da regiao: " + e.getMessage());
+                } else {
+                    pauseForRecovery(request, "Falha na transacao de criacao da regiao: " + e.getMessage(),
+                        "failed_home_persistence");
                 }
                 LOGGER.error("[BigBangRegions] DB transaction failed during region creation request={}: {}", request.getId(), e.getMessage(), e);
-                pauseForRecovery(request, "Falha na transacao de criacao da regiao: " + e.getMessage(),
-                    "failed_home_persistence");
                 return;
             } finally {
                 try { conn.setAutoCommit(wasAutoCommit); } catch (SQLException ignored) {}
             }
         }
 
+    }
+
+    /** Advances one spawn-platform read/write cursor under the existing visual work budget. */
+    private SpawnPlatformResult ensureCreationPlatform(AllocationRequest request, ServerLevel level,
+                                                        LoadedWorldValidationResult validation) {
+        CreationPlatformWork work = creationPlatforms.computeIfAbsent(request.getId(), ignored ->
+            new CreationPlatformWork(RegionTerrainSnapshot.beginSpawnPlatform(validation.safeSpawn().blockPos())));
+        Config.RegionExpansionPerformanceConfig performance = configManager.getConfig().getRegionExpansionPerformance();
+        long startedAt = System.nanoTime();
+        long deadline = startedAt + TimeUnit.MILLISECONDS.toNanos(performance.getBorderApplicationBudgetMs());
+        int steps = 0;
+        while (steps < performance.getBorderApplicationMaxBlocksPerTick() && System.nanoTime() < deadline
+            && !work.cursor.isComplete() && !work.cursor.isFailed()) {
+            work.cursor.advance(level);
+            steps++;
+        }
+        AllocationMetrics.add("bigbangregions_spawn_platform_nanos_total", System.nanoTime() - startedAt);
+        if (!work.cursor.isComplete() && !work.cursor.isFailed()) return null;
+        creationPlatforms.remove(request.getId(), work);
+        return work.cursor.result();
     }
 
     private SpawnPlatformResult buildSpawnPlatform(ServerLevel level, BlockPos homePos) {
@@ -904,7 +934,6 @@ public class TerrainAllocationCoordinator {
     /** Captures mutation data in small server-thread steps and writes it without waiting. */
     private boolean ensureCreationSnapshot(AllocationRequest request, Config.PlayerLandAllocationConfig lac,
                                            ServerLevel level, LoadedWorldValidationResult validation) {
-        if (!lac.getBorder().isRestoreOnDelete()) return true;
         CreationSnapshotWork work = creationSnapshots.get(request.getId());
         if (work == null) {
             PlotSlot slot = slotRepository.get(request.getPlotSlotId());
@@ -977,6 +1006,14 @@ public class TerrainAllocationCoordinator {
 
         private CreationSnapshotWork(RegionTerrainSnapshot.CreationCaptureCursor capture) {
             this.capture = capture;
+        }
+    }
+
+    private static final class CreationPlatformWork {
+        private final RegionTerrainSnapshot.SpawnPlatformCursor cursor;
+
+        private CreationPlatformWork(RegionTerrainSnapshot.SpawnPlatformCursor cursor) {
+            this.cursor = cursor;
         }
     }
 
@@ -1140,6 +1177,12 @@ public class TerrainAllocationCoordinator {
         }
     }
 
+    /** Gives deletion and failed-creation restore cursors one shared tick budget. */
+    public void tickTerrainRestores() {
+        if (pendingDeletions.isEmpty()) tickCreationRollbacks();
+        else tickDeletionRestores();
+    }
+
     /** Advances one deletion restore under the same configurable visual-work budget. */
     public void tickDeletionRestores() {
         PendingDeletion deletion = pendingDeletions.values().stream().findFirst().orElse(null);
@@ -1188,6 +1231,84 @@ public class TerrainAllocationCoordinator {
         } catch (RuntimeException error) {
             failDeletion(deletion, error.getMessage());
         }
+    }
+
+    /** Rolls back a failed creation with the same incremental snapshot cursor used for deletion. */
+    public void tickCreationRollbacks() {
+        PendingCreationRollback rollback = pendingCreationRollbacks.values().stream().findFirst().orElse(null);
+        if (rollback == null) return;
+        int timeoutSeconds = configManager.getConfig().getRegionExpansionPerformance().getDeletionRestoreTimeoutSeconds();
+        if (System.currentTimeMillis() - rollback.startedAt > TimeUnit.SECONDS.toMillis(timeoutSeconds)) {
+            failCreationRollback(rollback, "Tempo limite de restauração excedido");
+            return;
+        }
+        try {
+            if (rollback.snapshotRead == null) {
+                rollback.snapshotRead = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return RegionTerrainSnapshot.readMutationSnapshot(rollback.region, getRestoreDirectory());
+                    } catch (IOException error) {
+                        throw new IllegalStateException(error);
+                    }
+                }, creationSnapshotExecutor);
+                return;
+            }
+            if (rollback.cursor == null) {
+                if (!rollback.snapshotRead.isDone()) return;
+                RegionTerrainSnapshot.RestoreData data = rollback.snapshotRead.getNow(null);
+                if (data == null || !data.exists()) {
+                    failCreationRollback(rollback, "Snapshot de restauração não encontrado");
+                    return;
+                }
+                rollback.cursor = new RegionTerrainSnapshot.RestoreCursor(rollback.level, data);
+            }
+            Config.RegionExpansionPerformanceConfig performance = configManager.getConfig().getRegionExpansionPerformance();
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(performance.getBorderApplicationBudgetMs());
+            int steps = 0;
+            while (steps < performance.getBorderApplicationMaxBlocksPerTick() && System.nanoTime() < deadline
+                && !rollback.cursor.isComplete() && !rollback.cursor.isFailed()) {
+                rollback.cursor.advance(rollback.level);
+                steps++;
+            }
+            if (rollback.cursor.isFailed()) {
+                failCreationRollback(rollback, rollback.cursor.failure());
+            } else if (rollback.cursor.isComplete()) {
+                RegionTerrainSnapshot.discard(rollback.region.getId(), getRestoreDirectory());
+                pendingCreationRollbacks.remove(rollback.request.getId(), rollback);
+                tryReleaseSlot(rollback.request);
+                LOGGER.info("Creation rollback completed: request={}, blocks={}", rollback.request.getId(), rollback.cursor.restoredBlocks());
+            }
+        } catch (RuntimeException | IOException error) {
+            failCreationRollback(rollback, error.getMessage());
+        }
+    }
+
+    private void queueCreationRollback(AllocationRequest request, Region region, ServerLevel level, String reason) {
+        if (region == null) {
+            pauseForRecovery(request, reason, "failed_creation_rollback");
+            return;
+        }
+        PendingCreationRollback rollback = new PendingCreationRollback(request, region, level);
+        if (pendingCreationRollbacks.putIfAbsent(request.getId(), rollback) == null) {
+            pauseForRecovery(request, reason, "failed_creation_rollback");
+            LOGGER.error("Creation failed; queued incremental terrain rollback request={}, region={}", request.getId(), region.getId());
+        }
+    }
+
+    private Region creationRollbackRegion(AllocationRequest request, Config.PlayerLandAllocationConfig lac) {
+        PlotSlot slot = slotRepository.get(request.getPlotSlotId());
+        if (slot == null) return null;
+        PlotFootprint footprint = buildClaimFootprint(slot.getMinX(), slot.getMinZ(), lac);
+        long now = System.currentTimeMillis();
+        return new Region(request.getRegionId(), "Rollback", RegionType.PLAYER_REGION,
+            new RegionBounds(lac.getTargetDimension(), footprint.minX(), -64, footprint.minZ(), footprint.maxX(), 320, footprint.maxZ()),
+            100, request.getOwnerUuid(), request.getOwnerUuid(), now, now, "ROLLBACK");
+    }
+
+    private void failCreationRollback(PendingCreationRollback rollback, String detail) {
+        pendingCreationRollbacks.remove(rollback.request.getId(), rollback);
+        LOGGER.error("Creation rollback failed; snapshot was kept for manual recovery request={}, detail={}",
+            rollback.request.getId(), detail);
     }
 
     public void shutdownExpansionVisuals() {
@@ -2260,6 +2381,12 @@ public class TerrainAllocationCoordinator {
 
     private int recoverPausedRequest(AllocationRequest request, ServerLevel level, Config.PlayerLandAllocationConfig lac) {
         String reason = request.getFailureReason();
+        if (reason != null && (reason.contains("Falha na transacao de criacao da regiao")
+            || reason.contains("Falha na criacao da plataforma")
+            || reason.contains("Tempo limite excedido durante a criacao da plataforma"))) {
+            queueCreationRollback(request, creationRollbackRegion(request, lac), level, reason);
+            return 1;
+        }
         if (reason != null && (
             reason.contains("Metadados de preparacao nao encontrados")
                 || reason.contains("Recuperacao: preparacao fisica interrompida")
@@ -2355,6 +2482,7 @@ public class TerrainAllocationCoordinator {
 
     private void cleanupRequestResources(AllocationRequest request, PreparationCancelReason reason, boolean deletePreparationRecord) {
         creationSnapshots.remove(request.getId());
+        creationPlatforms.remove(request.getId());
         validatedWorlds.remove(request.getId());
         completedPreparations.remove(request.getId());
         lastProgressNotifications.remove(request.getId());
@@ -2411,7 +2539,6 @@ public class TerrainAllocationCoordinator {
 
     private void completeDeletion(PendingDeletion deletion) {
         try {
-            removeEntitiesInRegion(deletion.level, deletion.region.getBounds());
             AllocationMetrics.add("bigbangregions_snapshot_restore_blocks_total", deletion.cursor.restoredBlocks());
             AllocationMetrics.add("bigbangregions_snapshot_restore_bytes_total", deletion.cursor.fileBytes());
             completeRegionDeletion(deletion.region, deletion.level, deletion.actorUuid);
@@ -2470,17 +2597,18 @@ public class TerrainAllocationCoordinator {
         }
     }
 
-    private void removeEntitiesInRegion(ServerLevel level, RegionBounds bounds) {
-        AABB box = new AABB(
-            bounds.getMinX(), bounds.getMinY(), bounds.getMinZ(),
-            bounds.getMaxX() + 1.0, bounds.getMaxY() + 1.0, bounds.getMaxZ() + 1.0
-        );
-        List<Entity> entities = level.getEntities((Entity) null, box, entity -> !(entity instanceof ServerPlayer));
-        for (Entity entity : entities) {
-            entity.discard();
-        }
-        if (!entities.isEmpty()) {
-            LOGGER.info("Removed {} entities from region {}", entities.size(), bounds);
+    private static final class PendingCreationRollback {
+        private final AllocationRequest request;
+        private final Region region;
+        private final ServerLevel level;
+        private final long startedAt = System.currentTimeMillis();
+        private CompletableFuture<RegionTerrainSnapshot.RestoreData> snapshotRead;
+        private RegionTerrainSnapshot.RestoreCursor cursor;
+
+        private PendingCreationRollback(AllocationRequest request, Region region, ServerLevel level) {
+            this.request = request;
+            this.region = region;
+            this.level = level;
         }
     }
 

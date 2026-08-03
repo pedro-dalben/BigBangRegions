@@ -21,13 +21,20 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+
+import me.lucko.fabric.api.permissions.v0.Permissions;
 
 /**
  * Enforces placement from a durable position index. It deliberately only inspects chunks that
@@ -36,6 +43,8 @@ import java.util.UUID;
 public final class VirtualPastureService {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-VirtualPasture");
     private static final long RESERVATION_MILLIS = 15_000L;
+    private static final int RECONCILIATION_STEPS_PER_TICK = 64;
+    private static final long RECONCILIATION_BUDGET_NANOS = 2_000_000L;
 
     public record PlacementDecision(boolean allowed, boolean tracked, int current, int maximum, String reason) {
         static PlacementDecision pass() { return new PlacementDecision(true, false, 0, 0, null); }
@@ -45,6 +54,22 @@ public final class VirtualPastureService {
 
     private record Change(ServerLevel level, BlockPos pos, boolean pasture) { }
 
+    private static final class ChunkReconciliation {
+        private final String key;
+        private final ServerLevel level;
+        private final LevelChunk chunk;
+        private final Iterator<BlockEntity> entities;
+        private final Set<String> seen = new HashSet<>();
+        private Iterator<String> indexedRecords;
+
+        private ChunkReconciliation(String key, ServerLevel level, LevelChunk chunk) {
+            this.key = key;
+            this.level = level;
+            this.chunk = chunk;
+            this.entities = chunk.getBlockEntities().values().iterator();
+        }
+    }
+
     private final ConfigManager configManager;
     private final VirtualPastureRepository repository;
     private final RegionCache regionCache;
@@ -53,8 +78,12 @@ public final class VirtualPastureService {
     private final Map<String, Set<String>> byRegion = new HashMap<>();
     private final Map<UUID, Set<String>> byOwner = new HashMap<>();
     private final Map<String, Set<String>> byChunk = new HashMap<>();
-    private final Map<String, Change> changes = new HashMap<>();
+    private final Map<String, Change> changes = new LinkedHashMap<>();
     private final Map<String, LevelChunk> loadedChunks = new HashMap<>();
+    private final Deque<ChunkReconciliation> reconciliationQueue = new ArrayDeque<>();
+    private final Set<String> queuedChunks = new HashSet<>();
+    private final Map<UUID, Integer> cachedOwnerLimits = new ConcurrentHashMap<>();
+    private final Set<UUID> refreshingOwnerLimits = ConcurrentHashMap.newKeySet();
     private ResourceLocation virtualPastureId;
     private boolean available;
     private boolean warnedUnavailable;
@@ -85,6 +114,11 @@ public final class VirtualPastureService {
         warnedUnavailable = false;
         repository.deleteExpiredPending(System.currentTimeMillis());
         rebuild(repository.loadAll());
+        cachedOwnerLimits.clear();
+        refreshingOwnerLimits.clear();
+        if (available) {
+            for (VirtualPastureRecord record : records.values()) refreshOwnerLimit(record.ownerUuid(), config);
+        }
         if (available) LOGGER.info("Virtual Pasture limit active for {}.", virtualPastureId);
     }
 
@@ -113,14 +147,17 @@ public final class VirtualPastureService {
         if (region == null) return PlacementDecision.pass();
         Config.VirtualPastureConfig config = configManager.getConfig().getVirtualPasture();
         UUID owner = region.getOwnerUuid();
-        boolean bypass = permissions.hasPermission(player, config.getAdminBypassPermission());
+        String key = positionKey(level.dimension().location().toString(), pos.asLong());
+        VirtualPastureRecord existing = records.get(key);
+        if (existing != null && existing.state() == VirtualPastureRecord.State.PENDING
+            && existing.pendingExpiresAt() != null && existing.pendingExpiresAt() >= System.currentTimeMillis()) {
+            return PlacementDecision.accepted(count(byOwner.get(existing.ownerUuid())), ownerLimit(level, existing.ownerUuid(), config));
+        }
+        boolean bypass = player != null && permissions.hasPermission(player, config.getAdminBypassPermission());
         int regionCount = count(byRegion.get(region.getId()));
         int ownerCount = owner == null ? 0 : count(byOwner.get(owner));
         int chunkCount = count(byChunk.get(chunkKey(level, pos)));
-        // A member's VIP node must not raise the owner's cap. Offline owner tiers cannot be queried
-        // safely, so members use the default cap until the owner places the next pasture.
-        int ownerLimit = owner != null && owner.equals(player.getUUID()) ? ownerLimit(player, config)
-            : config.getLimits().getOrDefault("default", config.getMaxPerPlayer());
+        int ownerLimit = ownerLimit(level, owner, config);
         VirtualPastureLimitPolicy.Decision limits = VirtualPastureLimitPolicy.check(
             new VirtualPastureLimitPolicy.Counts(regionCount, ownerCount, chunkCount), config.getMaxPerRegion(),
             ownerLimit, config.getMaxPerChunk(), owner != null, bypass);
@@ -149,10 +186,18 @@ public final class VirtualPastureService {
 
     public void tick() {
         expireReservations();
-        if (changes.isEmpty()) return;
-        List<Change> pending = new ArrayList<>(changes.values());
-        changes.clear();
-        for (Change change : pending) {
+        long deadline = System.nanoTime() + RECONCILIATION_BUDGET_NANOS;
+        int steps = reconcileChunks(deadline, RECONCILIATION_STEPS_PER_TICK);
+        reconcileChanges(deadline, RECONCILIATION_STEPS_PER_TICK - steps);
+    }
+
+    private int reconcileChanges(long deadline, int remaining) {
+        int processed = 0;
+        Iterator<Map.Entry<String, Change>> iterator = changes.entrySet().iterator();
+        while (remaining-- > 0 && System.nanoTime() < deadline && iterator.hasNext()) {
+            Change change = iterator.next().getValue();
+            iterator.remove();
+            processed++;
             String dimension = change.level().dimension().location().toString();
             String key = positionKey(dimension, change.pos().asLong());
             try {
@@ -177,27 +222,29 @@ public final class VirtualPastureService {
                 LOGGER.error("Virtual Pasture index update failed for {}", change.pos(), error);
             }
         }
+        return processed;
     }
 
     public void onChunkLoad(ServerLevel level, LevelChunk chunk) {
         if (!available) return;
         String key = chunkKey(level.dimension().location().toString(), chunk.getPos().x, chunk.getPos().z);
         loadedChunks.put(key, chunk);
-        reconcileLoadedChunk(level, chunk);
+        enqueueReconciliation(key, level, chunk);
     }
 
     public void onChunkUnload(ServerLevel level, LevelChunk chunk) {
-        loadedChunks.remove(chunkKey(level.dimension().location().toString(), chunk.getPos().x, chunk.getPos().z));
+        String key = chunkKey(level.dimension().location().toString(), chunk.getPos().x, chunk.getPos().z);
+        loadedChunks.remove(key);
     }
 
     public int reconcileLoadedChunks() {
-        int reconciled = 0;
-        for (LevelChunk chunk : List.copyOf(loadedChunks.values())) {
-            ServerLevel level = (ServerLevel) chunk.getLevel();
-            reconcileLoadedChunk(level, chunk);
-            reconciled++;
+        int queued = 0;
+        for (Map.Entry<String, LevelChunk> entry : List.copyOf(loadedChunks.entrySet())) {
+            if (queuedChunks.contains(entry.getKey())) continue;
+            enqueueReconciliation(entry.getKey(), (ServerLevel) entry.getValue().getLevel(), entry.getValue());
+            queued++;
         }
-        return reconciled;
+        return queued;
     }
 
     public void deleteRegion(String regionId) {
@@ -214,31 +261,63 @@ public final class VirtualPastureService {
     public void transferOwner(String regionId, UUID ownerUuid) {
         if (regionId == null) return;
         repository.transferOwner(regionId, ownerUuid);
+        refreshTransferredOwner(regionId, ownerUuid);
+    }
+
+    /** The durable update already committed with the region row; only hot indexes change here. */
+    public void refreshTransferredOwner(String regionId, UUID ownerUuid) {
+        if (regionId == null) return;
         for (String key : List.copyOf(byRegion.getOrDefault(regionId, Set.of()))) {
             VirtualPastureRecord old = records.get(key);
             if (old == null) continue;
             put(new VirtualPastureRecord(old.dimensionKey(), old.blockPos(), old.regionId(), ownerUuid, old.chunkX(), old.chunkZ(), old.state(), old.pendingExpiresAt()));
         }
+        refreshOwnerLimit(ownerUuid, configManager.getConfig().getVirtualPasture());
     }
 
     public int countRegion(String regionId) { return count(byRegion.get(regionId)); }
     public int countOwner(UUID ownerUuid) { return count(byOwner.get(ownerUuid)); }
     public boolean isAvailable() { return available; }
 
-    private void reconcileLoadedChunk(ServerLevel level, LevelChunk chunk) {
-        String chunkKey = chunkKey(level.dimension().location().toString(), chunk.getPos().x, chunk.getPos().z);
-        Set<String> seen = new HashSet<>();
-        for (BlockEntity entity : chunk.getBlockEntities().values()) {
-            if (!isVirtualPasture(entity.getBlockState())) continue;
-            BlockPos pos = entity.getBlockPos();
-            seen.add(positionKey(level.dimension().location().toString(), pos.asLong()));
-            recordWorldChange(level, pos, true);
+    private void enqueueReconciliation(String key, ServerLevel level, LevelChunk chunk) {
+        if (queuedChunks.add(key)) reconciliationQueue.addLast(new ChunkReconciliation(key, level, chunk));
+    }
+
+    private int reconcileChunks(long deadline, int remaining) {
+        int processed = 0;
+        while (remaining > 0 && System.nanoTime() < deadline && !reconciliationQueue.isEmpty()) {
+            ChunkReconciliation reconciliation = reconciliationQueue.peekFirst();
+            if (loadedChunks.get(reconciliation.key) != reconciliation.chunk) {
+                reconciliationQueue.removeFirst();
+                queuedChunks.remove(reconciliation.key);
+                continue;
+            }
+            if (reconciliation.entities.hasNext()) {
+                BlockEntity entity = reconciliation.entities.next();
+                processed++;
+                remaining--;
+                if (isVirtualPasture(entity.getBlockState())) {
+                    BlockPos pos = entity.getBlockPos();
+                    reconciliation.seen.add(positionKey(reconciliation.level.dimension().location().toString(), pos.asLong()));
+                    recordWorldChange(reconciliation.level, pos, true);
+                }
+                continue;
+            }
+            if (reconciliation.indexedRecords == null) {
+                reconciliation.indexedRecords = List.copyOf(byChunk.getOrDefault(reconciliation.key, Set.of())).iterator();
+            }
+            if (reconciliation.indexedRecords.hasNext()) {
+                String key = reconciliation.indexedRecords.next();
+                processed++;
+                remaining--;
+                VirtualPastureRecord record = records.get(key);
+                if (record != null && record.state() == VirtualPastureRecord.State.ACTIVE && !reconciliation.seen.contains(key)) remove(key);
+                continue;
+            }
+            reconciliationQueue.removeFirst();
+            queuedChunks.remove(reconciliation.key);
         }
-        for (String key : List.copyOf(byChunk.getOrDefault(chunkKey, Set.of()))) {
-            VirtualPastureRecord record = records.get(key);
-            if (record != null && record.state() == VirtualPastureRecord.State.ACTIVE && !seen.contains(key)) remove(key);
-        }
-        tick();
+        return processed;
     }
 
     private Region regionAt(ServerLevel level, BlockPos pos) {
@@ -256,6 +335,41 @@ public final class VirtualPastureService {
         return result;
     }
 
+    private int ownerLimit(ServerLevel level, UUID owner, Config.VirtualPastureConfig config) {
+        int defaultLimit = config.getLimits().getOrDefault("default", config.getMaxPerPlayer());
+        if (owner == null) return defaultLimit;
+        ServerPlayer ownerPlayer = level.getServer().getPlayerList().getPlayer(owner);
+        if (ownerPlayer != null) {
+            int limit = ownerLimit(ownerPlayer, config);
+            cachedOwnerLimits.put(owner, limit);
+            return limit;
+        }
+        refreshOwnerLimit(owner, config);
+        return cachedOwnerLimits.getOrDefault(owner, defaultLimit);
+    }
+
+    private void refreshOwnerLimit(UUID owner, Config.VirtualPastureConfig config) {
+        if (owner == null || !refreshingOwnerLimits.add(owner)) return;
+        int defaultLimit = config.getLimits().getOrDefault("default", config.getMaxPerPlayer());
+        List<Map.Entry<String, Integer>> tiers = config.getLimits().entrySet().stream()
+            .filter(entry -> !"default".equals(entry.getKey())).toList();
+        List<CompletableFuture<Boolean>> checks = tiers.stream()
+            .map(entry -> Permissions.check(owner, "bigbangregions.virtualpasture.limit." + entry.getKey(), false))
+            .toList();
+        CompletableFuture.allOf(checks.toArray(CompletableFuture[]::new)).whenComplete((ignored, error) -> {
+            int limit = defaultLimit;
+            if (error == null) {
+                for (int index = 0; index < checks.size(); index++) {
+                    if (Boolean.TRUE.equals(checks.get(index).getNow(false))) {
+                        limit = Math.max(limit, Math.max(0, tiers.get(index).getValue()));
+                    }
+                }
+            }
+            cachedOwnerLimits.put(owner, limit);
+            refreshingOwnerLimits.remove(owner);
+        });
+    }
+
     private VirtualPastureRecord record(ServerLevel level, BlockPos pos, Region region, VirtualPastureRecord.State state, Long expires) {
         return new VirtualPastureRecord(level.dimension().location().toString(), pos.asLong(), region.getId(), region.getOwnerUuid(),
             pos.getX() >> 4, pos.getZ() >> 4, state, expires);
@@ -263,6 +377,7 @@ public final class VirtualPastureService {
 
     private void rebuild(List<VirtualPastureRecord> source) {
         records.clear(); byRegion.clear(); byOwner.clear(); byChunk.clear();
+        changes.clear(); reconciliationQueue.clear(); queuedChunks.clear();
         for (VirtualPastureRecord record : source) putMemory(record);
     }
 

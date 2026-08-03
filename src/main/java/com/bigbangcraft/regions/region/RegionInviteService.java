@@ -11,6 +11,8 @@ import com.bigbangcraft.regions.invite.InviteStatus;
 import com.bigbangcraft.regions.invite.RegionInvite;
 import com.bigbangcraft.regions.repository.RegionInviteRepository;
 import com.bigbangcraft.regions.BigBangRegions;
+import com.bigbangcraft.regions.event.RegionChangeEvent;
+import com.bigbangcraft.regions.event.RegionEventBus;
 import com.bigbangcraft.regions.repository.RegionRepository;
 
 import java.util.HashMap;
@@ -113,8 +115,7 @@ public class RegionInviteService {
 
         long now = System.currentTimeMillis();
         if (invite.getRole() == RegionRole.OWNER) {
-            Region updatedRegion = transferOwnership(region, invite.getInvitedByUuid(), invitedUuid);
-            regionRepository.saveMembers(updatedRegion.getId(), updatedRegion.getMembers());
+            transferOwnership(region, invite.getInvitedByUuid(), invitedUuid);
         } else {
             RegionMember member = new RegionMember(invitedUuid, invite.getRole(), invite.getInvitedByUuid(),
                 now, now);
@@ -175,13 +176,14 @@ public class RegionInviteService {
         for (Map.Entry<String, String> entry : region.getFlags().entrySet()) {
             updated.setFlag(entry.getKey(), entry.getValue());
         }
-        regionRepository.save(updated);
+        regionRepository.transferOwnership(updated);
         if (BigBangRegions.getVirtualPastureService() != null) {
-            BigBangRegions.getVirtualPastureService().transferOwner(updated.getId(), newOwnerUuid);
+            BigBangRegions.getVirtualPastureService().refreshTransferredOwner(updated.getId(), newOwnerUuid);
         }
         regionCache.remove(region.getId());
         regionCache.add(updated);
         membershipCache.loadFromRegion(updated);
+        RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.UPDATED, updated));
         auditService.log(region.getId(), actorUuid, "TRANSFER_OWNERSHIP", region.getOwnerUuid().toString(),
             newOwnerUuid.toString(), "{\"newOwnerUuid\":\"" + newOwnerUuid + "\"}");
         return updated;

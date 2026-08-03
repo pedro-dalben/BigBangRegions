@@ -1231,7 +1231,7 @@ public class RegionsCommand {
             return 0;
         }
         int reconciled = service.reconcileLoadedChunks();
-        context.getSource().sendSuccess(() -> Component.literal("Reconciliação de Virtual Pasture concluída em "
+        context.getSource().sendSuccess(() -> Component.literal("Reconciliação de Virtual Pasture enfileirada para "
             + reconciled + " chunks já carregados."), false);
         return 1;
     }

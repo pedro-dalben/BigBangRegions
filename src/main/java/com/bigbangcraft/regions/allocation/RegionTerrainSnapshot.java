@@ -239,6 +239,84 @@ final class RegionTerrainSnapshot {
         }
     }
 
+    /** Bounded counterpart of the spawn-platform mutation captured above. */
+    static SpawnPlatformCursor beginSpawnPlatform(BlockPos homePos) {
+        return new SpawnPlatformCursor(homePos);
+    }
+
+    static final class SpawnPlatformCursor {
+        private enum Stage { HEIGHTS, BLOCKS, GLOWSTONE, COMPLETED, FAILED }
+
+        private final BlockPos homePos;
+        private final int[] surfaces = new int[25];
+        private Stage stage = Stage.HEIGHTS;
+        private int index;
+        private int floor;
+        private int y;
+        private String failure;
+
+        private SpawnPlatformCursor(BlockPos homePos) {
+            this.homePos = homePos;
+            this.floor = homePos.getY() - 1;
+        }
+
+        boolean isComplete() { return stage == Stage.COMPLETED; }
+        boolean isFailed() { return stage == Stage.FAILED; }
+        String failure() { return failure; }
+        SpawnPlatformResult result() {
+            return isComplete()
+                ? SpawnPlatformResult.success(new BlockPos(homePos.getX(), floor + 1, homePos.getZ()))
+                : SpawnPlatformResult.failure(homePos, failure == null ? "Platform generation incomplete" : failure);
+        }
+
+        /** Performs exactly one height read or block write. */
+        void advance(ServerLevel level) {
+            try {
+                if (stage == Stage.HEIGHTS) {
+                    if (index == surfaces.length) {
+                        stage = Stage.BLOCKS;
+                        index = 0;
+                        y = surfaces[0] - 1;
+                        return;
+                    }
+                    int x = homePos.getX() - 2 + index / 5;
+                    int z = homePos.getZ() - 2 + index % 5;
+                    int surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+                    surfaces[index++] = surface;
+                    floor = Math.max(floor, surface - 1);
+                    return;
+                }
+                if (stage == Stage.BLOCKS) {
+                    if (index == surfaces.length) {
+                        stage = Stage.GLOWSTONE;
+                        return;
+                    }
+                    int x = homePos.getX() - 2 + index / 5;
+                    int z = homePos.getZ() - 2 + index % 5;
+                    BlockPos pos = new BlockPos(x, y, z);
+                    if (y <= floor) {
+                        level.setBlock(pos, net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 2);
+                    } else {
+                        level.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 2);
+                    }
+                    if (++y > floor + 2) {
+                        index++;
+                        if (index < surfaces.length) y = surfaces[index] - 1;
+                    }
+                    return;
+                }
+                if (stage == Stage.GLOWSTONE) {
+                    level.setBlock(new BlockPos(homePos.getX(), floor, homePos.getZ()),
+                        net.minecraft.world.level.block.Blocks.GLOWSTONE.defaultBlockState(), 2);
+                    stage = Stage.COMPLETED;
+                }
+            } catch (RuntimeException error) {
+                stage = Stage.FAILED;
+                failure = error.getMessage();
+            }
+        }
+    }
+
     static void discard(String regionId, Path directory) throws IOException {
         Files.deleteIfExists(snapshotPath(directory, regionId));
     }

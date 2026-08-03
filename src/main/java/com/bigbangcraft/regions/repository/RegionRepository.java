@@ -194,6 +194,44 @@ public class RegionRepository {
         saveFlags(conn, region.getId(), region.getFlags());
     }
 
+    /**
+     * Keeps the region owner, its members, and the Virtual Pasture index in the
+     * same SQLite transaction. Callers refresh caches only after this returns.
+     */
+    public void transferOwnership(Region region) {
+        synchronized (dbManager) {
+            Connection conn = null;
+            boolean wasAutoCommit = true;
+            try {
+                conn = dbManager.getConnection();
+                wasAutoCommit = conn.getAutoCommit();
+                conn.setAutoCommit(false);
+                saveOnConnection(conn, region);
+                saveMembersOnConnection(conn, region.getId(), region.getMembers());
+                try (PreparedStatement statement = conn.prepareStatement(
+                    "UPDATE virtual_pastures SET owner_uuid=? WHERE region_id=?")) {
+                    statement.setString(1, region.getOwnerUuid() == null ? null : region.getOwnerUuid().toString());
+                    statement.setString(2, region.getId());
+                    statement.executeUpdate();
+                }
+                conn.commit();
+            } catch (SQLException error) {
+                if (conn != null) {
+                    try { conn.rollback(); } catch (SQLException rollback) {
+                        LOGGER.error("Failed to roll back ownership transfer for region {}", region.getId(), rollback);
+                    }
+                }
+                throw new IllegalStateException("Failed to transfer ownership for region " + region.getId(), error);
+            } finally {
+                if (conn != null) {
+                    try { conn.setAutoCommit(wasAutoCommit); } catch (SQLException error) {
+                        LOGGER.error("Failed to reset auto-commit after ownership transfer", error);
+                    }
+                }
+            }
+        }
+    }
+
     public void saveMembers(String regionId, Map<UUID, RegionMember> members) {
         synchronized (dbManager) {
             Connection conn = null;

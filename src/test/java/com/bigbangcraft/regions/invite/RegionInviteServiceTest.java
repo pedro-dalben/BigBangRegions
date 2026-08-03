@@ -94,7 +94,7 @@ public class RegionInviteServiceTest {
 
         service.acceptInvite("inv-owner", invited);
 
-        verify(regionRepository, atLeastOnce()).save(any(Region.class));
+        verify(regionRepository).transferOwnership(any(Region.class));
         verify(inviteRepository).updateStatus(eq("inv-owner"), eq(InviteStatus.ACCEPTED), anyLong(), anyLong());
         verify(auditService).log(eq("reg1"), eq(invited), eq("INVITE_ACCEPTED"), isNull(), eq("OWNER"), anyString());
     }

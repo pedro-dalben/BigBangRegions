@@ -13,6 +13,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /** Tracks direct commands and mod APIs as well as normal player placement/breaking. */
 @Mixin(Level.class)
 public abstract class LevelVirtualPastureMixin {
+    @Inject(method = "setBlock", at = @At("HEAD"), cancellable = true)
+    private void bigbangregions$reserveVirtualPastureBeforeChange(BlockPos pos, BlockState state, int flags,
+                                                                    CallbackInfoReturnable<Boolean> cir) {
+        Level level = (Level) (Object) this;
+        if (!(level instanceof ServerLevel serverLevel)
+            || BigBangRegions.getVirtualPastureService() == null
+            || !BigBangRegions.getVirtualPastureService().isVirtualPasture(state)
+            || BigBangRegions.getVirtualPastureService().isVirtualPasture(level.getBlockState(pos))) {
+            return;
+        }
+        if (!BigBangRegions.reserveVirtualPasturePlacement(serverLevel, pos)) {
+            cir.setReturnValue(false);
+        }
+    }
+
     @Inject(method = "setBlock", at = @At("RETURN"))
     private void bigbangregions$trackVirtualPastureChange(BlockPos pos, BlockState state, int flags,
                                                            CallbackInfoReturnable<Boolean> cir) {

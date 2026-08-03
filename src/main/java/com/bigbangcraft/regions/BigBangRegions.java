@@ -272,6 +272,11 @@ public class BigBangRegions implements ModInitializer {
             virtualPastureService.isVirtualPasture(state));
     }
 
+    /** Used by the Level mixin so dispenser and API placement reserve quota before setBlock mutates the world. */
+    public static boolean reserveVirtualPasturePlacement(net.minecraft.server.level.ServerLevel level, BlockPos pos) {
+        return virtualPastureService == null || virtualPastureService.reserve(null, level, pos).allowed();
+    }
+
     @Override
     public void onInitialize() {
         initializeServer();
@@ -429,7 +434,7 @@ public class BigBangRegions implements ModInitializer {
                 allocationScheduler.tick(server);
             }
             if (allocationCoordinator != null) {
-                allocationCoordinator.tickDeletionRestores();
+                allocationCoordinator.tickTerrainRestores();
             }
             if (expansionCoordinator != null) {
                 expansionCoordinator.reconcileExpansionVisuals(server);
