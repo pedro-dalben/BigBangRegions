@@ -27,7 +27,6 @@ import java.util.Locale;
 
 public final class BigMonCraftRegionMapIntegration implements RegionMapIntegration, RegionChangeListener {
     public static final String SOURCE_ID = "bigbangregions";
-    public static final String WAYPOINT_SOURCE_ID = SOURCE_ID + "-waypoints";
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-BigMonCraft");
 
     private final MinecraftServer server;
@@ -48,15 +47,19 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
 
     @Override
     public void onPlayerJoin(ServerPlayer player) {
-        sync(player, null, true);
+        ServerMapApi mapApi = BigMonCraftApi.serverMap();
+        if (mapApi.isAvailable()) {
+            mapApi.clearAllWaypoints(player);
+        }
+        sync(player, null);
     }
 
     @Override
     public void onPlayerDisconnect(ServerPlayer player) {
         ServerMapApi mapApi = BigMonCraftApi.serverMap();
         if (mapApi.isAvailable()) {
+            mapApi.clearAllWaypoints(player);
             mapApi.clear(player, SOURCE_ID);
-            mapApi.clear(player, WAYPOINT_SOURCE_ID);
         }
     }
 
@@ -66,8 +69,8 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
         if (!mapApi.isAvailable()) return;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             try {
+                mapApi.clearAllWaypoints(player);
                 mapApi.clear(player, SOURCE_ID);
-                mapApi.clear(player, WAYPOINT_SOURCE_ID);
             } catch (RuntimeException exception) {
                 LOGGER.warn("Failed to clear map for {}: {}", player.getGameProfile().getName(), exception.getMessage());
             }
@@ -78,9 +81,8 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
     public void onRegionChange(RegionChangeEvent event) {
         String excludedId = event.getType() == RegionChangeEvent.ChangeType.DELETED
             ? event.getRegion().getId() : null;
-        boolean refreshWaypoints = event.getType() != RegionChangeEvent.ChangeType.RESIZED;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            sync(player, excludedId, refreshWaypoints);
+            sync(player, excludedId);
         }
     }
 
@@ -89,28 +91,23 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
         RegionEventBus.unregister(this);
     }
 
-    private void sync(ServerPlayer player, String excludedRegionId, boolean refreshWaypoints) {
+    private void sync(ServerPlayer player, String excludedRegionId) {
         ServerMapApi mapApi = BigMonCraftApi.serverMap();
         if (!mapApi.isAvailable()) return;
         try {
             List<ServerMapSnapshot.Rectangle> rectangles = new ArrayList<>();
-            List<ServerMapSnapshot.Waypoint> waypoints = new ArrayList<>();
             for (Region region : visibilityResolver.getVisibleRegions(player, regionCache.getAll())) {
                 if (region.getId().equals(excludedRegionId)) continue;
-                addRegion(player, region, rectangles, waypoints);
+                addRegion(player, region, rectangles);
             }
             mapApi.replace(player, SOURCE_ID, new ServerMapSnapshot(rectangles, List.of()));
-            if (refreshWaypoints) {
-                mapApi.replace(player, WAYPOINT_SOURCE_ID, new ServerMapSnapshot(List.of(), waypoints));
-            }
         } catch (RuntimeException exception) {
             LOGGER.warn("Failed to sync map for {}: {}", player.getGameProfile().getName(), exception.getMessage());
         }
     }
 
     private void addRegion(ServerPlayer player, Region region,
-                            List<ServerMapSnapshot.Rectangle> rectangles,
-                            List<ServerMapSnapshot.Waypoint> waypoints) {
+                            List<ServerMapSnapshot.Rectangle> rectangles) {
         RegionBounds bounds = region.getBounds();
         Config.JourneyMapConfig.RegionStyle style = visibilityResolver.styleFor(player, region);
         String regionId = safeId(region.getId());
@@ -118,11 +115,6 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
             bounds.getMinX(), bounds.getMinY(), bounds.getMinZ(),
             bounds.getMaxX(), bounds.getMaxY(), bounds.getMaxZ(), toStyle(style),
             region.getName(), region.getName()));
-        waypoints.add(new ServerMapSnapshot.Waypoint("waypoint-" + regionId, bounds.getDimension(),
-            (bounds.getMinX() + bounds.getMaxX()) / 2,
-            Math.max(bounds.getMinY(), Math.min(64, bounds.getMaxY())),
-            (bounds.getMinZ() + bounds.getMaxZ()) / 2,
-            region.getName(), style.getFillColor()));
 
         if (!visibilityResolver.canSeeChunkLoaders(player, region)) return;
         Collection<ChunkPos> active = chunkLoaderService.activeChunks(region);
