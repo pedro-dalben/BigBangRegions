@@ -2412,10 +2412,14 @@ public class TerrainAllocationCoordinator {
     private void completeDeletion(PendingDeletion deletion) {
         try {
             removeEntitiesInRegion(deletion.level, deletion.region.getBounds());
-            RegionTerrainSnapshot.discard(deletion.region.getId(), getRestoreDirectory());
             AllocationMetrics.add("bigbangregions_snapshot_restore_blocks_total", deletion.cursor.restoredBlocks());
             AllocationMetrics.add("bigbangregions_snapshot_restore_bytes_total", deletion.cursor.fileBytes());
             completeRegionDeletion(deletion.region, deletion.level, deletion.actorUuid);
+            try {
+                RegionTerrainSnapshot.discard(deletion.region.getId(), getRestoreDirectory());
+            } catch (IOException error) {
+                LOGGER.warn("Region {} was deleted but its obsolete restore snapshot could not be removed.", deletion.region.getId(), error);
+            }
             pendingDeletions.remove(deletion.region.getId(), deletion);
             ServerPlayer actor = deletion.actorUuid == null ? null : deletion.level.getServer().getPlayerList().getPlayer(deletion.actorUuid);
             if (actor != null) actor.sendSystemMessage(Component.literal("§aSeu terreno foi excluído e o terreno original foi restaurado."));
