@@ -78,12 +78,164 @@ final class RegionTerrainSnapshot {
         return new CreationCapture(root, snapshotPath(directory, regionId), blocks.size());
     }
 
+    /**
+     * Resumable creation capture. Every {@link CreationCaptureCursor#advance}
+     * performs at most one small world read, so callers can enforce a tick budget.
+     */
+    static CreationCaptureCursor beginCreationCapture(
+        RegionBounds bounds, BlockPos homePos, String regionId, Path directory, boolean createCeiling
+    ) {
+        return new CreationCaptureCursor(bounds, homePos, regionId, directory, createCeiling);
+    }
+
     /** Does not touch a world. Safe for the allocation snapshot writer. */
     static void persistCreation(CreationCapture capture) throws IOException {
         Files.createDirectories(capture.target().getParent());
         writeAtomically(capture.root(), capture.target());
         AllocationMetrics.add("bigbangregions_snapshot_capture_blocks_total", capture.blockCount());
         AllocationMetrics.add("bigbangregions_snapshot_capture_bytes_total", Files.size(capture.target()));
+    }
+
+    static final class CreationCaptureCursor {
+        private enum Stage { BORDER, CEILING, PLATFORM_HEIGHT, PLATFORM_BLOCKS, COMPLETED }
+
+        private static final int UNSET_Y = Integer.MIN_VALUE;
+        private final RegionBounds bounds;
+        private final BlockPos homePos;
+        private final String regionId;
+        private final Path directory;
+        private final boolean createCeiling;
+        private final List<BlockPos> borderColumns = new ArrayList<>();
+        private final ListTag blocks = new ListTag();
+        private final Set<Long> seen = new HashSet<>();
+        private final int[] platformSurface = new int[25];
+        private Stage stage = Stage.BORDER;
+        private int borderColumnIndex;
+        private int borderY = UNSET_Y;
+        private int ceilingX;
+        private int ceilingZ;
+        private int platformIndex;
+        private int platformFloor = UNSET_Y;
+        private int platformY = UNSET_Y;
+
+        private CreationCaptureCursor(RegionBounds bounds, BlockPos homePos, String regionId, Path directory, boolean createCeiling) {
+            this.bounds = bounds;
+            this.homePos = homePos;
+            this.regionId = regionId;
+            this.directory = directory;
+            this.createCeiling = createCeiling;
+            for (int z = bounds.getMinZ(); z <= bounds.getMaxZ(); z++) {
+                borderColumns.add(new BlockPos(bounds.getMinX(), 0, z));
+                borderColumns.add(new BlockPos(bounds.getMaxX(), 0, z));
+            }
+            for (int x = bounds.getMinX(); x <= bounds.getMaxX(); x++) {
+                borderColumns.add(new BlockPos(x, 0, bounds.getMinZ()));
+                borderColumns.add(new BlockPos(x, 0, bounds.getMaxZ()));
+            }
+            ceilingX = bounds.getMinX();
+            ceilingZ = bounds.getMinZ();
+        }
+
+        boolean isComplete() {
+            return stage == Stage.COMPLETED;
+        }
+
+        /** Executes one bounded capture step on the server thread. */
+        void advance(ServerLevel level) {
+            ChunkAccessGuard.assertAllowed(AllocationPhase.REGION_CREATING);
+            switch (stage) {
+                case BORDER -> advanceBorder(level);
+                case CEILING -> advanceCeiling(level);
+                case PLATFORM_HEIGHT -> advancePlatformHeight(level);
+                case PLATFORM_BLOCKS -> advancePlatformBlocks(level);
+                case COMPLETED -> { }
+            }
+        }
+
+        CreationCapture finish() {
+            if (!isComplete()) throw new IllegalStateException("Creation capture is incomplete");
+            CompoundTag root = new CompoundTag();
+            root.putString("regionId", regionId);
+            root.putString("dimension", bounds.getDimension());
+            root.putString("format", MUTATION_FORMAT);
+            root.putLong("regionVolume", bounds.volume());
+            root.putInt("blockCount", blocks.size());
+            root.put("blocks", blocks);
+            return new CreationCapture(root, snapshotPath(directory, regionId), blocks.size());
+        }
+
+        private void advanceBorder(ServerLevel level) {
+            if (borderColumnIndex >= borderColumns.size()) {
+                stage = createCeiling ? Stage.CEILING : Stage.PLATFORM_HEIGHT;
+                return;
+            }
+            BlockPos column = borderColumns.get(borderColumnIndex);
+            int endY = Math.min(bounds.getMaxY(), level.getMaxBuildHeight() - 1);
+            if (borderY == UNSET_Y) {
+                borderY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ());
+                return;
+            }
+            if (borderY > bounds.getMinY()
+                && TerrainAllocationCoordinator.isReplaceableBorderBlock(level, new BlockPos(column.getX(), borderY - 1, column.getZ()))) {
+                borderY--;
+                return;
+            }
+            if (borderY >= bounds.getMinY() && borderY <= endY) {
+                captureIfReplaceable(level, new BlockPos(column.getX(), borderY++, column.getZ()));
+                return;
+            }
+            borderColumnIndex++;
+            borderY = UNSET_Y;
+        }
+
+        private void advanceCeiling(ServerLevel level) {
+            if (ceilingX > bounds.getMaxX()) {
+                stage = Stage.PLATFORM_HEIGHT;
+                return;
+            }
+            int y = Math.min(bounds.getMaxY(), level.getMaxBuildHeight() - 1);
+            captureIfReplaceable(level, new BlockPos(ceilingX, y, ceilingZ));
+            if (++ceilingZ > bounds.getMaxZ()) {
+                ceilingZ = bounds.getMinZ();
+                ceilingX++;
+            }
+        }
+
+        private void advancePlatformHeight(ServerLevel level) {
+            if (platformIndex < platformSurface.length) {
+                int x = homePos.getX() - 2 + platformIndex / 5;
+                int z = homePos.getZ() - 2 + platformIndex % 5;
+                int surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+                platformSurface[platformIndex++] = surface;
+                platformFloor = Math.max(platformFloor == UNSET_Y ? homePos.getY() - 1 : platformFloor, surface - 1);
+                return;
+            }
+            stage = Stage.PLATFORM_BLOCKS;
+            platformIndex = 0;
+            platformY = platformSurface[0] - 1;
+        }
+
+        private void advancePlatformBlocks(ServerLevel level) {
+            if (platformIndex >= platformSurface.length) {
+                stage = Stage.COMPLETED;
+                return;
+            }
+            int x = homePos.getX() - 2 + platformIndex / 5;
+            int z = homePos.getZ() - 2 + platformIndex % 5;
+            capture(level, new BlockPos(x, platformY++, z));
+            if (platformY > platformFloor + 2) {
+                platformIndex++;
+                if (platformIndex < platformSurface.length) platformY = platformSurface[platformIndex] - 1;
+            }
+        }
+
+        private void captureIfReplaceable(ServerLevel level, BlockPos pos) {
+            if (TerrainAllocationCoordinator.isReplaceableBorderBlock(level, pos)) capture(level, pos);
+        }
+
+        private void capture(ServerLevel level, BlockPos pos) {
+            addSnapshot(level, pos, blocks, seen);
+        }
     }
 
     static void discard(String regionId, Path directory) throws IOException {

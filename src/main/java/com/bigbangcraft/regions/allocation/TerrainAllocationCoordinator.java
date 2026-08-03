@@ -71,7 +71,7 @@ public class TerrainAllocationCoordinator {
     private final Map<String, List<int[]>> sectorSequenceCache = new ConcurrentHashMap<>();
     private final Map<String, String> lastProgressSignatures = new ConcurrentHashMap<>();
     private final Map<String, Long> lastSignatureChangedAt = new ConcurrentHashMap<>();
-    private final Map<String, CompletableFuture<Boolean>> creationSnapshotWrites = new ConcurrentHashMap<>();
+    private final Map<String, CreationSnapshotWork> creationSnapshots = new ConcurrentHashMap<>();
     private final ExecutorService creationSnapshotExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "BigBangRegions-AllocationSnapshotIO");
         thread.setDaemon(true);
@@ -900,12 +900,12 @@ public class TerrainAllocationCoordinator {
         }
     }
 
-    /** Starts bounded snapshot I/O and never waits for it on the server thread. */
+    /** Captures mutation data in small server-thread steps and writes it without waiting. */
     private boolean ensureCreationSnapshot(AllocationRequest request, Config.PlayerLandAllocationConfig lac,
                                            ServerLevel level, LoadedWorldValidationResult validation) {
         if (!lac.getBorder().isRestoreOnDelete()) return true;
-        CompletableFuture<Boolean> future = creationSnapshotWrites.get(request.getId());
-        if (future == null) {
+        CreationSnapshotWork work = creationSnapshots.get(request.getId());
+        if (work == null) {
             PlotSlot slot = slotRepository.get(request.getPlotSlotId());
             if (slot == null) {
                 pauseForRecovery(request, "Slot indisponivel ao preparar snapshot de criacao.", "failed_snapshot_capture");
@@ -915,11 +915,37 @@ public class TerrainAllocationCoordinator {
             RegionBounds bounds = new RegionBounds(lac.getTargetDimension(), footprint.minX(), -64, footprint.minZ(),
                 footprint.maxX(), 320, footprint.maxZ());
             try {
-                long startedAt = System.nanoTime();
-                RegionTerrainSnapshot.CreationCapture capture = RegionTerrainSnapshot.captureForCreation(level, bounds,
-                    validation.safeSpawn().blockPos(), request.getRegionId(), getRestoreDirectory(), lac.getBorder().isCreateCeiling());
+                work = new CreationSnapshotWork(RegionTerrainSnapshot.beginCreationCapture(bounds,
+                    validation.safeSpawn().blockPos(), request.getRegionId(), getRestoreDirectory(), lac.getBorder().isCreateCeiling()));
+                creationSnapshots.put(request.getId(), work);
+            } catch (Exception error) {
+                pauseForRecovery(request, "Falha ao preparar snapshot de restauracao antes da mutacao do terreno.", "failed_snapshot_capture");
+                return false;
+            }
+        }
+
+        if (work.write == null) {
+            Config.RegionExpansionPerformanceConfig performance = configManager.getConfig().getRegionExpansionPerformance();
+            long startedAt = System.nanoTime();
+            long deadline = startedAt + TimeUnit.MILLISECONDS.toNanos(performance.getSnapshotCaptureBudgetMs());
+            int steps = 0;
+            try {
+                while (steps < performance.getSnapshotCaptureMaxBlocksPerTick()
+                    && System.nanoTime() < deadline && !work.capture.isComplete()) {
+                    work.capture.advance(level);
+                    steps++;
+                }
+            } catch (Exception error) {
+                creationSnapshots.remove(request.getId());
+                pauseForRecovery(request, "Falha ao capturar snapshot de restauracao antes da mutacao do terreno.", "failed_snapshot_capture");
+                return false;
+            } finally {
                 AllocationMetrics.add("bigbangregions_snapshot_capture_nanos_total", System.nanoTime() - startedAt);
-                future = CompletableFuture.supplyAsync(() -> {
+            }
+            if (!work.capture.isComplete()) return false;
+            try {
+                RegionTerrainSnapshot.CreationCapture capture = work.capture.finish();
+                work.write = CompletableFuture.supplyAsync(() -> {
                     try {
                         RegionTerrainSnapshot.persistCreation(capture);
                         AllocationMetrics.increment("bigbangregions_snapshot_capture_total");
@@ -929,20 +955,28 @@ public class TerrainAllocationCoordinator {
                         return false;
                     }
                 }, creationSnapshotExecutor);
-                creationSnapshotWrites.put(request.getId(), future);
                 return false;
             } catch (Exception error) {
                 pauseForRecovery(request, "Falha ao capturar snapshot de restauracao antes da mutacao do terreno.", "failed_snapshot_capture");
                 return false;
             }
         }
-        if (!future.isDone()) return false;
-        creationSnapshotWrites.remove(request.getId());
-        if (!future.getNow(false)) {
+        if (!work.write.isDone()) return false;
+        creationSnapshots.remove(request.getId());
+        if (!work.write.getNow(false)) {
             pauseForRecovery(request, "Falha ao persistir snapshot de restauracao antes da mutacao do terreno.", "failed_snapshot_capture");
             return false;
         }
         return true;
+    }
+
+    private static final class CreationSnapshotWork {
+        private final RegionTerrainSnapshot.CreationCaptureCursor capture;
+        private CompletableFuture<Boolean> write;
+
+        private CreationSnapshotWork(RegionTerrainSnapshot.CreationCaptureCursor capture) {
+            this.capture = capture;
+        }
     }
 
     private void discardTerrainSnapshot(String regionId) {
@@ -2265,6 +2299,7 @@ public class TerrainAllocationCoordinator {
     }
 
     private void cleanupRequestResources(AllocationRequest request, PreparationCancelReason reason, boolean deletePreparationRecord) {
+        creationSnapshots.remove(request.getId());
         validatedWorlds.remove(request.getId());
         completedPreparations.remove(request.getId());
         lastProgressNotifications.remove(request.getId());
