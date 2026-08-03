@@ -94,6 +94,12 @@ regra segura quando um membro coloca o bloco, a colocação por membro usa o tet
 4. Confira a configuração com os comandos abaixo e faça uma reconciliação dos
    chunks já carregados.
 
+Configurações anteriores à schema `3` são migradas automaticamente no primeiro
+load/reload: os blocos `virtualPasture` e `regionExpansionPerformance` são
+gravados no mesmo arquivo com seus campos ausentes preenchidos. Valores já
+definidos pelo servidor são preservados; não é necessário substituir o arquivo
+inteiro por este exemplo.
+
 `/regions reload` recarrega a configuração e revalida se o bloco configurado
 está presente no registry. Alterar `blockId` para um Identifier inexistente não
 substitui nem remove blocos; apenas torna o limitador inativo até a configuração

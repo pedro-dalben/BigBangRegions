@@ -82,7 +82,7 @@ Se o LuckPerms ou outra API de permissões não estiver presente, o mod utiliza 
 ## Estrutura de Configuração (`config/bigbangregions/config.json`)
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "defaultPriorities": {
     "systemRegion": 10000,
     "adminRegion": 1000,
