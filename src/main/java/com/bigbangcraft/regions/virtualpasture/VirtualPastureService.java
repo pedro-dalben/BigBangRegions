@@ -58,7 +58,8 @@ public final class VirtualPastureService {
         private final String key;
         private final ServerLevel level;
         private final LevelChunk chunk;
-        private final Iterator<BlockEntity> entities;
+        private final List<BlockPos> entityPositions;
+        private int entityPositionIndex;
         private final Set<String> seen = new HashSet<>();
         private Iterator<String> indexedRecords;
 
@@ -66,7 +67,7 @@ public final class VirtualPastureService {
             this.key = key;
             this.level = level;
             this.chunk = chunk;
-            this.entities = chunk.getBlockEntities().values().iterator();
+            this.entityPositions = List.copyOf(chunk.getBlockEntities().keySet());
         }
     }
 
@@ -81,7 +82,7 @@ public final class VirtualPastureService {
     private final Map<String, Change> changes = new LinkedHashMap<>();
     private final Map<String, LevelChunk> loadedChunks = new HashMap<>();
     private final Deque<ChunkReconciliation> reconciliationQueue = new ArrayDeque<>();
-    private final Set<String> queuedChunks = new HashSet<>();
+    private final Map<String, LevelChunk> queuedChunks = new HashMap<>();
     private final Map<UUID, Integer> cachedOwnerLimits = new ConcurrentHashMap<>();
     private final Set<UUID> refreshingOwnerLimits = ConcurrentHashMap.newKeySet();
     private ResourceLocation virtualPastureId;
@@ -234,13 +235,13 @@ public final class VirtualPastureService {
 
     public void onChunkUnload(ServerLevel level, LevelChunk chunk) {
         String key = chunkKey(level.dimension().location().toString(), chunk.getPos().x, chunk.getPos().z);
-        loadedChunks.remove(key);
+        loadedChunks.remove(key, chunk);
     }
 
     public int reconcileLoadedChunks() {
         int queued = 0;
         for (Map.Entry<String, LevelChunk> entry : List.copyOf(loadedChunks.entrySet())) {
-            if (queuedChunks.contains(entry.getKey())) continue;
+            if (queuedChunks.get(entry.getKey()) == entry.getValue()) continue;
             enqueueReconciliation(entry.getKey(), (ServerLevel) entry.getValue().getLevel(), entry.getValue());
             queued++;
         }
@@ -280,7 +281,7 @@ public final class VirtualPastureService {
     public boolean isAvailable() { return available; }
 
     private void enqueueReconciliation(String key, ServerLevel level, LevelChunk chunk) {
-        if (queuedChunks.add(key)) reconciliationQueue.addLast(new ChunkReconciliation(key, level, chunk));
+        if (queuedChunks.put(key, chunk) != chunk) reconciliationQueue.addLast(new ChunkReconciliation(key, level, chunk));
     }
 
     private int reconcileChunks(long deadline, int remaining) {
@@ -289,14 +290,16 @@ public final class VirtualPastureService {
             ChunkReconciliation reconciliation = reconciliationQueue.peekFirst();
             if (loadedChunks.get(reconciliation.key) != reconciliation.chunk) {
                 reconciliationQueue.removeFirst();
-                queuedChunks.remove(reconciliation.key);
+                queuedChunks.remove(reconciliation.key, reconciliation.chunk);
                 continue;
             }
-            if (reconciliation.entities.hasNext()) {
-                BlockEntity entity = reconciliation.entities.next();
+            if (reconciliation.entityPositionIndex < reconciliation.entityPositions.size()) {
+                BlockEntity entity = reconciliation.chunk.getBlockEntities().get(
+                    reconciliation.entityPositions.get(reconciliation.entityPositionIndex++)
+                );
                 processed++;
                 remaining--;
-                if (isVirtualPasture(entity.getBlockState())) {
+                if (entity != null && isVirtualPasture(entity.getBlockState())) {
                     BlockPos pos = entity.getBlockPos();
                     reconciliation.seen.add(positionKey(reconciliation.level.dimension().location().toString(), pos.asLong()));
                     recordWorldChange(reconciliation.level, pos, true);
@@ -315,7 +318,7 @@ public final class VirtualPastureService {
                 continue;
             }
             reconciliationQueue.removeFirst();
-            queuedChunks.remove(reconciliation.key);
+            queuedChunks.remove(reconciliation.key, reconciliation.chunk);
         }
         return processed;
     }

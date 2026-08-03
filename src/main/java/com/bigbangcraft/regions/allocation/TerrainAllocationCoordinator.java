@@ -30,9 +30,12 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.AABB;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1226,7 +1229,9 @@ public class TerrainAllocationCoordinator {
             if (deletion.cursor.isFailed()) {
                 failDeletion(deletion, deletion.cursor.failure());
             } else if (deletion.cursor.isComplete()) {
-                completeDeletion(deletion);
+                if (discardDeletionEntities(deletion, deadline, performance.getBorderApplicationMaxBlocksPerTick() - steps)) {
+                    completeDeletion(deletion);
+                }
             }
         } catch (RuntimeException error) {
             failDeletion(deletion, error.getMessage());
@@ -1273,9 +1278,14 @@ public class TerrainAllocationCoordinator {
             if (rollback.cursor.isFailed()) {
                 failCreationRollback(rollback, rollback.cursor.failure());
             } else if (rollback.cursor.isComplete()) {
+                rollback.request.forceTransitionTo(AllocationRequestState.CANCELLED_BEFORE_REGION_CREATION);
+                rollback.request.setFailureReason(null);
+                requestRepository.save(rollback.request);
+                tryReleaseSlot(rollback.request);
+                cleanupRequestResources(rollback.request, PreparationCancelReason.CANCELLED, true);
+                creationCooldowns.remove(rollback.request.getOwnerUuid());
                 RegionTerrainSnapshot.discard(rollback.region.getId(), getRestoreDirectory());
                 pendingCreationRollbacks.remove(rollback.request.getId(), rollback);
-                tryReleaseSlot(rollback.request);
                 LOGGER.info("Creation rollback completed: request={}, blocks={}", rollback.request.getId(), rollback.cursor.restoredBlocks());
             }
         } catch (RuntimeException | IOException error) {
@@ -2535,6 +2545,21 @@ public class TerrainAllocationCoordinator {
 
         completeRegionDeletion(region, level, actorUuid);
         return false;
+    }
+
+    private boolean discardDeletionEntities(PendingDeletion deletion, long deadline, int maximum) {
+        if (maximum <= 0) return false;
+        RegionBounds bounds = deletion.region.getBounds();
+        AABB box = new AABB(bounds.getMinX(), bounds.getMinY(), bounds.getMinZ(),
+            bounds.getMaxX() + 1.0, bounds.getMaxY() + 1.0, bounds.getMaxZ() + 1.0);
+        List<Entity> entities = new ArrayList<>();
+        deletion.level.getEntities(EntityTypeTest.forClass(Entity.class), box,
+            entity -> !(entity instanceof ServerPlayer) && !entity.isRemoved(), entities, maximum);
+        for (Entity entity : entities) {
+            if (System.nanoTime() >= deadline) return false;
+            entity.discard();
+        }
+        return entities.size() < maximum;
     }
 
     private void completeDeletion(PendingDeletion deletion) {
