@@ -12,7 +12,7 @@ import java.util.Set;
 public class Config {
     public static final int BIOME_SEARCH_VALIDATION_SCHEMA_VERSION = 1;
 
-    private int schemaVersion = 2;
+    private int schemaVersion = 3;
     private DefaultPriorities defaultPriorities = new DefaultPriorities();
     private Permissions permissions = new Permissions();
     private Defaults defaults = new Defaults();

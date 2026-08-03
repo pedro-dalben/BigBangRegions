@@ -2,6 +2,8 @@ package com.bigbangcraft.regions.config;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +27,7 @@ public class ConfigManagerTest {
 
         Config config = manager.getConfig();
         assertNotNull(config);
-        assertEquals(2, config.getSchemaVersion());
+        assertEquals(3, config.getSchemaVersion());
         assertEquals(1000, config.getDefaultPriorities().getAdminRegion());
         assertEquals("DENY", config.getDefaults().getGlobal().get("visitor-build"));
         assertEquals("DENY", config.getDefaults().getAdminRegion().get("visitor-build"));
@@ -113,5 +115,43 @@ public class ConfigManagerTest {
 
         Config.NotificationsConfig notifications = manager.getConfig().getPlayerLandAllocation().getNotifications();
         assertTrue(notifications.getAllocationProgressIntervalSeconds() > 0);
+    }
+
+    @Test
+    public void v2ConfigIsRewrittenWithVirtualPastureAndPerformanceDefaults() throws IOException {
+        Path configDir = tempDir.resolve("v2-config");
+        Files.createDirectories(configDir);
+        Path configFile = configDir.resolve("config.json");
+        Files.writeString(configFile, """
+            {
+              "schemaVersion": 2,
+              "virtualPasture": {
+                "enabled": false,
+                "maxPerRegion": 4,
+                "limits": { "vip": 6 }
+              },
+              "regionExpansionPerformance": {
+                "borderApplicationBudgetMs": 5
+              }
+            }
+            """);
+
+        ConfigManager manager = new ConfigManager(configDir);
+        manager.load();
+
+        assertEquals(3, manager.getConfig().getSchemaVersion());
+        assertFalse(manager.getConfig().getVirtualPasture().isEnabled());
+        assertEquals(4, manager.getConfig().getVirtualPasture().getMaxPerRegion());
+        assertEquals(2, manager.getConfig().getVirtualPasture().getLimits().get("default"));
+        assertEquals(6, manager.getConfig().getVirtualPasture().getLimits().get("vip"));
+        assertEquals(5, manager.getConfig().getRegionExpansionPerformance().getBorderApplicationBudgetMs());
+        assertEquals(120, manager.getConfig().getRegionExpansionPerformance().getDeletionRestoreTimeoutSeconds());
+
+        JsonObject saved = JsonParser.parseString(Files.readString(configFile)).getAsJsonObject();
+        assertEquals(3, saved.get("schemaVersion").getAsInt());
+        assertTrue(saved.has("virtualPasture"));
+        assertTrue(saved.has("regionExpansionPerformance"));
+        assertTrue(saved.getAsJsonObject("virtualPasture").has("blockId"));
+        assertTrue(saved.getAsJsonObject("regionExpansionPerformance").has("deletionRestoreTimeoutSeconds"));
     }
 }

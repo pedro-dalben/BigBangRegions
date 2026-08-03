@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -61,23 +62,66 @@ public class ConfigManager {
     );
 
     private void applyMigrations(Config config) {
-        if (config.getSchemaVersion() >= 2) return;
+        int originalVersion = config.getSchemaVersion();
+        boolean changed = false;
 
-        LOGGER.info("Migrating configuration from schema v{} to v2", config.getSchemaVersion());
-
-        for (Map<String, String> section : Arrays.asList(
-            config.getDefaults().getGlobal(),
-            config.getDefaults().getAdminRegion(),
-            config.getDefaults().getPlayerRegion()
-        )) {
-            for (String flag : VISITOR_FLAGS) {
-                section.put(flag, "DENY");
+        if (config.getSchemaVersion() < 2) {
+            for (Map<String, String> section : Arrays.asList(
+                config.getDefaults().getGlobal(),
+                config.getDefaults().getAdminRegion(),
+                config.getDefaults().getPlayerRegion()
+            )) {
+                for (String flag : VISITOR_FLAGS) {
+                    section.put(flag, "DENY");
+                }
             }
+            config.setSchemaVersion(2);
+            changed = true;
         }
 
-        config.setSchemaVersion(2);
-        save();
-        LOGGER.info("Config migrated to schema v2 and saved.");
+        if (config.getSchemaVersion() < 3) {
+            repairVirtualPastureConfig(config.getVirtualPasture());
+            repairRegionPerformanceConfig(config.getRegionExpansionPerformance());
+            config.setSchemaVersion(3);
+            changed = true;
+        }
+
+        if (changed) {
+            save();
+            LOGGER.info("Config migrated from schema v{} to v{} and saved.", originalVersion, config.getSchemaVersion());
+        }
+    }
+
+    /** Keeps existing choices, but writes every v3 field so operators can tune it explicitly. */
+    private static void repairVirtualPastureConfig(Config.VirtualPastureConfig pasture) {
+        if (pasture.getBlockId() == null || pasture.getBlockId().isBlank()) {
+            pasture.setBlockId("virtualloot:virtual_pasture");
+        }
+        pasture.setMaxPerRegion(pasture.getMaxPerRegion());
+        pasture.setMaxPerPlayer(pasture.getMaxPerPlayer());
+        pasture.setMaxPerChunk(pasture.getMaxPerChunk());
+        if (pasture.getAdminBypassPermission() == null || pasture.getAdminBypassPermission().isBlank()) {
+            pasture.setAdminBypassPermission("bigbangregions.virtualpasture.bypass");
+        }
+
+        Map<String, Integer> limits = new HashMap<>();
+        pasture.getLimits().forEach((tier, maximum) -> {
+            if (tier != null && !tier.isBlank() && maximum != null) limits.put(tier, Math.max(0, maximum));
+        });
+        limits.putIfAbsent("default", pasture.getMaxPerPlayer());
+        limits.putIfAbsent("vip", 3);
+        pasture.setLimits(limits);
+    }
+
+    private static void repairRegionPerformanceConfig(Config.RegionExpansionPerformanceConfig performance) {
+        performance.setSnapshotCaptureBudgetMs(performance.getSnapshotCaptureBudgetMs());
+        performance.setSnapshotCaptureMaxBlocksPerTick(performance.getSnapshotCaptureMaxBlocksPerTick());
+        performance.setBorderApplicationBudgetMs(performance.getBorderApplicationBudgetMs());
+        performance.setBorderApplicationMaxBlocksPerTick(performance.getBorderApplicationMaxBlocksPerTick());
+        performance.setPersistenceWorkers(performance.getPersistenceWorkers());
+        performance.setPersistenceQueueCapacity(performance.getPersistenceQueueCapacity());
+        performance.setShutdownTimeoutSeconds(performance.getShutdownTimeoutSeconds());
+        performance.setDeletionRestoreTimeoutSeconds(performance.getDeletionRestoreTimeoutSeconds());
     }
 
     public void save() {
