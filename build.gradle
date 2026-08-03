@@ -17,7 +17,7 @@ repositories {
 }
 
 def bigmoncraftApiJar = file(providers.gradleProperty('bigmoncraft_api_jar').orElse(
-	"../BigMonCraft/build/libs/bigmoncraft-${project.bigmoncraft_api_version}.jar").get())
+	"libs/bigmoncraft-${project.bigmoncraft_api_version}.jar").get())
 if (!bigmoncraftApiJar.isFile()) {
 	throw new GradleException("Missing pinned BigMonCraft API JAR: ${bigmoncraftApiJar}. Build BigMonCraft first or pass -Pbigmoncraft_api_jar=<exact-api-jar>.")
 }
@@ -58,7 +58,7 @@ dependencies {
 
 	// BigBang Essentials public API only. The exact artifact is intentionally pinned.
 	def essentialsApiJar = file(providers.gradleProperty('bigbangessentials_api_jar').orElse(
-		"../BigBangEssentials/common/build/libs/bigbangessentials-common-${project.bigbangessentials_api_version}.jar").get())
+		"libs/bigbangessentials-common-${project.bigbangessentials_api_version}.jar").get())
 	if (!essentialsApiJar.isFile()) {
 		throw new GradleException("Missing pinned BigBangEssentials API JAR: ${essentialsApiJar}. Build Essentials common first or pass -Pbigbangessentials_api_jar=<exact-api-jar>.")
 	}
