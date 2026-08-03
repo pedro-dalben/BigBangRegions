@@ -54,13 +54,13 @@ Se a criação de terrenos (`/regiao criar <bioma>`) estiver demorando ou gerand
 pré-gerue o mundo com o **Chunky** — a busca de bioma é instantânea quando os chunks já existem em
 disco. Veja o guia completo em [`docs/bigbangregions/chunky-pregen.md`](bigbangregions/chunky-pregen.md).
 
-Ajustes de tempo por tick ficam em `config.json` > `playerLandAllocation.scheduler`:
-`maxCandidateEvaluationsPerTick` (hard cap) e `maxBiomeSearchMillisPerTick` (limite por tempo).
+Os limites ativos da busca virtual ficam em
+`playerLandAllocation.worldgenSearch`: `maxSearchWorkNanosPerTick`,
+`maxSearchStepsPerTick` e `maxLocateCallsPerSearchStep`. Snapshots, bordas e
+restaurações usam `regionExpansionPerformance`; por padrão cada lote usa 3 ms
+e 250 passos. Veja o guia de [Virtual Pasture e ajuste de performance](virtual-pastures.md)
+antes de elevar qualquer orçamento.
 
-Snapshots, bordas e restaurações usam `regionExpansionPerformance`: por padrão cada lote usa
-3 ms e 250 passos. `deletionRestoreTimeoutSeconds` (120 por padrão) cancela uma restauração
-que não consegue terminar sem remover a região do banco.
-
-Uma exclusão de terreno de jogador é confirmada como **agendada**. A região continua protegida
-até a restauração terminar; em caso de falha ou timeout, o snapshot e a região são preservados
-para uma nova tentativa administrativa.
+Uma exclusão de terreno de jogador é confirmada como **agendada**. A região
+continua protegida até a restauração terminar; em caso de falha ou timeout, o
+snapshot e a região são preservados para uma nova tentativa administrativa.
