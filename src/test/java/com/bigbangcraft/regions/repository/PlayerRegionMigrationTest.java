@@ -159,10 +159,10 @@ public class PlayerRegionMigrationTest {
         try (Connection conn = dbManager.getConnection();
              Statement stmt = conn.createStatement()) {
 
-            // Check schema version is 15 (V1+...+V15)
+            // Check schema version is 16 (V1+...+V16)
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(15, rs.getInt(1));
+                assertEquals(16, rs.getInt(1));
             }
 
             // Verify V3 tables exist

@@ -31,6 +31,7 @@ import com.bigbangcraft.regions.repository.AuditRepository;
 import com.bigbangcraft.regions.repository.PlayerRegionHomeRepository;
 import com.bigbangcraft.regions.repository.PlotSlotRepository;
 import com.bigbangcraft.regions.repository.RegionRepository;
+import com.bigbangcraft.regions.repository.VirtualPastureRepository;
 import com.bigbangcraft.regions.storage.DatabaseManager;
 import com.bigbangcraft.regions.util.MessageHelper;
 import com.bigbangcraft.regions.util.SelectionManager;
@@ -39,10 +40,12 @@ import com.bigbangcraft.regions.cobblemon.CobblemonSpawnGuard;
 import com.bigbangcraft.regions.journeymap.PlayerMapPreference;
 import com.bigbangcraft.regions.journeymap.RegionVisibilityResolver;
 import com.bigbangcraft.regions.journeymap.RegionMapIntegration;
+import com.bigbangcraft.regions.virtualpasture.VirtualPastureService;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
@@ -109,6 +112,7 @@ public class BigBangRegions implements ModInitializer {
     private static RegionMapIntegration regionMapIntegration;
     private static RegionFlagResolver flagResolver;
     private static RegionChunkLoaderService chunkLoaderService;
+    private static VirtualPastureService virtualPastureService;
 
     // Tip cooldown: 10s between advisory messages for unclaimed-area actions
     private static final Map<String, Long> tipCooldowns = new ConcurrentHashMap<>();
@@ -252,6 +256,22 @@ public class BigBangRegions implements ModInitializer {
         return regionMapIntegration;
     }
 
+    public static VirtualPastureService getVirtualPastureService() {
+        return virtualPastureService;
+    }
+
+    public static boolean shouldTrackVirtualPastureChange(net.minecraft.server.level.ServerLevel level, BlockPos pos,
+                                                           BlockState state) {
+        return virtualPastureService != null
+            && (virtualPastureService.isVirtualPasture(state) || virtualPastureService.tracksPosition(level, pos));
+    }
+
+    public static void recordVirtualPastureChange(net.minecraft.server.level.ServerLevel level, BlockPos pos,
+                                                   BlockState state) {
+        if (virtualPastureService != null) virtualPastureService.recordWorldChange(level, pos,
+            virtualPastureService.isVirtualPasture(state));
+    }
+
     @Override
     public void onInitialize() {
         initializeServer();
@@ -341,6 +361,8 @@ public class BigBangRegions implements ModInitializer {
         int operatorFallback = configManager.getConfig().getPermissions().getOperatorFallbackLevel();
         permissionManager = new PermissionManager(operatorFallback);
         chunkLoaderService = new RegionChunkLoaderService(regionRepository, permissionManager);
+        virtualPastureService = new VirtualPastureService(configManager, new VirtualPastureRepository(databaseManager),
+            regionCache, permissionManager);
         
         roleResolver = new RegionRoleResolver(membershipCache);
         membershipService = new RegionMembershipService(regionRepository, membershipCache, regionCache, auditService, roleResolver);
@@ -397,6 +419,9 @@ public class BigBangRegions implements ModInitializer {
             LOGGER.info("Payment gateway status: {}", paymentGateway.getProviderStatus());
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (virtualPastureService != null) {
+                virtualPastureService.tick();
+            }
             if (paymentGateway != null) {
                 paymentGateway.refreshReadiness();
             }
@@ -429,6 +454,13 @@ public class BigBangRegions implements ModInitializer {
                     allocationCoordinator.cleanCooldowns();
                 }
             }
+        });
+
+        ServerChunkEvents.CHUNK_LOAD.register((world, chunk) -> {
+            if (virtualPastureService != null) virtualPastureService.onChunkLoad(world, chunk);
+        });
+        ServerChunkEvents.CHUNK_UNLOAD.register((world, chunk) -> {
+            if (virtualPastureService != null) virtualPastureService.onChunkUnload(world, chunk);
         });
 
         // 12. Player disconnect cleanup
@@ -701,6 +733,21 @@ public class BigBangRegions implements ModInitializer {
 
             if (!handlePlayerAction(serverPlayer, classified.getTargetPos(), classified.getAction())) {
                 return InteractionResult.FAIL;
+            }
+
+            ItemStack held = serverPlayer.getItemInHand(hand);
+            if (virtualPastureService != null && held.getItem() instanceof BlockItem blockItem
+                && virtualPastureService.isVirtualPasture(blockItem.getBlock()) && world instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                BlockPos target = state.canBeReplaced() ? pos : pos.relative(hitResult.getDirection());
+                VirtualPastureService.PlacementDecision decision = virtualPastureService.reserve(serverPlayer, serverLevel, target);
+                if (!decision.allowed()) {
+                    String limit = decision.maximum() > 0
+                        ? decision.current() + "/" + decision.maximum()
+                        : "indisponível";
+                    serverPlayer.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cVirtual Pasture bloqueado: limite de "
+                        + decision.reason() + " atingido (" + limit + ")."));
+                    return InteractionResult.FAIL;
+                }
             }
 
             return InteractionResult.PASS;

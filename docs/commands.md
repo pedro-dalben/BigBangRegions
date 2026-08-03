@@ -76,6 +76,16 @@ These commands require administrative permissions or OP status.
   - Permission: `bigbangregions.admin.chunkloader`
   - `chunkstatus` is an alias.
 
+### 5. Virtual Pasture Limits
+- **View a region's count**
+  `/regions pastagemvirtual regiao <regionId>`
+- **View an owner's count**
+  `/regions pastagemvirtual jogador <player>`
+- **Reconcile already-loaded chunks**
+  `/regions pastagemvirtual reconciliar`
+  - Permission: `bigbangregions.admin.virtualpasture`
+  - This command never loads chunks merely to count blocks.
+
 ---
 
 ## Player Commands

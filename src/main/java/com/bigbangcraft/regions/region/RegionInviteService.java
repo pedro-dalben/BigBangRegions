@@ -10,6 +10,7 @@ import com.bigbangcraft.regions.domain.RegionType;
 import com.bigbangcraft.regions.invite.InviteStatus;
 import com.bigbangcraft.regions.invite.RegionInvite;
 import com.bigbangcraft.regions.repository.RegionInviteRepository;
+import com.bigbangcraft.regions.BigBangRegions;
 import com.bigbangcraft.regions.repository.RegionRepository;
 
 import java.util.HashMap;
@@ -175,6 +176,9 @@ public class RegionInviteService {
             updated.setFlag(entry.getKey(), entry.getValue());
         }
         regionRepository.save(updated);
+        if (BigBangRegions.getVirtualPastureService() != null) {
+            BigBangRegions.getVirtualPastureService().transferOwner(updated.getId(), newOwnerUuid);
+        }
         regionCache.remove(region.getId());
         regionCache.add(updated);
         membershipCache.loadFromRegion(updated);

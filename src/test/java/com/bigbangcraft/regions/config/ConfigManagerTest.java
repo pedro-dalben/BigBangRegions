@@ -60,6 +60,11 @@ public class ConfigManagerTest {
         assertEquals(50000, config.getPlayerLandAllocation().getWorldgenSearch().getVirtualBiomeCacheMaxEntries());
         assertEquals(2000, config.getPlayerLandAllocation().getWorldgenSearch().getAllocationBands().getFirst().getMinRadiusBlocks());
         assertEquals(1, config.getPlayerLandAllocation().getScheduler().getMaxActiveRequests());
+        assertTrue(config.getVirtualPasture().isEnabled());
+        assertEquals("virtualloot:virtual_pasture", config.getVirtualPasture().getBlockId());
+        assertEquals(2, config.getVirtualPasture().getMaxPerRegion());
+        assertEquals(2, config.getVirtualPasture().getMaxPerPlayer());
+        assertEquals(1, config.getVirtualPasture().getMaxPerChunk());
 
         // 2. Corrupt file with invalid JSON
         Files.writeString(configFile, "{ invalid json garbage }");

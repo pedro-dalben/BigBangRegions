@@ -48,11 +48,12 @@ public class MigrationTest {
             assertTrue(tables.contains("allocation_search_cursor"));
             assertTrue(tables.contains("region_chunk_loader_chunks"));
             assertTrue(tables.contains("player_chunk_loader_credits"));
+            assertTrue(tables.contains("virtual_pastures"));
 
-            // 2. Verify schema version is marked as 15
+            // 2. Verify schema version is marked as 16
             try (ResultSet rs = stmt.executeQuery("SELECT MAX(version) FROM schema_version;")) {
                 assertTrue(rs.next());
-                assertEquals(15, rs.getInt(1));
+                assertEquals(16, rs.getInt(1));
             }
 
             // Verify columns added in V2
@@ -80,6 +81,9 @@ public class MigrationTest {
             assertTrue(indexes.contains("idx_regions_bounds"));
             assertTrue(indexes.contains("idx_audit_regionId"));
             assertTrue(indexes.contains("idx_audit_createdAt"));
+            assertTrue(indexes.contains("idx_virtual_pastures_region"));
+            assertTrue(indexes.contains("idx_virtual_pastures_owner"));
+            assertTrue(indexes.contains("idx_virtual_pastures_chunk"));
 
             List<String> allocationColumns = new ArrayList<>();
             try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(player_region_allocation_requests);")) {

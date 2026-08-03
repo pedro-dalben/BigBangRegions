@@ -21,10 +21,50 @@ public class Config {
     private PlayerLandAllocationConfig playerLandAllocation = new PlayerLandAllocationConfig();
     private RegionExpansionConfig regionExpansion = new RegionExpansionConfig();
     private RegionExpansionPerformanceConfig regionExpansionPerformance = new RegionExpansionPerformanceConfig();
+    private VirtualPastureConfig virtualPasture = new VirtualPastureConfig();
     private Map<String, BiomeOptionConfig> biomeOptions = new HashMap<>();
     private Set<String> disabledCommands = new HashSet<>();
 
     public WorldProtectionConfig getWorldProtection() { return worldProtection; }
+
+    public VirtualPastureConfig getVirtualPasture() {
+        if (virtualPasture == null) virtualPasture = new VirtualPastureConfig();
+        return virtualPasture;
+    }
+
+    /** Optional VirtualLoot integration. An invalid id disables enforcement safely. */
+    public static class VirtualPastureConfig {
+        private boolean enabled = true;
+        private String blockId = "virtualloot:virtual_pasture";
+        private int maxPerRegion = 2;
+        private int maxPerPlayer = 2;
+        private int maxPerChunk = 1;
+        private String adminBypassPermission = "bigbangregions.virtualpasture.bypass";
+        private Map<String, Integer> limits = new HashMap<>();
+
+        public VirtualPastureConfig() {
+            limits.put("default", 2);
+            limits.put("vip", 3);
+        }
+
+        public boolean isEnabled() { return enabled; }
+        public String getBlockId() { return blockId; }
+        public int getMaxPerRegion() { return Math.max(0, maxPerRegion); }
+        public int getMaxPerPlayer() { return Math.max(0, maxPerPlayer); }
+        public int getMaxPerChunk() { return Math.max(0, maxPerChunk); }
+        public String getAdminBypassPermission() { return adminBypassPermission; }
+        public Map<String, Integer> getLimits() {
+            if (limits == null) limits = new HashMap<>();
+            return Collections.unmodifiableMap(limits);
+        }
+        public void setEnabled(boolean value) { enabled = value; }
+        public void setBlockId(String value) { blockId = value; }
+        public void setMaxPerRegion(int value) { maxPerRegion = value; }
+        public void setMaxPerPlayer(int value) { maxPerPlayer = value; }
+        public void setMaxPerChunk(int value) { maxPerChunk = value; }
+        public void setAdminBypassPermission(String value) { adminBypassPermission = value; }
+        public void setLimits(Map<String, Integer> value) { limits = value == null ? new HashMap<>() : new HashMap<>(value); }
+    }
 
     public static class WorldProtectionConfig {
         private boolean blockBreakOutsideRegions = true;

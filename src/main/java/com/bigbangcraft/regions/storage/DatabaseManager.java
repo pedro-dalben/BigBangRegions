@@ -175,6 +175,13 @@ public class DatabaseManager {
             setSchemaVersion(15);
             LOGGER.info("Migration V15 applied successfully.");
         }
+
+        if (currentVersion < 16) {
+            LOGGER.info("Applying migration V16...");
+            executeMigrationResource("/storage/migrations/V016__virtual_pastures.sql");
+            setSchemaVersion(16);
+            LOGGER.info("Migration V16 applied successfully.");
+        }
     }
 
     private int getCurrentSchemaVersion() {

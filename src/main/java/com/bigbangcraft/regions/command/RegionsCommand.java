@@ -309,6 +309,22 @@ public class RegionsCommand {
             .then(Commands.literal("sair")
                 .executes(RegionsCommand::leavePlayerRegion)
             )
+            .then(Commands.literal("pastagemvirtual")
+                .requires(source -> checkPermission(source, "bigbangregions.admin.virtualpasture"))
+                .then(Commands.literal("regiao")
+                    .then(Commands.argument("regionId", StringArgumentType.word())
+                        .executes(RegionsCommand::virtualPastureRegionCount)
+                    )
+                )
+                .then(Commands.literal("jogador")
+                    .then(Commands.argument("player", StringArgumentType.word())
+                        .executes(RegionsCommand::virtualPasturePlayerCount)
+                    )
+                )
+                .then(Commands.literal("reconciliar")
+                    .executes(RegionsCommand::reconcileVirtualPastures)
+                )
+            )
             .then(Commands.literal("reload").executes(RegionsCommand::reloadMod));
 
         if (isCommandEnabled("casa")) {
@@ -1173,6 +1189,9 @@ public class RegionsCommand {
             configManager.load();
             BigBangRegions.getBiomeOptionRegistry().load();
             regionRepository.reloadCaches(regionCache, BigBangRegions.getMembershipCache());
+            if (BigBangRegions.getVirtualPastureService() != null) {
+                BigBangRegions.getVirtualPastureService().reload();
+            }
 
             UUID actorUuid = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
             auditService.log(null, actorUuid, "RELOAD", null, null, null);
@@ -1183,6 +1202,43 @@ public class RegionsCommand {
             source.sendFailure(Component.literal("Erro ao recarregar o mod. Veja os logs para mais detalhes."));
             return 0;
         }
+    }
+
+    private static int virtualPastureRegionCount(CommandContext<CommandSourceStack> context) {
+        String regionId = StringArgumentType.getString(context, "regionId");
+        if (regionCache.get(regionId) == null) {
+            context.getSource().sendFailure(Component.literal("Região '" + regionId + "' não encontrada."));
+            return 0;
+        }
+        var service = BigBangRegions.getVirtualPastureService();
+        int count = service == null ? 0 : service.countRegion(regionId);
+        context.getSource().sendSuccess(() -> Component.literal("Virtual Pastures na região '" + regionId + "': " + count), false);
+        return 1;
+    }
+
+    private static int virtualPasturePlayerCount(CommandContext<CommandSourceStack> context) {
+        String playerName = StringArgumentType.getString(context, "player");
+        Optional<GameProfile> profile = lookupProfile(context.getSource(), playerName);
+        if (profile.isEmpty()) {
+            context.getSource().sendFailure(Component.literal("Jogador '" + playerName + "' não encontrado."));
+            return 0;
+        }
+        var service = BigBangRegions.getVirtualPastureService();
+        int count = service == null ? 0 : service.countOwner(profile.get().getId());
+        context.getSource().sendSuccess(() -> Component.literal("Virtual Pastures atribuídas a " + playerName + ": " + count), false);
+        return 1;
+    }
+
+    private static int reconcileVirtualPastures(CommandContext<CommandSourceStack> context) {
+        var service = BigBangRegions.getVirtualPastureService();
+        if (service == null || !service.isAvailable()) {
+            context.getSource().sendFailure(Component.literal("VirtualLoot/Virtual Pasture não está disponível; nada para reconciliar."));
+            return 0;
+        }
+        int reconciled = service.reconcileLoadedChunks();
+        context.getSource().sendSuccess(() -> Component.literal("Reconciliação de Virtual Pasture concluída em "
+            + reconciled + " chunks já carregados."), false);
+        return 1;
     }
 
     private static int openFriendsMenu(CommandContext<CommandSourceStack> context) {

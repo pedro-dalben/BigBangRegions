@@ -275,6 +275,10 @@ public class RegionRepository {
                     pstmt.setString(1, regionId);
                     pstmt.executeUpdate();
                 }
+                try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM virtual_pastures WHERE region_id = ?;")) {
+                    pstmt.setString(1, regionId);
+                    pstmt.executeUpdate();
+                }
                 try (PreparedStatement pstmt = conn.prepareStatement("DELETE FROM regions WHERE id = ?;")) {
                     pstmt.setString(1, regionId);
                     pstmt.executeUpdate();
@@ -323,6 +327,7 @@ public class RegionRepository {
                     stmt.executeUpdate("DELETE FROM region_members;");
                     stmt.executeUpdate("DELETE FROM player_region_homes;");
                     stmt.executeUpdate("DELETE FROM plot_slots;");
+                    stmt.executeUpdate("DELETE FROM virtual_pastures;");
                     stmt.executeUpdate("DELETE FROM regions;");
                 }
 

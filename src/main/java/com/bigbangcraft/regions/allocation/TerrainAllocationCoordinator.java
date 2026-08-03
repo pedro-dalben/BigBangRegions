@@ -2309,6 +2309,9 @@ public class TerrainAllocationCoordinator {
         }
 
         regionRepository.delete(region.getId());
+        if (BigBangRegions.getVirtualPastureService() != null) {
+            BigBangRegions.getVirtualPastureService().forgetRegion(region.getId());
+        }
         RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.DELETED, region));
         regionCache.remove(region.getId());
         membershipCache.removeRegion(region.getId());

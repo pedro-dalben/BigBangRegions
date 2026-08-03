@@ -16,6 +16,7 @@
 		"PistonStructureResolverMixin",
 		"LeavesBlockMixin",
 		"IceBlockMixin",
+		"LevelVirtualPastureMixin",
 		"ServerLevelMixin"
 	],
 	"injectors": {
