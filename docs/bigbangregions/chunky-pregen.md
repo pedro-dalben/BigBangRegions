@@ -2,9 +2,9 @@
 
 A fase de **busca de bioma** (`SEARCHING`) da alocação de terrenos precisa ler o bioma de muitos
 candidatos para encontrar um slot compatível com a escolha do jogador. Para que essa busca seja
-**instantânea** e não sobrecarregue a thread principal do servidor, ela lê o bioma via
-`ChunkStatus.BIOMES` (sem forçar geração de terreno completo) e é **limitada por tempo** a cada tick
-(`maxBiomeSearchMillisPerTick`).
+**incremental** e não concentre trabalho na thread principal do servidor. A
+busca virtual é limitada por trabalho e passos em cada tick em
+`playerLandAllocation.worldgenSearch`.
 
 Mesmo assim, candidatos cujos chunks ainda não existem em disco precisam ser gerados (mesmo que
 somente até o estágio de biomas). Pré-gerar o mundo elimina esse custo e torna a alocação praticamente
@@ -26,9 +26,10 @@ alguns segundos a dezenas de segundos dependendo da distância até um bioma com
 
 ### 1. Definir o raio necessário
 
-O raio máximo de busca é `maximumSearchRadiusBlocks` em `config.json` (padrão `120000`). Você não
-precisa pré-gerar o raio inteiro — pré-gerar a partir da **zona de exploração** até uma distância
-razoável (ex.: 20000 blocos) costuma cobrir a vasta maioria das alocações.
+O alcance ativo é definido pelas entradas de `worldgenSearch.allocationBands`
+(padrão: 2.000 a 30.000 blocos). Você não precisa pré-gerar o alcance inteiro —
+pré-gerar a partir da **zona de exploração** até uma distância razoável (ex.:
+20.000 blocos) costuma cobrir a vasta maioria das alocações.
 
 A zona de exploração é `explorationExclusion` (centro onde os slots iniciam a busca). Os slots
 crescem em anéis a partir dela.
@@ -66,16 +67,20 @@ e sem warnings de "Skipping direct biome palette mutation" excessivos.
 
 ## Ajustes finos de performance
 
-No `config/bigbangregions/config.json`, em `playerLandAllocation.scheduler`:
+No `config/bigbangregions/config.json`, em
+`playerLandAllocation.worldgenSearch`:
 
 | Campo | Padrão | Efeito |
 |---|---|---|
-| `maxCandidateEvaluationsPerTick` | `256` | Número máximo de candidatos verificados por tick (hard cap). |
-| `maxBiomeSearchMillisPerTick` | `25` | Tempo máximo por tick gasto na busca de bioma. Evita lag monopolizando a thread. |
-| `maximumSearchRadiusBlocks` | `120000` | Raio máximo de busca (acentua inevitabilidade de match com pré-gen próximo). |
+| `maxSearchWorkNanosPerTick` | `750000` | Orçamento de trabalho virtual por tick (0,75 ms). |
+| `maxSearchStepsPerTick` | `1` | Número máximo de etapas de busca por tick. |
+| `maxLocateCallsPerSearchStep` | `1` | Número máximo de localizações de biome em cada etapa. |
+| `allocationBands` | `2000`–`30000` | Faixas radiais nas quais a busca reserva slots. |
 
-Recomendado manter os padrões. Em servidores com muitos pedidos simultâneos, reduza
-`maxBiomeSearchMillisPerTick` para `10`.
+Recomendado manter os padrões. Para reduzir ainda mais o custo por tick,
+reduza `maxSearchWorkNanosPerTick` ou mantenha `maxSearchStepsPerTick` em `1`;
+isso aumenta o tempo total de procura, mas não libera uma etapa maior no mesmo
+tick. Veja também o [guia de limites e budgets](../virtual-pastures.md).
 
 ## Biomas disponíveis
 
