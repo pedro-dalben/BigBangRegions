@@ -1,12 +1,9 @@
 package com.bigbangcraft.regions.allocation;
 
 import net.minecraft.core.Holder;
-import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.biome.Biome;
-import com.mojang.datafixers.util.Pair;
 
 import java.util.List;
 import java.util.Set;
@@ -40,16 +37,6 @@ public class WorldgenBiomeAnchorLocator implements BiomeAnchorLocator {
         Set<ResourceKey<Biome>> accepted = biomeOption.getAcceptedBiomeKeys();
         if (accepted.isEmpty()) {
             return new BiomeAnchorSearchStepResult.Exhausted(cursor, new AnchorSearchProgress(0, 0, "empty_biome_option"));
-        }
-
-        // Vanilla's optimized biome search is much faster for common cases.
-        // Run it once when entering a sector, then retain the resumable scan
-        // below as the correctness fallback when vanilla returns no result.
-        if (cursor.getAnchorSearchIntervalQuart() == 0) {
-            BiomeAnchorSearchStepResult fastResult = tryFastLocate(context, biomeOption, cursor, accepted);
-            if (fastResult != null) {
-                return fastResult;
-            }
         }
 
         int searchRadiusQuart = Math.max(1, BiomeCoordinateMath.blockToQuart(Math.max(4, cursor.getAnchorAttempt())));
@@ -135,61 +122,6 @@ public class WorldgenBiomeAnchorLocator implements BiomeAnchorLocator {
         return new BiomeAnchorSearchStepResult.Continue(
             cursor,
             new AnchorSearchProgress(samplesScanned, 1, "budget_exhausted")
-        );
-    }
-
-    private static BiomeAnchorSearchStepResult tryFastLocate(
-        WorldgenSearchContext context,
-        BiomeOption biomeOption,
-        AllocationSearchCursor cursor,
-        Set<ResourceKey<Biome>> accepted
-    ) {
-        long startedAt = System.nanoTime();
-        int sampleY = context.getEffectiveSampleBlockYs().getFirst();
-        int radiusQuart = Math.max(1, BiomeCoordinateMath.blockToQuart(Math.max(4, cursor.getAnchorAttempt())));
-        // In findBiomeHorizontal the fifth argument is the horizontal
-        // sampling step, not a vertical radius. Passing 16 here sampled every
-        // 64 blocks and could skip an entire cherry-grove patch. Keep the
-        // native fast path at the same 16-block spacing as the precise scan.
-        int sampleStepQuart = Math.max(1, BiomeCoordinateMath.blockToQuart(MAX_BIOME_SAMPLE_SPACING_BLOCKS));
-        long seed = 31L * cursor.getSectorX() + cursor.getSectorZ();
-        seed = 31L * seed + biomeOption.getKey().hashCode();
-
-        Pair<BlockPos, Holder<Biome>> result = context.biomeSource().findBiomeHorizontal(
-            cursor.getSectorX(),
-            sampleY,
-            cursor.getSectorZ(),
-            radiusQuart,
-            sampleStepQuart,
-            holder -> holder.unwrapKey().map(accepted::contains).orElse(false),
-            RandomSource.create(seed),
-            true,
-            context.noiseSampler()
-        );
-        cursor.setAnchorSearchPointIndex(-1);
-        AllocationMetrics.add("bigbangregions_fast_biome_locate_nanos_total", System.nanoTime() - startedAt);
-        AllocationMetrics.increment("bigbangregions_fast_biome_locate_total");
-
-        if (result == null) {
-            return null;
-        }
-
-        BlockPos position = result.getFirst();
-        Holder<Biome> holder = result.getSecond();
-        String biomeId = holder.unwrapKey()
-            .map(ResourceKey::location)
-            .map(ResourceLocation::toString)
-            .orElse("unknown");
-        cursor.setCurrentAnchorX(position.getX());
-        cursor.setCurrentAnchorY(position.getY());
-        cursor.setCurrentAnchorZ(position.getZ());
-        cursor.setCurrentAnchorBiomeId(biomeId);
-        resetScanState(cursor);
-        cursor.setAnchorSearchIntervalQuart(0);
-        cursor.setLastRejectionReason("fast_biome_found");
-        return new BiomeAnchorSearchStepResult.Found(
-            new BiomeAnchor(position.getX(), position.getY(), position.getZ(), biomeId),
-            cursor
         );
     }
 

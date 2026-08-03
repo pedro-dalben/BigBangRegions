@@ -25,6 +25,10 @@ public final class AllocationMetrics {
         GAUGES.computeIfAbsent(name, ignored -> new AtomicLong()).set(value);
     }
 
+    public static void updateMaxGauge(String name, long value) {
+        GAUGES.computeIfAbsent(name, ignored -> new AtomicLong()).accumulateAndGet(value, Math::max);
+    }
+
     public static long counterValue(String name) {
         LongAdder adder = COUNTERS.get(name);
         return adder == null ? 0L : adder.sum();

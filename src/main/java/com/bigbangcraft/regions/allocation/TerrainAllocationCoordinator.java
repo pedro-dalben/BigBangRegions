@@ -53,6 +53,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
@@ -67,6 +71,12 @@ public class TerrainAllocationCoordinator {
     private final Map<String, List<int[]>> sectorSequenceCache = new ConcurrentHashMap<>();
     private final Map<String, String> lastProgressSignatures = new ConcurrentHashMap<>();
     private final Map<String, Long> lastSignatureChangedAt = new ConcurrentHashMap<>();
+    private final Map<String, CompletableFuture<Boolean>> creationSnapshotWrites = new ConcurrentHashMap<>();
+    private final ExecutorService creationSnapshotExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "BigBangRegions-AllocationSnapshotIO");
+        thread.setDaemon(true);
+        return thread;
+    });
     private static final long PROGRESS_STAGNATION_WARN_MS = 5_000L;
 
     private final ConfigManager configManager;
@@ -347,6 +357,7 @@ public class TerrainAllocationCoordinator {
         chunkPreparationService.tick();
 
         List<AllocationRequest> active = requestRepository.getActiveRequests();
+        AllocationMetrics.setGauge("bigbangregions_allocation_queue_size", active.size());
         if (active.isEmpty()) return 0;
 
         long now = System.currentTimeMillis();
@@ -391,6 +402,18 @@ public class TerrainAllocationCoordinator {
     }
 
     private int processRequest(AllocationRequest request, ServerLevel level) {
+        long startedAt = System.nanoTime();
+        try {
+            return processRequestStep(request, level);
+        } finally {
+            long elapsed = System.nanoTime() - startedAt;
+            AllocationMetrics.add("bigbangregions_allocation_step_nanos_total", elapsed);
+            AllocationMetrics.increment("bigbangregions_allocation_step_total");
+            AllocationMetrics.updateMaxGauge("bigbangregions_allocation_step_max_nanos", elapsed);
+        }
+    }
+
+    private int processRequestStep(AllocationRequest request, ServerLevel level) {
         Config config = configManager.getConfig();
         Config.SchedulerConfig sc = config.getPlayerLandAllocation().getScheduler();
         Config.PlayerLandAllocationConfig lac = config.getPlayerLandAllocation();
@@ -522,6 +545,10 @@ public class TerrainAllocationCoordinator {
             LoadedWorldValidationResult validation = validatedWorlds.get(request.getId());
             if (validation == null) {
                 return recoverCreatingFromSqlite(request);
+            }
+
+            if (!ensureCreationSnapshot(request, lac, level, validation)) {
+                return 0;
             }
 
             try {
@@ -726,10 +753,6 @@ public class TerrainAllocationCoordinator {
             claimFootprint.maxX(), 320, claimFootprint.maxZ()
         );
         boolean snapshotEnabled = lac.getBorder().isRestoreOnDelete();
-        if (!snapshotCreatedTerrain(regionId, bounds, level, homePos, snapshotEnabled, lac.getBorder().isCreateCeiling())) {
-            pauseForRecovery(request, "Falha ao criar snapshot de restauracao antes da mutacao do terreno.", "failed_snapshot_capture");
-            return;
-        }
 
         SpawnPlatformResult platformResult = buildSpawnPlatform(level, homePos);
         if (!platformResult.success()) {
@@ -784,7 +807,9 @@ public class TerrainAllocationCoordinator {
                 syncSlotCache(slot);
                 RegionEventBus.fire(new RegionChangeEvent(RegionChangeEvent.ChangeType.CREATED, region));
 
-                postRegionCreationSetup(request, bounds, level, platformResult.finalStandPosition());
+                if (!postRegionCreationSetup(request, bounds, level, platformResult.finalStandPosition())) {
+                    cleanupRequestResources(request, PreparationCancelReason.COMPLETED, true);
+                }
                 LOGGER.info("[BigBangRegions] Region created successfully request={} region={} home=(x={}, y={}, z={})",
                     request.getId(), regionId,
                     platformResult.finalStandPosition().getX(), platformResult.finalStandPosition().getY(), platformResult.finalStandPosition().getZ());
@@ -807,7 +832,6 @@ public class TerrainAllocationCoordinator {
             }
         }
 
-        cleanupRequestResources(request, PreparationCancelReason.COMPLETED, true);
     }
 
     private SpawnPlatformResult buildSpawnPlatform(ServerLevel level, BlockPos homePos) {
@@ -876,30 +900,49 @@ public class TerrainAllocationCoordinator {
         }
     }
 
-    private boolean snapshotCreatedTerrain(
-        String regionId,
-        RegionBounds bounds,
-        ServerLevel level,
-        BlockPos homePos,
-        boolean enabled,
-        boolean createCeiling
-    ) {
-        if (!enabled) {
-            return true;
+    /** Starts bounded snapshot I/O and never waits for it on the server thread. */
+    private boolean ensureCreationSnapshot(AllocationRequest request, Config.PlayerLandAllocationConfig lac,
+                                           ServerLevel level, LoadedWorldValidationResult validation) {
+        if (!lac.getBorder().isRestoreOnDelete()) return true;
+        CompletableFuture<Boolean> future = creationSnapshotWrites.get(request.getId());
+        if (future == null) {
+            PlotSlot slot = slotRepository.get(request.getPlotSlotId());
+            if (slot == null) {
+                pauseForRecovery(request, "Slot indisponivel ao preparar snapshot de criacao.", "failed_snapshot_capture");
+                return false;
+            }
+            PlotFootprint footprint = buildClaimFootprint(slot.getMinX(), slot.getMinZ(), lac);
+            RegionBounds bounds = new RegionBounds(lac.getTargetDimension(), footprint.minX(), -64, footprint.minZ(),
+                footprint.maxX(), 320, footprint.maxZ());
+            try {
+                long startedAt = System.nanoTime();
+                RegionTerrainSnapshot.CreationCapture capture = RegionTerrainSnapshot.captureForCreation(level, bounds,
+                    validation.safeSpawn().blockPos(), request.getRegionId(), getRestoreDirectory(), lac.getBorder().isCreateCeiling());
+                AllocationMetrics.add("bigbangregions_snapshot_capture_nanos_total", System.nanoTime() - startedAt);
+                future = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        RegionTerrainSnapshot.persistCreation(capture);
+                        AllocationMetrics.increment("bigbangregions_snapshot_capture_total");
+                        return true;
+                    } catch (Exception error) {
+                        LOGGER.warn("Failed to persist creation snapshot for region {}: {}", request.getRegionId(), error.getMessage());
+                        return false;
+                    }
+                }, creationSnapshotExecutor);
+                creationSnapshotWrites.put(request.getId(), future);
+                return false;
+            } catch (Exception error) {
+                pauseForRecovery(request, "Falha ao capturar snapshot de restauracao antes da mutacao do terreno.", "failed_snapshot_capture");
+                return false;
+            }
         }
-
-        long startedAt = System.nanoTime();
-        try {
-            RegionTerrainSnapshot.capture(level, bounds, homePos, regionId, getRestoreDirectory(), createCeiling);
-            AllocationMetrics.increment("bigbangregions_snapshot_capture_total");
-            return true;
-        } catch (Exception e) {
-            LOGGER.warn("Failed to snapshot terrain for region {}: {}", regionId, e.getMessage());
-            discardTerrainSnapshot(regionId);
+        if (!future.isDone()) return false;
+        creationSnapshotWrites.remove(request.getId());
+        if (!future.getNow(false)) {
+            pauseForRecovery(request, "Falha ao persistir snapshot de restauracao antes da mutacao do terreno.", "failed_snapshot_capture");
             return false;
-        } finally {
-            AllocationMetrics.add("bigbangregions_snapshot_capture_nanos_total", System.nanoTime() - startedAt);
         }
+        return true;
     }
 
     private void discardTerrainSnapshot(String regionId) {
@@ -914,19 +957,30 @@ public class TerrainAllocationCoordinator {
         return FabricLoader.getInstance().getConfigDir().resolve("bigbangregions").resolve("terrain-restores");
     }
 
-    private void postRegionCreationSetup(AllocationRequest request, RegionBounds bounds, ServerLevel level, BlockPos homePos) {
+    /** Returns true when cleanup is deferred until the bounded visual job completes. */
+    private boolean postRegionCreationSetup(AllocationRequest request, RegionBounds bounds, ServerLevel level, BlockPos homePos) {
         Config config = configManager.getConfig();
         Config.BorderConfig borderConfig = config.getPlayerLandAllocation().getBorder();
-
-        generateGlassBorder(level, bounds, borderConfig.getMaterial(), borderConfig.isCreateCeiling());
         applyRegionBiome(level, bounds, request.getRequestedBiomeOption());
-
-        ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
-        if (player != null) {
-            player.teleportTo(level, homePos.getX() + 0.5, homePos.getY(), homePos.getZ() + 0.5, player.getYRot(), player.getXRot());
-            player.sendSystemMessage(Component.literal("§aSeu terreno foi criado com sucesso!"));
-            player.sendSystemMessage(Component.literal("§7Você foi teleportado para sua nova região."));
-        }
+        ExpansionVisualRequestStatus status = scheduleInitialBorder(bounds, request.getRegionId(), request.getId(),
+            request.getUpdatedAt(), outcome -> {
+                try {
+                    ServerPlayer player = level.getServer().getPlayerList().getPlayer(request.getOwnerUuid());
+                    if (outcome.succeeded() && player != null) {
+                        player.teleportTo(level, homePos.getX() + 0.5, homePos.getY(), homePos.getZ() + 0.5, player.getYRot(), player.getXRot());
+                        player.sendSystemMessage(Component.literal("§aSeu terreno foi criado com sucesso!"));
+                        player.sendSystemMessage(Component.literal("§7Você foi teleportado para sua nova região."));
+                    } else if (!outcome.succeeded()) {
+                        LOGGER.error("Initial border failed for region {} at {}: {}", request.getRegionId(), outcome.failureStage(), outcome.failureDetail());
+                        if (player != null) player.sendSystemMessage(Component.literal("§cA região foi criada, mas a borda precisa de revisão administrativa."));
+                    }
+                } finally {
+                    cleanupRequestResources(request, PreparationCancelReason.COMPLETED, true);
+                }
+            });
+        if (status == ExpansionVisualRequestStatus.STARTED) return true;
+        LOGGER.error("Initial border pipeline rejected region {} (status={})", request.getRegionId(), status);
+        return false;
     }
 
     private void generateSpawnPlatform(ServerLevel level, BlockPos homePos) {
@@ -1029,6 +1083,22 @@ public class TerrainAllocationCoordinator {
         };
     }
 
+    private ExpansionVisualRequestStatus scheduleInitialBorder(
+        RegionBounds bounds, String regionId, String operationId, long generation, Consumer<ExpansionVisualOutcome> completion
+    ) {
+        ExpansionVisualPipeline pipeline = expansionVisualPipeline();
+        ExpansionVisualPipeline.Plan plan = ExpansionVisualPipeline.initialBorderPlan(regionId, operationId, generation,
+            bounds, configManager.getConfig().getPlayerLandAllocation().getBorder(), getRestoreDirectory());
+        return switch (pipeline.request(plan, result -> completion.accept(new ExpansionVisualOutcome(
+            result.regionId(), result.operationId(), result.generation(), result.succeeded(),
+            result.failureStage(), result.failureDetail()
+        )))) {
+            case STARTED -> ExpansionVisualRequestStatus.STARTED;
+            case DUPLICATE -> ExpansionVisualRequestStatus.DUPLICATE;
+            case REJECTED -> ExpansionVisualRequestStatus.REJECTED;
+        };
+    }
+
     public void tickExpansionVisuals(MinecraftServer server) {
         if (expansionVisualPipeline != null) {
             expansionVisualPipeline.tick(server, configManager.getConfig().getRegionExpansionPerformance());
@@ -1038,6 +1108,12 @@ public class TerrainAllocationCoordinator {
     public void shutdownExpansionVisuals() {
         if (expansionVisualPipeline != null) {
             expansionVisualPipeline.shutdown(configManager.getConfig().getRegionExpansionPerformance().getShutdownTimeoutSeconds());
+        }
+        creationSnapshotExecutor.shutdown();
+        try {
+            creationSnapshotExecutor.awaitTermination(configManager.getConfig().getRegionExpansionPerformance().getShutdownTimeoutSeconds(), TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 

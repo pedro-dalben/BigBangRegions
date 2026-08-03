@@ -90,6 +90,18 @@ final class ExpansionVisualPipeline {
             snapshotDirectory.resolve(regionId + ".nbt"), signature);
     }
 
+    /** Initial creation already owns a complete mutation snapshot, so only the border is queued. */
+    static Plan initialBorderPlan(String regionId, String operationId, long generation, RegionBounds bounds,
+                                  Config.BorderConfig border, Path snapshotDirectory) {
+        List<Column> applyColumns = boundaryColumns(bounds);
+        List<BlockPos> ceiling = border.isCreateCeiling() ? ceilingPositions(bounds) : List.of();
+        String signature = regionId + '|' + operationId + '|' + generation + "|initial_border|"
+            + border.getMaterial() + '|' + border.isCreateCeiling();
+        return new Plan(regionId, operationId, generation, bounds.getDimension(), bounds, bounds,
+            List.of(), List.of(), applyColumns, List.of(), ceiling, border.getMaterial(),
+            snapshotDirectory.resolve(regionId + ".nbt"), signature);
+    }
+
     RequestStatus request(Plan plan, Consumer<Result> completion) {
         if (stopping) return RequestStatus.REJECTED;
         Job current = jobsByRegion.get(plan.regionId());

@@ -2,7 +2,6 @@ package com.bigbangcraft.regions.allocation;
 
 import com.bigbangcraft.regions.config.Config;
 import com.bigbangcraft.regions.config.ConfigManager;
-import com.mojang.datafixers.util.Pair;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -29,6 +28,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -137,12 +137,10 @@ public class BiomeAnchorSearchRegressionTest {
     }
 
     @Test
-    public void fastLocatorUsesSixteenBlockNativeSamplingStep() {
+    public void locatorNeverCallsUnboundedNativeBiomeSearch() {
         Holder<Biome> cherryHolder = biomeHolder("minecraft:cherry_grove");
         BiomeSource biomeSource = mock(BiomeSource.class);
-        when(biomeSource.findBiomeHorizontal(
-            anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), anyBoolean(), any()
-        )).thenReturn(Pair.of(new BlockPos(128, 64, 128), cherryHolder));
+        when(biomeSource.getNoiseBiome(anyInt(), anyInt(), anyInt(), any())).thenReturn(cherryHolder);
 
         WorldgenSearchContext context = testContext(biomeSource, List.of(64));
         AllocationSearchCursor cursor = new AllocationSearchCursor("test-request");
@@ -158,9 +156,8 @@ public class BiomeAnchorSearchRegressionTest {
         );
 
         assertInstanceOf(BiomeAnchorSearchStepResult.Found.class, result);
-        verify(biomeSource).findBiomeHorizontal(
-            eq(0), eq(64), eq(0), eq(BiomeCoordinateMath.blockToQuart(1300)),
-            eq(BiomeCoordinateMath.blockToQuart(16)), any(), any(), eq(true), any()
+        verify(biomeSource, never()).findBiomeHorizontal(
+            anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), anyBoolean(), any()
         );
     }
 

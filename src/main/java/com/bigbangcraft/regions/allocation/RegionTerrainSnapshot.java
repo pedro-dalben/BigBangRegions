@@ -57,8 +57,15 @@ final class RegionTerrainSnapshot {
         boolean createCeiling
     ) throws IOException {
         ChunkAccessGuard.assertAllowed(AllocationPhase.REGION_CREATING);
-        Files.createDirectories(directory);
+        CreationCapture capture = captureForCreation(level, bounds, homePos, regionId, directory, createCeiling);
+        persistCreation(capture);
+    }
 
+    /** Captures immutable NBT on the server thread; the caller may persist it on bounded I/O. */
+    static CreationCapture captureForCreation(
+        ServerLevel level, RegionBounds bounds, BlockPos homePos, String regionId, Path directory, boolean createCeiling
+    ) {
+        ChunkAccessGuard.assertAllowed(AllocationPhase.REGION_CREATING);
         ListTag blocks = captureMutationBlocks(level, bounds, homePos, createCeiling);
         CompoundTag root = new CompoundTag();
         root.putString("regionId", regionId);
@@ -68,10 +75,15 @@ final class RegionTerrainSnapshot {
         root.putInt("blockCount", blocks.size());
         root.put("blocks", blocks);
 
-        Path target = snapshotPath(directory, regionId);
-        writeAtomically(root, target);
-        AllocationMetrics.add("bigbangregions_snapshot_capture_blocks_total", blocks.size());
-        AllocationMetrics.add("bigbangregions_snapshot_capture_bytes_total", Files.size(target));
+        return new CreationCapture(root, snapshotPath(directory, regionId), blocks.size());
+    }
+
+    /** Does not touch a world. Safe for the allocation snapshot writer. */
+    static void persistCreation(CreationCapture capture) throws IOException {
+        Files.createDirectories(capture.target().getParent());
+        writeAtomically(capture.root(), capture.target());
+        AllocationMetrics.add("bigbangregions_snapshot_capture_blocks_total", capture.blockCount());
+        AllocationMetrics.add("bigbangregions_snapshot_capture_bytes_total", Files.size(capture.target()));
     }
 
     static void discard(String regionId, Path directory) throws IOException {
@@ -489,6 +501,12 @@ final class RegionTerrainSnapshot {
                             Path target, List<CapturedExpansionBlock> blocks) {
         ExpansionCapture {
             blocks = List.copyOf(blocks);
+        }
+    }
+
+    record CreationCapture(CompoundTag root, Path target, int blockCount) {
+        CreationCapture {
+            root = root.copy();
         }
     }
 
