@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.0] - 2026-08-04
+
+### Added
+* **Cota conjunta de Pastures**: `virtualloot:virtual_pasture` e `cobblemon:pasture` contam na mesma cota por região, proprietário e chunk. Estruturas de duas partes consomem uma unidade (apenas a base com block entity).
+* **Limite por propagação de dois eixos**: `limits.<tier>.perPlayer` e `limits.<tier>.perRegion` substituem `maxPerPlayer`/`maxPerRegion`, com perfil `elite` incluído no padrão.
+* **Validação de blocos no boot**: blocos configurados são revalidados no `SERVER_STARTED`, sem exigir `/regions reload` no primeiro boot.
+
+### Changed
+* `VirtualPastureConfig.blockId` (schema 3) migra automaticamente para `blockIds` (schema 4), preservando valores existentes.
+* Métodos antigos `getBlockId/setBlockId/getMaxPerRegion/setMaxPerRegion/getMaxPerPlayer/setMaxPerPlayer` ficam `@Deprecated` e passam a ler/escrever as novas estruturas.
+
+### Fixed
+* **Expansion visual**: quando o cursor encontra um chunk descarregado, o pipeline solicita um ticket somente para aquele chunk e retoma da mesma posição ao carregá-la, em vez de falhar.
+* **Snapshot sem block entity**: `captureExpansionBlock` não consulta mais `getBlockEntity` em estados sem block entity.
+* **Pwarps**: criação/uso de warp de jogador agora exige papel de membro (não apenas ser o dono).
+* **Transferência de posse**: bloqueada quando o novo dono já atingiu `maxRegionsPerOwner`.
+* **Mapa BigMonCraft**: waypoints de regiões são limpos por source separado sem apagar todos do jogador.
+
 ## [1.1.0] - 2026-06-25
 
 ### Added (Fase 2A — Núcleo de Terrenos de Jogadores)
