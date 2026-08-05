@@ -184,11 +184,11 @@ public class RegionContainmentService {
     }
 
     public boolean canCreatePlayerWarp(UUID creatorUuid, String dimension, int x, int y, int z) {
-        return isWarpOwnerForEveryPlayerRegion(creatorUuid, dimension, x, y, z);
+        return isAuthorizedInEveryPlayerRegion(creatorUuid, dimension, x, y, z);
     }
 
     public boolean canUsePlayerWarp(UUID warpOwnerUuid, String dimension, int x, int y, int z) {
-        return isWarpOwnerForEveryPlayerRegion(warpOwnerUuid, dimension, x, y, z);
+        return isAuthorizedInEveryPlayerRegion(warpOwnerUuid, dimension, x, y, z);
     }
 
     public void recordPlayerWarpArrival(UUID playerUuid, UUID warpOwnerUuid,
@@ -242,15 +242,15 @@ public class RegionContainmentService {
         return new Vec3(0.5, 64, 0.5);
     }
 
-    private boolean isWarpOwnerForEveryPlayerRegion(UUID warpOwnerUuid, String dimension,
-                                                     int x, int y, int z) {
+    private boolean isAuthorizedInEveryPlayerRegion(UUID playerUuid, String dimension,
+                                                    int x, int y, int z) {
         if (regionCache == null) {
             return true;
         }
 
         for (Region region : regionCache.getRegionsAt(dimension, x, y, z)) {
             if (region.getType() == RegionType.PLAYER_REGION
-                    && !java.util.Objects.equals(warpOwnerUuid, region.getOwnerUuid())) {
+                    && roleResolver.resolveRole(region, playerUuid) == RegionRole.VISITOR) {
                 return false;
             }
         }

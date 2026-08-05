@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RegionContainmentServiceTest {
     @Test
-    void pwarpsRequireThePlayerRegionOwnerAndTemporaryStayExpires() throws Exception {
+    void pwarpsRequireRegionMembershipAndTemporaryStayExpires() throws Exception {
         UUID owner = UUID.randomUUID();
         UUID member = UUID.randomUUID();
         UUID visitor = UUID.randomUUID();
@@ -24,7 +24,9 @@ class RegionContainmentServiceTest {
 
         Region region = new Region("claim", "Claim", RegionType.PLAYER_REGION,
             new RegionBounds(dimension, 0, 0, 0, 10, 10, 10), 100,
-            owner, owner, 0, 0, "ACTIVE");
+            owner, owner, 0, 0, "ACTIVE",
+            java.util.Map.of(member, new com.bigbangcraft.regions.domain.RegionMember(
+                member, com.bigbangcraft.regions.domain.RegionRole.MEMBER, owner, 0, 0)));
         RegionMembershipCache memberships = new RegionMembershipCache();
         memberships.loadFromRegion(region);
         RegionContainmentService service = new RegionContainmentService(
@@ -32,10 +34,10 @@ class RegionContainmentServiceTest {
             cache(region), new RegionRoleResolver(memberships));
 
         assertTrue(service.canCreatePlayerWarp(owner, dimension, 5, 5, 5));
-        assertFalse(service.canCreatePlayerWarp(member, dimension, 5, 5, 5));
+        assertTrue(service.canCreatePlayerWarp(member, dimension, 5, 5, 5));
         assertFalse(service.canCreatePlayerWarp(visitor, dimension, 5, 5, 5));
         assertTrue(service.canUsePlayerWarp(owner, dimension, 5, 5, 5));
-        assertFalse(service.canUsePlayerWarp(member, dimension, 5, 5, 5));
+        assertTrue(service.canUsePlayerWarp(member, dimension, 5, 5, 5));
         assertTrue(service.canCreatePlayerWarp(visitor, dimension, 50, 5, 50));
 
         service.recordPlayerWarpArrival(visitor, owner, dimension, 5, 5, 5);
