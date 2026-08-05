@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -30,13 +31,14 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.UUID;
 
 /** Server-thread state machine for expansion snapshots and border changes. */
 final class ExpansionVisualPipeline {
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-ExpansionVisualPipeline");
     private static final long LARGE_SNAPSHOT_BYTES = 16L * 1024L * 1024L;
 
-    enum State { PENDING, CAPTURING, PERSISTING, APPLYING, COMPLETED, FAILED, CANCELLED }
+    enum State { PENDING, CAPTURING, PERSISTING, WAITING_FOR_CHUNKS, APPLYING, COMPLETED, FAILED, CANCELLED }
     enum RequestStatus { STARTED, DUPLICATE, REJECTED }
 
     record Result(String regionId, String operationId, long generation, State state,
@@ -54,6 +56,7 @@ final class ExpansionVisualPipeline {
     }
 
     private final ThreadPoolExecutor persistenceExecutor;
+    private final RegionChunkTicketManager chunkTicketManager = new SimpleRegionChunkTicketManager();
     private final Map<String, Job> jobsByRegion = new LinkedHashMap<>();
     private boolean stopping;
     private int roundRobin;
@@ -112,6 +115,7 @@ final class ExpansionVisualPipeline {
         }
         if (current != null) {
             current.state = State.CANCELLED;
+            releaseChunkTickets(current);
             LOGGER.warn("Discarded obsolete expansion visual job: region={}, op={}, generation={}",
                 current.plan.regionId(), current.plan.operationId(), current.plan.generation());
         }
@@ -130,13 +134,22 @@ final class ExpansionVisualPipeline {
             int index = Math.floorMod(roundRobin++, jobs.size());
             Job job = jobs.get(index);
             if (jobsByRegion.get(job.plan.regionId()) != job) continue;
+            if (job.state == State.WAITING_FOR_CHUNKS && !resumeWhenChunkLoads(server, job)) return;
             if (job.state == State.PENDING) job.state = State.CAPTURING;
             if (job.state == State.CAPTURING) {
-                advanceCapture(server, job, performance);
+                try {
+                    advanceCapture(server, job, performance);
+                } catch (RuntimeException error) {
+                    fail(job, "CAPTURE", error);
+                }
                 return;
             }
             if (job.state == State.APPLYING) {
-                advanceApplication(server, job, performance);
+                try {
+                    advanceApplication(server, job, performance);
+                } catch (RuntimeException error) {
+                    fail(job, "APPLICATION", error);
+                }
                 return;
             }
         }
@@ -147,6 +160,7 @@ final class ExpansionVisualPipeline {
         int cancelled = jobsByRegion.size();
         jobsByRegion.values().forEach(job -> {
             if (job.state != State.PERSISTING) job.state = State.CANCELLED;
+            releaseChunkTickets(job);
         });
         jobsByRegion.clear();
 
@@ -286,8 +300,7 @@ final class ExpansionVisualPipeline {
         while (job.captureColumnIndex < job.plan.captureColumns().size()) {
             Column column = job.plan.captureColumns().get(job.captureColumnIndex);
             if (job.captureY == Integer.MIN_VALUE) {
-                ensureLoaded(level, column.x(), column.z(), job, "CAPTURE_CHUNK_UNLOADED");
-                if (job.state == State.FAILED) return null;
+                if (!ensureLoaded(level, column.x(), column.z(), job)) return null;
                 job.captureY = TerrainAllocationCoordinator.borderStartY(level, job.plan.targetBounds(), column.x(), column.z());
                 job.captureEndY = Math.min(job.plan.targetBounds().getMaxY(), level.getMaxBuildHeight() - 1);
             }
@@ -298,10 +311,11 @@ final class ExpansionVisualPipeline {
             job.captureY = Integer.MIN_VALUE;
         }
         while (job.captureCeilingIndex < job.plan.captureCeiling().size()) {
-            BlockPos pos = job.plan.captureCeiling().get(job.captureCeilingIndex++);
+            BlockPos pos = job.plan.captureCeiling().get(job.captureCeilingIndex);
             if (pos.getY() >= level.getMaxBuildHeight()) pos = pos.atY(level.getMaxBuildHeight() - 1);
-            ensureLoaded(level, pos.getX(), pos.getZ(), job, "CAPTURE_CHUNK_UNLOADED");
-            return job.state == State.FAILED ? null : pos;
+            if (!ensureLoaded(level, pos.getX(), pos.getZ(), job)) return null;
+            job.captureCeilingIndex++;
+            return pos;
         }
         return null;
     }
@@ -310,8 +324,7 @@ final class ExpansionVisualPipeline {
         while (job.removeColumnIndex < job.plan.removeColumns().size()) {
             Column column = job.plan.removeColumns().get(job.removeColumnIndex);
             if (job.removeY == Integer.MIN_VALUE) {
-                ensureLoaded(level, column.x(), column.z(), job, "REMOVE_CHUNK_UNLOADED");
-                if (job.state == State.FAILED) return null;
+                if (!ensureLoaded(level, column.x(), column.z(), job)) return null;
                 job.removeY = job.plan.oldBounds().getMinY();
                 job.removeEndY = Math.min(job.plan.oldBounds().getMaxY(), level.getMaxBuildHeight() - 1);
             }
@@ -322,8 +335,7 @@ final class ExpansionVisualPipeline {
         while (job.applyColumnIndex < job.plan.applyColumns().size()) {
             Column column = job.plan.applyColumns().get(job.applyColumnIndex);
             if (job.applyY == Integer.MIN_VALUE) {
-                ensureLoaded(level, column.x(), column.z(), job, "APPLICATION_CHUNK_UNLOADED");
-                if (job.state == State.FAILED) return null;
+                if (!ensureLoaded(level, column.x(), column.z(), job)) return null;
                 job.applyY = TerrainAllocationCoordinator.borderStartY(level, job.plan.targetBounds(), column.x(), column.z());
                 job.applyEndY = Math.min(job.plan.targetBounds().getMaxY(), level.getMaxBuildHeight() - 1);
             }
@@ -332,18 +344,54 @@ final class ExpansionVisualPipeline {
             job.applyY = Integer.MIN_VALUE;
         }
         while (job.applyCeilingIndex < job.plan.applyCeiling().size()) {
-            BlockPos pos = job.plan.applyCeiling().get(job.applyCeilingIndex++);
+            BlockPos pos = job.plan.applyCeiling().get(job.applyCeilingIndex);
             if (pos.getY() >= level.getMaxBuildHeight()) pos = pos.atY(level.getMaxBuildHeight() - 1);
-            ensureLoaded(level, pos.getX(), pos.getZ(), job, "APPLICATION_CHUNK_UNLOADED");
-            return job.state == State.FAILED ? null : new Change(pos, false);
+            if (!ensureLoaded(level, pos.getX(), pos.getZ(), job)) return null;
+            job.applyCeilingIndex++;
+            return new Change(pos, false);
         }
         return null;
     }
 
-    private void ensureLoaded(ServerLevel level, int x, int z, Job job, String failureStage) {
-        if (level.getChunkSource().getChunkNow(x >> 4, z >> 4) == null) {
-            fail(job, failureStage, new IllegalStateException("Chunk " + (x >> 4) + ',' + (z >> 4) + " is not loaded"));
+    private boolean ensureLoaded(ServerLevel level, int x, int z, Job job) {
+        int chunkX = x >> 4;
+        int chunkZ = z >> 4;
+        if (level.getChunkSource().getChunkNow(chunkX, chunkZ) != null) return true;
+
+        ChunkPos chunk = new ChunkPos(chunkX, chunkZ);
+        if (job.ticketedChunks.add(chunk)) {
+            job.chunkTickets.add(chunkTicketManager.acquire(level, Set.of(chunk), job.chunkTicketId, Long.MAX_VALUE));
         }
+        job.waitingChunkX = chunkX;
+        job.waitingChunkZ = chunkZ;
+        job.resumeState = job.state;
+        job.state = State.WAITING_FOR_CHUNKS;
+        return false;
+    }
+
+    private boolean resumeWhenChunkLoads(MinecraftServer server, Job job) {
+        ServerLevel level = level(server, job);
+        if (level == null) return false;
+        if (level.getChunkSource().getChunkNow(job.waitingChunkX, job.waitingChunkZ) == null) return false;
+
+        job.state = job.resumeState;
+        job.resumeState = null;
+        job.waitingChunkX = Integer.MIN_VALUE;
+        job.waitingChunkZ = Integer.MIN_VALUE;
+        return true;
+    }
+
+    private void releaseChunkTickets(Job job) {
+        for (TicketLease ticket : job.chunkTickets) {
+            try {
+                chunkTicketManager.release(ticket);
+            } catch (RuntimeException error) {
+                LOGGER.warn("Could not release expansion chunk ticket: region={}, op={}",
+                    job.plan.regionId(), job.plan.operationId(), error);
+            }
+        }
+        job.chunkTickets.clear();
+        job.ticketedChunks.clear();
     }
 
     private BlockState borderState(String material) {
@@ -359,6 +407,7 @@ final class ExpansionVisualPipeline {
         if (jobsByRegion.get(job.plan.regionId()) != job) return;
         job.state = State.COMPLETED;
         jobsByRegion.remove(job.plan.regionId());
+        releaseChunkTickets(job);
         AllocationMetrics.add("bigbangregions_expansion_visual_capture_blocks_total", job.captured.size());
         AllocationMetrics.add("bigbangregions_expansion_visual_application_blocks_total", job.appliedBlocks);
         AllocationMetrics.add("bigbangregions_expansion_visual_snapshot_bytes_total", job.snapshotBytes);
@@ -377,6 +426,7 @@ final class ExpansionVisualPipeline {
         if (job.state == State.FAILED || job.state == State.CANCELLED) return;
         job.state = State.FAILED;
         if (jobsByRegion.get(job.plan.regionId()) == job) jobsByRegion.remove(job.plan.regionId());
+        releaseChunkTickets(job);
         Result result = job.result(stage, error.getMessage());
         LOGGER.warn("Expansion visual job failed: region={}, op={}, generation={}, stage={}, captured={}, applied={}",
             result.regionId(), result.operationId(), result.generation(), stage, result.capturedBlocks(), result.appliedBlocks(), error);
@@ -445,10 +495,16 @@ final class ExpansionVisualPipeline {
         private final Plan plan;
         private final Consumer<Result> completion;
         private final List<RegionTerrainSnapshot.CapturedExpansionBlock> captured = new ArrayList<>();
+        private final List<TicketLease> chunkTickets = new ArrayList<>();
+        private final Set<ChunkPos> ticketedChunks = new LinkedHashSet<>();
+        private final UUID chunkTicketId = UUID.randomUUID();
         private final long captureCandidates;
         private final long applicationCandidates;
         private final long startedAt = System.nanoTime();
         private State state = State.PENDING;
+        private State resumeState;
+        private int waitingChunkX = Integer.MIN_VALUE;
+        private int waitingChunkZ = Integer.MIN_VALUE;
         private int captureColumnIndex;
         private int captureCeilingIndex;
         private int captureY = Integer.MIN_VALUE;

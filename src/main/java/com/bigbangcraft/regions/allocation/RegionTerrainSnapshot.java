@@ -326,7 +326,7 @@ final class RegionTerrainSnapshot {
      * reference. This is intentionally called only from the server-thread job.
      */
     static CapturedExpansionBlock captureExpansionBlock(ServerLevel level, BlockPos pos, BlockState state) {
-        BlockEntity blockEntity = level.getBlockEntity(pos);
+        BlockEntity blockEntity = state.hasBlockEntity() ? level.getBlockEntity(pos) : null;
         CompoundTag blockEntityData = blockEntity == null
             ? null : blockEntity.saveWithFullMetadata(level.registryAccess()).copy();
         return new CapturedExpansionBlock(pos.asLong(), stateData(state), blockEntityData);
