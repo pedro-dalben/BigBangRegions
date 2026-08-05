@@ -76,7 +76,7 @@ These commands require administrative permissions or OP status.
   - Permission: `bigbangregions.admin.chunkloader`
   - `chunkstatus` is an alias.
 
-### 5. Virtual Pasture Limits
+### 5. Pasture Limits
 - **View a region's count**
   `/regions pastagemvirtual regiao <regionId>`
 - **View an owner's count**

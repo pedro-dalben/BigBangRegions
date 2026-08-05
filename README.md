@@ -11,7 +11,7 @@ BigBang Regions é a fundação funcional do sistema de proteção territorial p
 * **Dependência Opcional:** `fabric-permissions-api` ( LuckPerms )
 * **Mapa Opcional:** BigMonCraft `0.1.0` no servidor e JourneyMap `1.21.1-6.0.2` no servidor/clientes; sem eles apenas a visualização do mapa é desativada.
 * **Gems opcional:** BigBangEssentials com `DATABASE`/MySQL e Gems habilitado — usado somente para expansão paga.
-* **VirtualLoot opcional:** limita `virtualloot:virtual_pasture` em regiões privadas quando instalado; veja o [guia de configuração e performance](docs/virtual-pastures.md).
+* **Pastures opcionais:** limita conjuntamente `virtualloot:virtual_pasture` e `cobblemon:pasture` quando registrados; veja o [guia de configuração e performance](docs/virtual-pastures.md).
 
 ## Instalação
 1. Baixe o jar do mod compilado (`bigbang-regions-<version>.jar`).
@@ -82,7 +82,7 @@ Se o LuckPerms ou outra API de permissões não estiver presente, o mod utiliza 
 ## Estrutura de Configuração (`config/bigbangregions/config.json`)
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "defaultPriorities": {
     "systemRegion": 10000,
     "adminRegion": 1000,

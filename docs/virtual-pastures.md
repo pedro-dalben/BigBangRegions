@@ -1,28 +1,31 @@
-# Integração Virtual Pasture
+# Limites conjuntos de Pastures
 
-O BigBangRegions pode limitar o bloco **Virtual Pasture** do VirtualLoot para
-evitar que uma região privada acumule block entities que processam a cada tick.
-O identificador registrado e validado pela integração é:
+O BigBangRegions limita em uma mesma cota as duas estruturas de Pasture:
 
 ```text
 virtualloot:virtual_pasture
+cobblemon:pasture
 ```
 
 O limite é aplicado antes da colocação. Quando ela é bloqueada, o mundo não é
 alterado e o item continua na mão do jogador.
 
+Cada estrutura de duas partes consome uma unidade: somente a base, que contém
+a block entity, entra nas cotas e no índice persistente. Assim, 20 Cobblemon
+Pastures e 10 Virtual Pastures já atingem um limite de 30 na região.
+
 ## Pré-requisitos
 
 - Servidor Fabric para Minecraft 1.21.1 com BigBangRegions.
-- VirtualLoot instalado no **servidor**. Cobblemon e Cobbleworkers continuam
-  sendo responsabilidade da instalação do VirtualLoot.
+- VirtualLoot e/ou Cobblemon instalados no **servidor**. Cada alvo é ativado
+  somente quando seu bloco está presente no registry.
 - Opcionalmente, `fabric-permissions-api` com LuckPerms para permissões por
   grupo. Sem ela, o fallback de OP configurado pelo BigBangRegions é usado.
 
-VirtualLoot não é uma dependência obrigatória: se ele não estiver instalado,
-ou se `blockId` não existir no registry, o BigBangRegions mantém o servidor
-funcionando e desativa somente esta limitação. Há um aviso no log na primeira
-tentativa de uso da integração.
+VirtualLoot e Cobblemon não são dependências obrigatórias: a ausência de um
+deles não desativa o alvo do outro. Identificadores ausentes geram um aviso no
+log e são ignorados. Os blocos são validados quando o servidor termina de
+iniciar, sem exigir `/regions reload` no primeiro boot.
 
 ## Configuração
 
@@ -33,14 +36,16 @@ padrão:
 ```json
 "virtualPasture": {
   "enabled": true,
-  "blockId": "virtualloot:virtual_pasture",
-  "maxPerRegion": 2,
-  "maxPerPlayer": 2,
+  "blockIds": [
+    "virtualloot:virtual_pasture",
+    "cobblemon:pasture"
+  ],
   "maxPerChunk": 1,
   "adminBypassPermission": "bigbangregions.virtualpasture.bypass",
   "limits": {
-    "default": 2,
-    "vip": 3
+    "default": { "perPlayer": 20, "perRegion": 30 },
+    "vip": { "perPlayer": 30, "perRegion": 40 },
+    "elite": { "perPlayer": 50, "perRegion": 60 }
   }
 }
 ```
@@ -48,25 +53,24 @@ padrão:
 | Campo | Efeito |
 | --- | --- |
 | `enabled` | `false` desativa a integração sem remover os registros existentes. |
-| `blockId` | Identifier do bloco a limitar. Mantenha `virtualloot:virtual_pasture` para VirtualLoot 0.3; um valor inválido desativa a proteção em vez de bloquear itens errados. |
-| `maxPerRegion` | Máximo somado dentro de uma região. `0` desativa somente este teto. |
-| `maxPerPlayer` | Teto de fallback somado em todas as regiões do mesmo proprietário. Ele é usado quando `limits.default` não foi definido. `0` desativa somente esse fallback. |
+| `blockIds` | Lista de blocos contados na mesma cota. Um bloco ausente é ignorado; a ausência de VirtualLoot não impede Cobblemon, e vice-versa. |
 | `maxPerChunk` | Máximo em cada chunk 16×16. `0` desativa somente este teto. |
 | `adminBypassPermission` | Permissão que ignora os três tetos, mas ainda registra o bloco. |
-| `limits` | Teto por proprietário para grupos de permissão; `default` é o teto comum e substitui o fallback `maxPerPlayer`. |
+| `limits.<tier>.perPlayer` | Máximo somado em todas as regiões do proprietário. |
+| `limits.<tier>.perRegion` | Máximo somado dentro de cada região do proprietário. |
 
-`maxPerPlayer` significa **proprietário da região**, e não quem clicou para
+`perPlayer` significa **proprietário da região**, e não quem clicou para
 colocar. Portanto, membros compartilham a cota do dono e não conseguem burlá-la
-ao se revezarem na colocação. A ordem de avaliação é região, proprietário e
-chunk; a primeira cota atingida é mostrada ao jogador.
+ao se revezarem na colocação. As contagens de região, proprietário e chunk
+somam os dois tipos; a primeira cota atingida é mostrada ao jogador.
 
 ### Perfis sugeridos
 
-| Perfil | `maxPerRegion` | `maxPerPlayer` | `maxPerChunk` | `limits` |
-| --- | ---: | ---: | ---: | --- |
-| Conservador | 1 | 1 | 1 | `{ "default": 1, "vip": 2 }` |
-| Equilibrado (padrão) | 2 | 2 | 1 | `{ "default": 2, "vip": 3 }` |
-| Servidor com folga medida | 3 | 3 | 1 | `{ "default": 3, "vip": 4 }` |
+| Perfil | `perRegion` | `perPlayer` | `maxPerChunk` |
+| --- | ---: | ---: | ---: |
+| Conservador | 10 | 8 | 1 |
+| Equilibrado (padrão) | 30 | 20 | 1 |
+| Servidor com folga medida | 60 | 50 | 1 |
 
 Comece pelo perfil conservador ou padrão. Só eleve os limites depois de medir
 o tick do servidor com os mesmos mods, quantidade de jogadores e farms reais.
@@ -82,9 +86,9 @@ num único ponto.
 | `bigbangregions.admin.virtualpasture` | Consulta contagens e reconcilia chunks carregados. |
 | `bigbangregions.admin.reload` | Autoriza `/regions reload`. |
 
-O maior valor entre os tiers que o proprietário possui é usado. Para manter a
-regra segura quando um membro coloca o bloco, a colocação por membro usa o teto
-`default`; ela nunca usa a permissão VIP do membro para aumentar a cota do dono.
+O maior valor de cada limite entre os tiers que o proprietário possui é usado.
+O rank é sempre o do proprietário da região, mesmo quando um membro coloca o
+bloco.
 
 ## Aplicar alterações
 
@@ -94,16 +98,15 @@ regra segura quando um membro coloca o bloco, a colocação por membro usa o tet
 4. Confira a configuração com os comandos abaixo e faça uma reconciliação dos
    chunks já carregados.
 
-Configurações anteriores à schema `3` são migradas automaticamente no primeiro
-load/reload: os blocos `virtualPasture` e `regionExpansionPerformance` são
-gravados no mesmo arquivo com seus campos ausentes preenchidos. Valores já
-definidos pelo servidor são preservados; não é necessário substituir o arquivo
-inteiro por este exemplo.
+Configurações anteriores à schema `4` são migradas automaticamente no primeiro
+load/reload. O antigo `blockId` vira `blockIds`, e limites inteiros antigos
+viram objetos com `perPlayer` e `perRegion`, preservando os valores existentes.
+Valores já definidos pelo servidor são preservados; não é necessário substituir
+o arquivo inteiro por este exemplo.
 
-`/regions reload` recarrega a configuração e revalida se o bloco configurado
-está presente no registry. Alterar `blockId` para um Identifier inexistente não
-substitui nem remove blocos; apenas torna o limitador inativo até a configuração
-ser corrigida.
+`/regions reload` recarrega a configuração e revalida os blocos configurados.
+Alterar `blockIds` para Identifiers inexistentes não substitui nem remove
+blocos; apenas torna esses alvos inativos até a configuração ser corrigida.
 
 ## Comandos administrativos
 
@@ -113,7 +116,7 @@ ser corrigida.
 /regions pastagemvirtual reconciliar
 ```
 
-Os dois primeiros mostram a quantidade indexada por região ou proprietário.
+Os dois primeiros mostram a quantidade conjunta indexada por região ou proprietário.
 `reconciliar` revisa somente chunks que o Minecraft já carregou; ele nunca gera
 ou carrega chunks apenas para contar blocos.
 

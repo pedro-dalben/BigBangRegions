@@ -58,7 +58,7 @@ Os limites ativos da busca virtual ficam em
 `playerLandAllocation.worldgenSearch`: `maxSearchWorkNanosPerTick`,
 `maxSearchStepsPerTick` e `maxLocateCallsPerSearchStep`. Snapshots, bordas e
 restaurações usam `regionExpansionPerformance`; por padrão cada lote usa 3 ms
-e 250 passos. Veja o guia de [Virtual Pasture e ajuste de performance](virtual-pastures.md)
+e 250 passos. Veja o guia de [Pastures e ajuste de performance](virtual-pastures.md)
 antes de elevar qualquer orçamento.
 
 Uma exclusão de terreno de jogador é confirmada como **agendada**. A região

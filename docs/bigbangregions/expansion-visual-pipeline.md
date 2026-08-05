@@ -50,9 +50,10 @@ o trabalho sincrono completo, nao uma espera de future.
 Uma expansao so marca `border_applied_at` depois que a borda visual terminou;
 somente entao a captura de Gems pode concluir a operacao. O snapshot original
 nao pode ser perdido: uma expansao acrescenta somente posicoes ainda ausentes
-ao mesmo snapshot atomico. Chunks necessarios nao sao carregados pelo pipeline;
-se uma coluna nao esta carregada, o trabalho falha de forma recuperavel e o
-reconcile posterior tenta novamente.
+ao mesmo snapshot atomico. Quando o cursor encontra um chunk descarregado, ele
+solicita um ticket somente para aquele chunk e entra em espera; assim que o
+chunk carrega, retoma exatamente da mesma posicao. Nao ha carregamento em massa
+nem retry da operacao de expansao.
 
 ## Arquitetura refatorada
 
