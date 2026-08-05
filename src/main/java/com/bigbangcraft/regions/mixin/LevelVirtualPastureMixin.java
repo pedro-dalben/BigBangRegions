@@ -23,7 +23,7 @@ public abstract class LevelVirtualPastureMixin {
             || BigBangRegions.getVirtualPastureService().isVirtualPasture(level.getBlockState(pos))) {
             return;
         }
-        if (!BigBangRegions.reserveVirtualPasturePlacement(serverLevel, pos)) {
+        if (!BigBangRegions.reserveVirtualPasturePlacement(serverLevel, pos, state)) {
             cir.setReturnValue(false);
         }
     }

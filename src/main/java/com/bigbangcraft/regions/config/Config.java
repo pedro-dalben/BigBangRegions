@@ -12,7 +12,7 @@ import java.util.Set;
 public class Config {
     public static final int BIOME_SEARCH_VALIDATION_SCHEMA_VERSION = 1;
 
-    private int schemaVersion = 3;
+    private int schemaVersion = 4;
     private DefaultPriorities defaultPriorities = new DefaultPriorities();
     private Permissions permissions = new Permissions();
     private Defaults defaults = new Defaults();
@@ -32,38 +32,66 @@ public class Config {
         return virtualPasture;
     }
 
-    /** Optional VirtualLoot integration. An invalid id disables enforcement safely. */
+    /** Optional Pasture integration. Unknown or absent blocks are ignored safely. */
     public static class VirtualPastureConfig {
         private boolean enabled = true;
-        private String blockId = "virtualloot:virtual_pasture";
-        private int maxPerRegion = 2;
-        private int maxPerPlayer = 2;
+        private List<String> blockIds = new ArrayList<>(List.of(
+            "virtualloot:virtual_pasture", "cobblemon:pasture"));
         private int maxPerChunk = 1;
         private String adminBypassPermission = "bigbangregions.virtualpasture.bypass";
-        private Map<String, Integer> limits = new HashMap<>();
+        private Map<String, PastureLimit> limits = new HashMap<>();
 
         public VirtualPastureConfig() {
-            limits.put("default", 2);
-            limits.put("vip", 3);
+            limits.put("default", new PastureLimit(20, 30));
+            limits.put("vip", new PastureLimit(30, 40));
+            limits.put("elite", new PastureLimit(50, 60));
         }
 
         public boolean isEnabled() { return enabled; }
-        public String getBlockId() { return blockId; }
-        public int getMaxPerRegion() { return Math.max(0, maxPerRegion); }
-        public int getMaxPerPlayer() { return Math.max(0, maxPerPlayer); }
+        public List<String> getBlockIds() {
+            if (blockIds == null) blockIds = new ArrayList<>();
+            return Collections.unmodifiableList(blockIds);
+        }
         public int getMaxPerChunk() { return Math.max(0, maxPerChunk); }
         public String getAdminBypassPermission() { return adminBypassPermission; }
-        public Map<String, Integer> getLimits() {
+        public Map<String, PastureLimit> getLimits() {
             if (limits == null) limits = new HashMap<>();
             return Collections.unmodifiableMap(limits);
         }
         public void setEnabled(boolean value) { enabled = value; }
-        public void setBlockId(String value) { blockId = value; }
-        public void setMaxPerRegion(int value) { maxPerRegion = value; }
-        public void setMaxPerPlayer(int value) { maxPerPlayer = value; }
+        public void setBlockIds(List<String> value) { blockIds = value == null ? new ArrayList<>() : new ArrayList<>(value); }
         public void setMaxPerChunk(int value) { maxPerChunk = value; }
         public void setAdminBypassPermission(String value) { adminBypassPermission = value; }
-        public void setLimits(Map<String, Integer> value) { limits = value == null ? new HashMap<>() : new HashMap<>(value); }
+        public void setLimits(Map<String, PastureLimit> value) { limits = value == null ? new HashMap<>() : new HashMap<>(value); }
+
+        /** Legacy accessor retained for integrations compiled against schema 3. */
+        @Deprecated public String getBlockId() { return getBlockIds().stream().findFirst().orElse(null); }
+        @Deprecated public int getMaxPerRegion() { return getLimits().getOrDefault("default", new PastureLimit(0, 0)).getPerRegion(); }
+        @Deprecated public int getMaxPerPlayer() { return getLimits().getOrDefault("default", new PastureLimit(0, 0)).getPerPlayer(); }
+        @Deprecated public void setBlockId(String value) { setBlockIds(value == null ? List.of() : List.of(value)); }
+        @Deprecated public void setMaxPerRegion(int value) { setDefaultLimit(value, getMaxPerPlayer()); }
+        @Deprecated public void setMaxPerPlayer(int value) { setDefaultLimit(getMaxPerRegion(), value); }
+
+        private void setDefaultLimit(int perRegion, int perPlayer) {
+            if (limits == null) limits = new HashMap<>();
+            limits.put("default", new PastureLimit(perPlayer, perRegion));
+        }
+    }
+
+    public static class PastureLimit {
+        private int perPlayer;
+        private int perRegion;
+
+        public PastureLimit() { }
+        public PastureLimit(int perPlayer, int perRegion) {
+            this.perPlayer = perPlayer;
+            this.perRegion = perRegion;
+        }
+
+        public int getPerPlayer() { return Math.max(0, perPlayer); }
+        public int getPerRegion() { return Math.max(0, perRegion); }
+        public void setPerPlayer(int value) { perPlayer = value; }
+        public void setPerRegion(int value) { perRegion = value; }
     }
 
     public static class WorldProtectionConfig {

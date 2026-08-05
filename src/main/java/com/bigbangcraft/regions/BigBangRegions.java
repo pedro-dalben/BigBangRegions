@@ -273,8 +273,10 @@ public class BigBangRegions implements ModInitializer {
     }
 
     /** Used by the Level mixin so dispenser and API placement reserve quota before setBlock mutates the world. */
-    public static boolean reserveVirtualPasturePlacement(net.minecraft.server.level.ServerLevel level, BlockPos pos) {
-        return virtualPastureService == null || virtualPastureService.reserve(null, level, pos).allowed();
+    public static boolean reserveVirtualPasturePlacement(net.minecraft.server.level.ServerLevel level, BlockPos pos,
+                                                          BlockState state) {
+        return virtualPastureService == null || !virtualPastureService.isVirtualPasture(state)
+            || virtualPastureService.reserve(null, level, pos).allowed();
     }
 
     @Override
@@ -403,6 +405,9 @@ public class BigBangRegions implements ModInitializer {
 
         // 11. Server tick scheduler for allocation processing + entry/exit tracking
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            if (virtualPastureService != null) {
+                virtualPastureService.onServerStarted();
+            }
             if (regionMapIntegration == null) {
                 initializeRegionMapIntegration(server);
             }
@@ -746,14 +751,15 @@ public class BigBangRegions implements ModInitializer {
 
             ItemStack held = serverPlayer.getItemInHand(hand);
             if (virtualPastureService != null && held.getItem() instanceof BlockItem blockItem
-                && virtualPastureService.isVirtualPasture(blockItem.getBlock()) && world instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                && virtualPastureService.isVirtualPasture(blockItem.getBlock().defaultBlockState())
+                && world instanceof net.minecraft.server.level.ServerLevel serverLevel) {
                 BlockPos target = state.canBeReplaced() ? pos : pos.relative(hitResult.getDirection());
                 VirtualPastureService.PlacementDecision decision = virtualPastureService.reserve(serverPlayer, serverLevel, target);
                 if (!decision.allowed()) {
                     String limit = decision.maximum() > 0
                         ? decision.current() + "/" + decision.maximum()
                         : "indisponível";
-                    serverPlayer.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cVirtual Pasture bloqueado: limite de "
+                    serverPlayer.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cPasture bloqueada: limite de "
                         + decision.reason() + " atingido (" + limit + ")."));
                     return InteractionResult.FAIL;
                 }

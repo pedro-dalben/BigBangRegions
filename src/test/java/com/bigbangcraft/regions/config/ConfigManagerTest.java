@@ -27,7 +27,7 @@ public class ConfigManagerTest {
 
         Config config = manager.getConfig();
         assertNotNull(config);
-        assertEquals(3, config.getSchemaVersion());
+        assertEquals(4, config.getSchemaVersion());
         assertEquals(1000, config.getDefaultPriorities().getAdminRegion());
         assertEquals("DENY", config.getDefaults().getGlobal().get("visitor-build"));
         assertEquals("DENY", config.getDefaults().getAdminRegion().get("visitor-build"));
@@ -63,9 +63,11 @@ public class ConfigManagerTest {
         assertEquals(2000, config.getPlayerLandAllocation().getWorldgenSearch().getAllocationBands().getFirst().getMinRadiusBlocks());
         assertEquals(1, config.getPlayerLandAllocation().getScheduler().getMaxActiveRequests());
         assertTrue(config.getVirtualPasture().isEnabled());
-        assertEquals("virtualloot:virtual_pasture", config.getVirtualPasture().getBlockId());
-        assertEquals(2, config.getVirtualPasture().getMaxPerRegion());
-        assertEquals(2, config.getVirtualPasture().getMaxPerPlayer());
+        assertEquals(java.util.List.of("virtualloot:virtual_pasture", "cobblemon:pasture"), config.getVirtualPasture().getBlockIds());
+        assertEquals(30, config.getVirtualPasture().getLimits().get("default").getPerRegion());
+        assertEquals(20, config.getVirtualPasture().getLimits().get("default").getPerPlayer());
+        assertEquals(40, config.getVirtualPasture().getLimits().get("vip").getPerRegion());
+        assertEquals(50, config.getVirtualPasture().getLimits().get("elite").getPerPlayer());
         assertEquals(1, config.getVirtualPasture().getMaxPerChunk());
         assertEquals(120, config.getRegionExpansionPerformance().getDeletionRestoreTimeoutSeconds());
 
@@ -127,6 +129,7 @@ public class ConfigManagerTest {
               "schemaVersion": 2,
               "virtualPasture": {
                 "enabled": false,
+                "blockId": "virtualloot:virtual_pasture",
                 "maxPerRegion": 4,
                 "limits": { "vip": 6 }
               },
@@ -139,19 +142,24 @@ public class ConfigManagerTest {
         ConfigManager manager = new ConfigManager(configDir);
         manager.load();
 
-        assertEquals(3, manager.getConfig().getSchemaVersion());
+        assertEquals(4, manager.getConfig().getSchemaVersion());
         assertFalse(manager.getConfig().getVirtualPasture().isEnabled());
-        assertEquals(4, manager.getConfig().getVirtualPasture().getMaxPerRegion());
-        assertEquals(2, manager.getConfig().getVirtualPasture().getLimits().get("default"));
-        assertEquals(6, manager.getConfig().getVirtualPasture().getLimits().get("vip"));
+        assertEquals(java.util.List.of("virtualloot:virtual_pasture"), manager.getConfig().getVirtualPasture().getBlockIds());
+        assertEquals(4, manager.getConfig().getVirtualPasture().getLimits().get("default").getPerRegion());
+        assertEquals(2, manager.getConfig().getVirtualPasture().getLimits().get("default").getPerPlayer());
+        assertEquals(4, manager.getConfig().getVirtualPasture().getLimits().get("vip").getPerRegion());
+        assertEquals(6, manager.getConfig().getVirtualPasture().getLimits().get("vip").getPerPlayer());
         assertEquals(5, manager.getConfig().getRegionExpansionPerformance().getBorderApplicationBudgetMs());
         assertEquals(120, manager.getConfig().getRegionExpansionPerformance().getDeletionRestoreTimeoutSeconds());
 
         JsonObject saved = JsonParser.parseString(Files.readString(configFile)).getAsJsonObject();
-        assertEquals(3, saved.get("schemaVersion").getAsInt());
+        assertEquals(4, saved.get("schemaVersion").getAsInt());
         assertTrue(saved.has("virtualPasture"));
         assertTrue(saved.has("regionExpansionPerformance"));
-        assertTrue(saved.getAsJsonObject("virtualPasture").has("blockId"));
+        assertTrue(saved.getAsJsonObject("virtualPasture").has("blockIds"));
+        assertFalse(saved.getAsJsonObject("virtualPasture").has("blockId"));
+        assertTrue(saved.getAsJsonObject("virtualPasture").getAsJsonObject("limits")
+            .getAsJsonObject("default").has("perPlayer"));
         assertTrue(saved.getAsJsonObject("regionExpansionPerformance").has("deletionRestoreTimeoutSeconds"));
     }
 }

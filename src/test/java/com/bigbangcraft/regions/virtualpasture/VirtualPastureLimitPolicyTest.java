@@ -18,6 +18,13 @@ class VirtualPastureLimitPolicyTest {
     }
 
     @Test
+    void combinedCobblemonAndVirtualPastureCountBlocksTheSharedRegionQuota() {
+        var result = VirtualPastureLimitPolicy.check(new VirtualPastureLimitPolicy.Counts(30, 10, 0), 30, 40, 0, true, false);
+        assertFalse(result.allowed());
+        assertEquals("região", result.scope());
+    }
+
+    @Test
     void blocksOwnerLimitIncludingMembers() {
         var result = VirtualPastureLimitPolicy.check(new VirtualPastureLimitPolicy.Counts(0, 2, 0), 3, 2, 1, true, false);
         assertFalse(result.allowed());

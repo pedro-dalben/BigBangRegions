@@ -1207,7 +1207,7 @@ public class RegionsCommand {
         }
         var service = BigBangRegions.getVirtualPastureService();
         int count = service == null ? 0 : service.countRegion(regionId);
-        context.getSource().sendSuccess(() -> Component.literal("Virtual Pastures na região '" + regionId + "': " + count), false);
+        context.getSource().sendSuccess(() -> Component.literal("Pastures na região '" + regionId + "': " + count), false);
         return 1;
     }
 
@@ -1220,18 +1220,18 @@ public class RegionsCommand {
         }
         var service = BigBangRegions.getVirtualPastureService();
         int count = service == null ? 0 : service.countOwner(profile.get().getId());
-        context.getSource().sendSuccess(() -> Component.literal("Virtual Pastures atribuídas a " + playerName + ": " + count), false);
+        context.getSource().sendSuccess(() -> Component.literal("Pastures atribuídas a " + playerName + ": " + count), false);
         return 1;
     }
 
     private static int reconcileVirtualPastures(CommandContext<CommandSourceStack> context) {
         var service = BigBangRegions.getVirtualPastureService();
         if (service == null || !service.isAvailable()) {
-            context.getSource().sendFailure(Component.literal("VirtualLoot/Virtual Pasture não está disponível; nada para reconciliar."));
+            context.getSource().sendFailure(Component.literal("Nenhuma Pasture configurada está disponível; nada para reconciliar."));
             return 0;
         }
         int reconciled = service.reconcileLoadedChunks();
-        context.getSource().sendSuccess(() -> Component.literal("Reconciliação de Virtual Pasture enfileirada para "
+        context.getSource().sendSuccess(() -> Component.literal("Reconciliação de Pastures enfileirada para "
             + reconciled + " chunks já carregados."), false);
         return 1;
     }

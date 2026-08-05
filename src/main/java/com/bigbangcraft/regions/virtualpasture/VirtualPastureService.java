@@ -8,24 +8,25 @@ import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.permission.PermissionManager;
 import com.bigbangcraft.regions.region.RegionResolver;
 import com.bigbangcraft.regions.repository.VirtualPastureRepository;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
+import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -41,7 +42,7 @@ import me.lucko.fabric.api.permissions.v0.Permissions;
  * Minecraft already loaded; a count must never cause a chunk load.
  */
 public final class VirtualPastureService {
-    private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-VirtualPasture");
+    private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-Pastures");
     private static final long RESERVATION_MILLIS = 15_000L;
     private static final int RECONCILIATION_STEPS_PER_TICK = 64;
     private static final long RECONCILIATION_BUDGET_NANOS = 2_000_000L;
@@ -83,9 +84,11 @@ public final class VirtualPastureService {
     private final Map<String, LevelChunk> loadedChunks = new HashMap<>();
     private final Deque<ChunkReconciliation> reconciliationQueue = new ArrayDeque<>();
     private final Map<String, LevelChunk> queuedChunks = new HashMap<>();
-    private final Map<UUID, Integer> cachedOwnerLimits = new ConcurrentHashMap<>();
+    private final Map<UUID, Config.PastureLimit> cachedOwnerLimits = new ConcurrentHashMap<>();
     private final Set<UUID> refreshingOwnerLimits = ConcurrentHashMap.newKeySet();
-    private ResourceLocation virtualPastureId;
+    private Set<ResourceLocation> pastureIds = Set.of();
+    private boolean configured;
+    private boolean registryReady;
     private boolean available;
     private boolean warnedUnavailable;
 
@@ -100,18 +103,12 @@ public final class VirtualPastureService {
 
     public void reload() {
         Config.VirtualPastureConfig config = configManager.getConfig().getVirtualPasture();
-        available = config.isEnabled() && FabricLoader.getInstance().isModLoaded("virtualloot");
-        virtualPastureId = null;
-        if (available) {
-            try {
-                ResourceLocation id = ResourceLocation.parse(config.getBlockId());
-                if (BuiltInRegistries.BLOCK.containsKey(id)) virtualPastureId = id;
-                else LOGGER.warn("Virtual Pasture block '{}' is not registered; protection is disabled.", id);
-            } catch (RuntimeException invalid) {
-                LOGGER.warn("Virtual Pasture block id '{}' is invalid; protection is disabled.", config.getBlockId());
-            }
+        configured = config.isEnabled();
+        pastureIds = configured ? configuredBlockIds(config.getBlockIds()) : Set.of();
+        available = registryReady && !pastureIds.isEmpty();
+        if (registryReady && configured && pastureIds.isEmpty()) {
+            LOGGER.warn("No configured Pasture block is registered; Pasture limits are disabled.");
         }
-        available = available && virtualPastureId != null;
         warnedUnavailable = false;
         repository.deleteExpiredPending(System.currentTimeMillis());
         rebuild(repository.loadAll());
@@ -120,15 +117,37 @@ public final class VirtualPastureService {
         if (available) {
             for (VirtualPastureRecord record : records.values()) refreshOwnerLimit(record.ownerUuid(), config);
         }
-        if (available) LOGGER.info("Virtual Pasture limit active for {}.", virtualPastureId);
+        if (available) LOGGER.info("Pasture limits active for {}.", pastureIds);
     }
 
+    public void onServerStarted() {
+        registryReady = true;
+        reload();
+        reconcileLoadedChunks();
+    }
+
+    /** A two-block Pasture consumes quota only at its lower, block-entity half. */
     public boolean isVirtualPasture(BlockState state) {
-        return state != null && isVirtualPasture(state.getBlock());
+        return available && isCountedVirtualPasture(state, pastureIds);
     }
 
-    public boolean isVirtualPasture(Block block) {
-        return available && block != null && virtualPastureId.equals(BuiltInRegistries.BLOCK.getKey(block));
+    static boolean isCountedVirtualPasture(BlockState state, ResourceLocation blockId) {
+        return isCountedVirtualPasture(state, blockId == null ? Set.of() : Set.of(blockId));
+    }
+
+    static boolean isCountedVirtualPasture(BlockState state, Collection<ResourceLocation> blockIds) {
+        if (state == null || blockIds == null || !blockIds.contains(BuiltInRegistries.BLOCK.getKey(state.getBlock()))) {
+            return false;
+        }
+        for (Property<?> property : state.getProperties()) {
+            if ("part".equals(property.getName())) return "bottom".equalsIgnoreCase(propertyValueName(state, property));
+        }
+        return true;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static String propertyValueName(BlockState state, Property property) {
+        return property.getName((Comparable) state.getValue(property));
     }
 
     public boolean tracksPosition(ServerLevel level, BlockPos pos) {
@@ -140,7 +159,7 @@ public final class VirtualPastureService {
         if (!available) {
             if (configManager.getConfig().getVirtualPasture().isEnabled() && !warnedUnavailable) {
                 warnedUnavailable = true;
-                LOGGER.info("Virtual Pasture limiting is inactive because VirtualLoot or its registered block is unavailable.");
+                LOGGER.info("Pasture limiting is inactive because no configured Pasture block is registered.");
             }
             return PlacementDecision.pass();
         }
@@ -152,18 +171,19 @@ public final class VirtualPastureService {
         VirtualPastureRecord existing = records.get(key);
         if (existing != null && existing.state() == VirtualPastureRecord.State.PENDING
             && existing.pendingExpiresAt() != null && existing.pendingExpiresAt() >= System.currentTimeMillis()) {
-            return PlacementDecision.accepted(count(byOwner.get(existing.ownerUuid())), ownerLimit(level, existing.ownerUuid(), config));
+            return PlacementDecision.accepted(count(byOwner.get(existing.ownerUuid())),
+                ownerLimits(level, existing.ownerUuid(), config).getPerPlayer());
         }
         boolean bypass = player != null && permissions.hasPermission(player, config.getAdminBypassPermission());
         int regionCount = count(byRegion.get(region.getId()));
         int ownerCount = owner == null ? 0 : count(byOwner.get(owner));
         int chunkCount = count(byChunk.get(chunkKey(level, pos)));
-        int ownerLimit = ownerLimit(level, owner, config);
+        Config.PastureLimit ownerLimits = ownerLimits(level, owner, config);
         VirtualPastureLimitPolicy.Decision limits = VirtualPastureLimitPolicy.check(
-            new VirtualPastureLimitPolicy.Counts(regionCount, ownerCount, chunkCount), config.getMaxPerRegion(),
-            ownerLimit, config.getMaxPerChunk(), owner != null, bypass);
+            new VirtualPastureLimitPolicy.Counts(regionCount, ownerCount, chunkCount), ownerLimits.getPerRegion(),
+            ownerLimits.getPerPlayer(), config.getMaxPerChunk(), owner != null, bypass);
         if (!limits.allowed()) {
-            AllocationMetrics.increment("bigbangregions_virtual_pasture_denied_total");
+            AllocationMetrics.increment("bigbangregions_pastures_denied_total");
             return PlacementDecision.denied(limits.current(), limits.maximum(), limits.scope());
         }
 
@@ -172,10 +192,10 @@ public final class VirtualPastureService {
         try {
             repository.upsert(record); // Fail closed: vanilla placement is not invoked when this fails.
             put(record);
-            AllocationMetrics.increment("bigbangregions_virtual_pasture_reservations_total");
-            return PlacementDecision.accepted(ownerCount, ownerLimit);
+            AllocationMetrics.increment("bigbangregions_pastures_reservations_total");
+            return PlacementDecision.accepted(ownerCount, ownerLimits.getPerPlayer());
         } catch (IllegalStateException error) {
-            LOGGER.warn("Virtual Pasture placement was denied because its reservation could not be persisted.", error);
+            LOGGER.warn("Pasture placement was denied because its reservation could not be persisted.", error);
             return PlacementDecision.denied(0, 0, "banco de dados indisponível");
         }
     }
@@ -218,19 +238,19 @@ public final class VirtualPastureService {
                     : record(change.level(), change.pos(), region, VirtualPastureRecord.State.ACTIVE, null);
                 repository.upsert(active);
                 put(active);
-                AllocationMetrics.increment("bigbangregions_virtual_pasture_reconciled_total");
+                AllocationMetrics.increment("bigbangregions_pastures_reconciled_total");
             } catch (IllegalStateException error) {
-                LOGGER.error("Virtual Pasture index update failed for {}", change.pos(), error);
+                LOGGER.error("Pasture index update failed for {}", change.pos(), error);
             }
         }
         return processed;
     }
 
     public void onChunkLoad(ServerLevel level, LevelChunk chunk) {
-        if (!available) return;
+        if (!configured) return;
         String key = chunkKey(level.dimension().location().toString(), chunk.getPos().x, chunk.getPos().z);
         loadedChunks.put(key, chunk);
-        enqueueReconciliation(key, level, chunk);
+        if (available) enqueueReconciliation(key, level, chunk);
     }
 
     public void onChunkUnload(ServerLevel level, LevelChunk chunk) {
@@ -328,22 +348,24 @@ public final class VirtualPastureService {
             .sorted(RegionResolver.REGION_PRIORITY_COMPARATOR).findFirst().orElse(null);
     }
 
-    private int ownerLimit(ServerPlayer player, Config.VirtualPastureConfig config) {
-        int result = config.getLimits().getOrDefault("default", config.getMaxPerPlayer());
-        for (Map.Entry<String, Integer> entry : config.getLimits().entrySet()) {
-            if (!"default".equals(entry.getKey()) && permissions.hasPermission(player, "bigbangregions.virtualpasture.limit." + entry.getKey())) {
-                result = Math.max(result, Math.max(0, entry.getValue()));
+    private Config.PastureLimit ownerLimits(ServerPlayer player, Config.VirtualPastureConfig config) {
+        Config.PastureLimit result = defaultLimit(config);
+        for (Map.Entry<String, Config.PastureLimit> entry : config.getLimits().entrySet()) {
+            Config.PastureLimit limit = entry.getValue();
+            if (!"default".equals(entry.getKey()) && limit != null
+                && permissions.hasPermission(player, "bigbangregions.virtualpasture.limit." + entry.getKey())) {
+                result = larger(result, limit);
             }
         }
         return result;
     }
 
-    private int ownerLimit(ServerLevel level, UUID owner, Config.VirtualPastureConfig config) {
-        int defaultLimit = config.getLimits().getOrDefault("default", config.getMaxPerPlayer());
+    private Config.PastureLimit ownerLimits(ServerLevel level, UUID owner, Config.VirtualPastureConfig config) {
+        Config.PastureLimit defaultLimit = defaultLimit(config);
         if (owner == null) return defaultLimit;
         ServerPlayer ownerPlayer = level.getServer().getPlayerList().getPlayer(owner);
         if (ownerPlayer != null) {
-            int limit = ownerLimit(ownerPlayer, config);
+            Config.PastureLimit limit = ownerLimits(ownerPlayer, config);
             cachedOwnerLimits.put(owner, limit);
             return limit;
         }
@@ -353,18 +375,18 @@ public final class VirtualPastureService {
 
     private void refreshOwnerLimit(UUID owner, Config.VirtualPastureConfig config) {
         if (owner == null || !refreshingOwnerLimits.add(owner)) return;
-        int defaultLimit = config.getLimits().getOrDefault("default", config.getMaxPerPlayer());
-        List<Map.Entry<String, Integer>> tiers = config.getLimits().entrySet().stream()
+        Config.PastureLimit defaultLimit = defaultLimit(config);
+        List<Map.Entry<String, Config.PastureLimit>> tiers = config.getLimits().entrySet().stream()
             .filter(entry -> !"default".equals(entry.getKey())).toList();
         List<CompletableFuture<Boolean>> checks = tiers.stream()
             .map(entry -> Permissions.check(owner, "bigbangregions.virtualpasture.limit." + entry.getKey(), false))
             .toList();
         CompletableFuture.allOf(checks.toArray(CompletableFuture[]::new)).whenComplete((ignored, error) -> {
-            int limit = defaultLimit;
+            Config.PastureLimit limit = defaultLimit;
             if (error == null) {
                 for (int index = 0; index < checks.size(); index++) {
                     if (Boolean.TRUE.equals(checks.get(index).getNow(false))) {
-                        limit = Math.max(limit, Math.max(0, tiers.get(index).getValue()));
+                        limit = larger(limit, tiers.get(index).getValue());
                     }
                 }
             }
@@ -402,7 +424,7 @@ public final class VirtualPastureService {
         if (record.regionId() != null) byRegion.computeIfAbsent(record.regionId(), ignored -> new HashSet<>()).add(key);
         if (record.ownerUuid() != null) byOwner.computeIfAbsent(record.ownerUuid(), ignored -> new HashSet<>()).add(key);
         byChunk.computeIfAbsent(chunkKey(record.dimensionKey(), record.chunkX(), record.chunkZ()), ignored -> new HashSet<>()).add(key);
-        AllocationMetrics.setGauge("bigbangregions_virtual_pastures_total", records.size());
+        AllocationMetrics.setGauge("bigbangregions_pastures_total", records.size());
     }
     private void remove(String key) { VirtualPastureRecord record = records.get(key); if (record != null) repository.delete(record.dimensionKey(), record.blockPos()); removeMemory(key); }
     private void removeMemory(String key) {
@@ -410,7 +432,7 @@ public final class VirtualPastureService {
         if (record == null) return;
         removeFrom(byRegion, record.regionId(), key); removeFrom(byOwner, record.ownerUuid(), key);
         removeFrom(byChunk, chunkKey(record.dimensionKey(), record.chunkX(), record.chunkZ()), key);
-        AllocationMetrics.setGauge("bigbangregions_virtual_pastures_total", records.size());
+        AllocationMetrics.setGauge("bigbangregions_pastures_total", records.size());
     }
     private static <K> void removeFrom(Map<K, Set<String>> index, K owner, String key) {
         if (owner == null) return;
@@ -418,6 +440,31 @@ public final class VirtualPastureService {
         values.remove(key); if (values.isEmpty()) index.remove(owner);
     }
     private static int count(Set<String> values) { return values == null ? 0 : values.size(); }
+    private static Config.PastureLimit defaultLimit(Config.VirtualPastureConfig config) {
+        return config.getLimits().getOrDefault("default", new Config.PastureLimit(0, 0));
+    }
+    private static Config.PastureLimit larger(Config.PastureLimit first, Config.PastureLimit second) {
+        return new Config.PastureLimit(Math.max(first.getPerPlayer(), second.getPerPlayer()),
+            Math.max(first.getPerRegion(), second.getPerRegion()));
+    }
+    private static Set<ResourceLocation> configuredBlockIds(Collection<String> values) {
+        Set<ResourceLocation> ids = new LinkedHashSet<>();
+        if (values == null) return Set.of();
+        for (String value : values) {
+            if (value == null || value.isBlank()) continue;
+            try {
+                ResourceLocation id = ResourceLocation.parse(value);
+                if (!BuiltInRegistries.BLOCK.containsKey(id)) {
+                    LOGGER.warn("Configured Pasture block '{}' is not registered; that target is disabled.", id);
+                    continue;
+                }
+                ids.add(id);
+            } catch (RuntimeException invalid) {
+                LOGGER.warn("Configured Pasture block id '{}' is invalid; that target is disabled.", value);
+            }
+        }
+        return Set.copyOf(ids);
+    }
     private static String positionKey(String dimension, long pos) { return dimension + '\u0000' + pos; }
     private static String chunkKey(ServerLevel level, BlockPos pos) { return chunkKey(level.dimension().location().toString(), pos.getX() >> 4, pos.getZ() >> 4); }
     private static String chunkKey(String dimension, int x, int z) { return dimension + '\u0000' + x + ':' + z; }
