@@ -3,6 +3,8 @@ package com.bigbangcraft.regions.invite;
 import com.bigbangcraft.regions.audit.AuditService;
 import com.bigbangcraft.regions.cache.RegionCache;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
+import com.bigbangcraft.regions.config.Config;
+import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionBounds;
 import com.bigbangcraft.regions.domain.RegionMember;
@@ -28,6 +30,7 @@ public class RegionInviteServiceTest {
     private RegionRepository regionRepository;
     private RegionCache regionCache;
     private RegionMembershipCache membershipCache;
+    private ConfigManager configManager;
     private AuditService auditService;
     private RegionRoleResolver roleResolver;
     private RegionInviteService service;
@@ -42,9 +45,12 @@ public class RegionInviteServiceTest {
         regionRepository = mock(RegionRepository.class);
         regionCache = mock(RegionCache.class);
         membershipCache = new RegionMembershipCache();
+        configManager = mock(ConfigManager.class);
+        when(configManager.getConfig()).thenReturn(new Config());
         auditService = mock(AuditService.class);
         roleResolver = new RegionRoleResolver(membershipCache);
-        service = new RegionInviteService(inviteRepository, regionRepository, regionCache, membershipCache, roleResolver, auditService);
+        service = new RegionInviteService(inviteRepository, regionRepository, regionCache, membershipCache,
+            configManager, roleResolver, auditService);
 
         owner = UUID.randomUUID();
         invited = UUID.randomUUID();
@@ -97,6 +103,31 @@ public class RegionInviteServiceTest {
         verify(regionRepository).transferOwnership(any(Region.class));
         verify(inviteRepository).updateStatus(eq("inv-owner"), eq(InviteStatus.ACCEPTED), anyLong(), anyLong());
         verify(auditService).log(eq("reg1"), eq(invited), eq("INVITE_ACCEPTED"), isNull(), eq("OWNER"), anyString());
+    }
+
+    @Test
+    public void rejectsOwnerTransferWhenTargetAlreadyOwnsRegion() {
+        RegionMember invitedMember = new RegionMember(invited, RegionRole.MEMBER, owner,
+            System.currentTimeMillis(), System.currentTimeMillis());
+        Region source = new Region("reg1", "PlayerClaim", RegionType.PLAYER_REGION,
+            new RegionBounds("overworld", 0, 0, 0, 10, 10, 10), 100, owner, UUID.randomUUID(), 0, 0, "ACTIVE",
+            Collections.singletonMap(invited, invitedMember));
+        Region existing = new Region("reg2", "ExistingClaim", RegionType.PLAYER_REGION,
+            new RegionBounds("overworld", 20, 0, 20, 30, 10, 30), 100, invited, UUID.randomUUID(), 0, 0, "ACTIVE");
+        membershipCache.loadFromRegion(source);
+        when(regionCache.get("reg1")).thenReturn(source);
+        when(regionCache.getAll()).thenReturn(List.of(source, existing));
+
+        RegionInvite invite = new RegionInvite("inv-owner-limit", "reg1", invited, owner, RegionRole.OWNER,
+            InviteStatus.PENDING, System.currentTimeMillis(), System.currentTimeMillis() + 1000L, null, null);
+        when(inviteRepository.get("inv-owner-limit")).thenReturn(invite);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> service.acceptInvite("inv-owner-limit", invited));
+
+        assertEquals("O jogador já atingiu o limite de regiões (1).", error.getMessage());
+        verify(regionRepository, never()).transferOwnership(any(Region.class));
+        verify(inviteRepository, never()).updateStatus(anyString(), any(), any(), any());
     }
 
     @Test

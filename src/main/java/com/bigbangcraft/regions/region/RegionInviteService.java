@@ -3,6 +3,7 @@ package com.bigbangcraft.regions.region;
 import com.bigbangcraft.regions.audit.AuditService;
 import com.bigbangcraft.regions.cache.RegionCache;
 import com.bigbangcraft.regions.cache.RegionMembershipCache;
+import com.bigbangcraft.regions.config.ConfigManager;
 import com.bigbangcraft.regions.domain.Region;
 import com.bigbangcraft.regions.domain.RegionMember;
 import com.bigbangcraft.regions.domain.RegionRole;
@@ -25,16 +26,18 @@ public class RegionInviteService {
     private final RegionRepository regionRepository;
     private final RegionCache regionCache;
     private final RegionMembershipCache membershipCache;
+    private final ConfigManager configManager;
     private final RegionRoleResolver roleResolver;
     private final AuditService auditService;
 
     public RegionInviteService(RegionInviteRepository repository, RegionRepository regionRepository,
                                RegionCache regionCache, RegionMembershipCache membershipCache,
-                               RegionRoleResolver roleResolver, AuditService auditService) {
+                               ConfigManager configManager, RegionRoleResolver roleResolver, AuditService auditService) {
         this.repository = repository;
         this.regionRepository = regionRepository;
         this.regionCache = regionCache;
         this.membershipCache = membershipCache;
+        this.configManager = configManager;
         this.roleResolver = roleResolver;
         this.auditService = auditService;
     }
@@ -159,6 +162,16 @@ public class RegionInviteService {
         RegionRole newOwnerRole = roleResolver.resolveRole(region, newOwnerUuid);
         if (newOwnerRole == RegionRole.VISITOR) {
             throw new IllegalArgumentException("New owner must already be a member");
+        }
+        int maxRegions = configManager.getConfig().getPlayerRegions().getMaxRegionsPerOwner();
+        if (maxRegions > 0) {
+            long ownedRegions = regionCache.getAll().stream()
+                .filter(candidate -> candidate.getType() == RegionType.PLAYER_REGION
+                    && newOwnerUuid.equals(candidate.getOwnerUuid()))
+                .count();
+            if (ownedRegions >= maxRegions) {
+                throw new IllegalArgumentException("O jogador já atingiu o limite de regiões (" + maxRegions + ").");
+            }
         }
 
         RegionMember currentOwnerMember = new RegionMember(actorUuid, RegionRole.LEADER, actorUuid,
