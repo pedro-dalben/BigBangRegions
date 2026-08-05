@@ -27,6 +27,7 @@ import java.util.Locale;
 
 public final class BigMonCraftRegionMapIntegration implements RegionMapIntegration, RegionChangeListener {
     public static final String SOURCE_ID = "bigbangregions";
+    public static final String WAYPOINT_SOURCE_ID = SOURCE_ID + "-waypoints";
     private static final Logger LOGGER = LoggerFactory.getLogger("BigBangRegions-BigMonCraft");
 
     private final MinecraftServer server;
@@ -47,10 +48,7 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
 
     @Override
     public void onPlayerJoin(ServerPlayer player) {
-        ServerMapApi mapApi = BigMonCraftApi.serverMap();
-        if (mapApi.isAvailable()) {
-            mapApi.clearAllWaypoints(player);
-        }
+        clearRegionWaypoints(player);
         sync(player, null);
     }
 
@@ -58,8 +56,8 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
     public void onPlayerDisconnect(ServerPlayer player) {
         ServerMapApi mapApi = BigMonCraftApi.serverMap();
         if (mapApi.isAvailable()) {
-            mapApi.clearAllWaypoints(player);
             mapApi.clear(player, SOURCE_ID);
+            mapApi.clear(player, WAYPOINT_SOURCE_ID);
         }
     }
 
@@ -69,8 +67,8 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
         if (!mapApi.isAvailable()) return;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             try {
-                mapApi.clearAllWaypoints(player);
                 mapApi.clear(player, SOURCE_ID);
+                mapApi.clear(player, WAYPOINT_SOURCE_ID);
             } catch (RuntimeException exception) {
                 LOGGER.warn("Failed to clear map for {}: {}", player.getGameProfile().getName(), exception.getMessage());
             }
@@ -82,6 +80,7 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
         String excludedId = event.getType() == RegionChangeEvent.ChangeType.DELETED
             ? event.getRegion().getId() : null;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            clearRegionWaypoints(player);
             sync(player, excludedId);
         }
     }
@@ -89,6 +88,15 @@ public final class BigMonCraftRegionMapIntegration implements RegionMapIntegrati
     @Override
     public void close() {
         RegionEventBus.unregister(this);
+    }
+
+    private void clearRegionWaypoints(ServerPlayer player) {
+        try {
+            ServerMapApi mapApi = BigMonCraftApi.serverMap();
+            if (mapApi.isAvailable()) mapApi.clear(player, WAYPOINT_SOURCE_ID);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Failed to clear region waypoints for {}: {}", player.getGameProfile().getName(), exception.getMessage());
+        }
     }
 
     private void sync(ServerPlayer player, String excludedRegionId) {
